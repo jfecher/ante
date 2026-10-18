@@ -1,0 +1,50 @@
+type Wrap t = inner: t
+
+// A default may refer to earlier parameters
+type Nested a (b = Wrap a) (c = b) = first: a, second: b, third: c
+
+// But not to later ones
+type Later (a = b) b = x: a
+
+type RequiredAfterDefault (a = I32) b = x: a, y: b
+
+// args: -e ast-r --no-color
+// expected exit status: 1
+// expected stdout:
+// // id = c1m556_3851
+// type Wrap_c1m556_3851_0 t_1 =
+//     inner_?: t_1
+// 
+// // id = c1m556_8086
+// type Nested_c1m556_8086_0 a_1 (b_2 = Wrap_c1m556_3851_0 a_1) (c_4 = b_2) =
+//     first_?: a_1
+//     second_?: b_2
+//     third_?: c_4
+// 
+// // id = c1m556_4020
+// type Later_c1m556_4020_0 (a_1 = b_?) b_3 =
+//     x_?: a_1
+// 
+// // id = c1m556_420
+// type RequiredAfterDefault_c1m556_420_0 (a_1 = I32) b_2 =
+//     x_?: a_1
+//     y_?: b_2
+
+// expected stderr:
+// examples/nameresolution/default_type_params.an:7:17
+// 6 | // But not to later ones
+// 7 | type Later (a = b) b = x: a	// error: `b` not found in scope
+//   |                 ^
+// 
+// examples/nameresolution/default_type_params.an:7:20
+// 6 | // But not to later ones
+//   | // error: Type parameters without a default must come before those with one
+// 7 | type Later (a = b) b = x: a
+//   |                    ^
+// 
+// examples/nameresolution/default_type_params.an:9:37
+//    | // error: Type parameters without a default must come before those with one
+//  9 | type RequiredAfterDefault (a = I32) b = x: a, y: b
+//    |                                     ^
+// 
+// Found 3 errors and 0 warnings

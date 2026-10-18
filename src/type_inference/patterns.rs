@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-const WILDCARD_PATTERN: &str = "_";
+pub(super) const WILDCARD_PATTERN: &str = "_";
 
 struct MatchCompiler<'tc, 'local, 'db> {
     checker: &'tc mut TypeChecker<'local, 'db>,
@@ -58,12 +58,16 @@ pub enum DecisionTree {
 pub struct Case {
     pub constructor: Constructor,
     pub arguments: Vec<PathId>,
+    /// Set only for `Circle ..c` patterns
+    pub whole_value: Option<PathId>,
     pub body: DecisionTree,
 }
 
 impl Case {
-    pub fn new(constructor: Constructor, arguments: Vec<PathId>, body: DecisionTree) -> Self {
-        Self { constructor, arguments, body }
+    pub fn new(
+        constructor: Constructor, arguments: Vec<PathId>, whole_value: Option<PathId>, body: DecisionTree,
+    ) -> Self {
+        Self { constructor, arguments, whole_value, body }
     }
 }
 
@@ -74,6 +78,9 @@ impl Case {
 enum Pattern {
     /// A pattern checking for a tag and possibly binding variables such as `Some(42)`
     Constructor(Constructor, Vec<Pattern>),
+
+    /// `Circle ..c` binds the entire matched value
+    ConstructorRest(Constructor, Vec<Pattern>, Option<NameId>),
 
     /// A pattern binding a variable such as `a` or `_`
     Variable(NameId),
@@ -199,6 +206,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let arguments = opt_mapvec(arguments, |argument| self.convert_pattern(*argument))?;
                 Pattern::Constructor(constructor, arguments)
             },
+            cst::Pattern::ConstructorRest(path_id, args, name) => {
+                let constructor = self.path_to_constructor(*path_id)?;
+                let arguments = opt_mapvec(args, |argument| self.convert_pattern(*argument))?;
+                Pattern::ConstructorRest(constructor, arguments, *name)
+            },
             cst::Pattern::TypeAnnotation(pattern, _) => return self.convert_pattern(*pattern),
             cst::Pattern::MethodName { .. } => {
                 let location = self.current_context().pattern_location(pattern).clone();
@@ -232,7 +244,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     // The type checker should hold the origin of paths that require type resolution
                     origin = self.current_extended_context().path_origin(path)?;
                 },
-                Origin::Builtin(_) => {
+                Origin::TraitMember(_) | Origin::EffectOperation { .. } | Origin::Builtin(_) => {
                     let location = self.current_context().path_location(path).clone();
                     self.compiler.accumulate(Diagnostic::InvalidPattern { location });
                     return None;
@@ -255,7 +267,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeDefinitionBody::Error => return None,
             // A struct only has 1 constructor, and its name should be the only NameId externally visible.
             cst::TypeDefinitionBody::Struct(_) => 0,
-            cst::TypeDefinitionBody::Enum(variants) => {
+            cst::TypeDefinitionBody::Enum(variants, _) => {
                 let result =
                     variants.iter().enumerate().find_map(|(i, (variant_name, _))| (*variant_name == name).then_some(i));
                 // The only other name visible within the enum should be the type name.
@@ -268,6 +280,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // Name resolution should already resolve aliases to their underlying constructor,
             // so a path reaching here means that failed and it is not a constructor.
             cst::TypeDefinitionBody::Alias(_) => return None,
+            // Effect aliases are never constructors
+            cst::TypeDefinitionBody::EffectAlias(_) => return None,
         };
 
         let type_name = TopLevelName::new(item.id, type_definition.name);
@@ -279,7 +293,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - `type_name` is local to `item` and is included as part of the error message.
     /// - `path` is local to the match and is used for its location.
     fn issue_constructor_expected_found_type_error(
-        &self, item: &TopLevelItem, variants: &[(NameId, Vec<cst::Type>)], type_name: NameId, path: PathId,
+        &self, item: &TopLevelItem, variants: &[(NameId, Vec<(Option<NameId>, cst::Type)>)], type_name: NameId,
+        path: PathId,
     ) {
         // We don't need the desugaring [GetItem] provides since we don't need the item itself, only the context
         let item_context = GetItemRaw(item.id).get(self.compiler).1;
@@ -291,18 +306,37 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.compiler.accumulate(Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location });
     }
 
+    /// Errors with [Diagnostic::MissingCases] if this constructor isn't its type's only variant.
+    pub(super) fn check_constructor_exhaustive(&mut self, path: PathId, location: &Location) {
+        let Some(constructor) = self.path_to_constructor(path) else { return };
+        let variant_index = constructor.variant_index();
+
+        // TODO: Make this more lightweight for the fast case
+        let mut matcher = MatchCompiler { checker: self, has_missing_cases: false, unreachable_cases: BTreeMap::new() };
+        let all = matcher.all_constructors(&constructor, location);
+        let cases: BTreeSet<_> = all
+            .iter()
+            .filter(|(other, _)| other.variant_index() != variant_index)
+            .map(|(other, _)| matcher.constructor_string(other))
+            .collect();
+
+        if !cases.is_empty() {
+            self.compiler.accumulate(Diagnostic::MissingCases { cases, location: location.clone() });
+        }
+    }
+
     pub(super) fn fresh_variable(
         &mut self, name_prefix: &str, variable_type: Type, location: Location,
     ) -> (PathId, NameId) {
-        let mut name = String::new();
+        let mut name: cst::Name = Arc::default();
         let path_id = self.current_extended_context_mut().push_path_with_id(location.clone(), |id| {
-            name = format!("{name_prefix}{}", usize::from(id));
+            name = Arc::new(format!("{name_prefix}{}", usize::from(id)));
             Path { components: vec![(name.clone(), location.clone())] }
         });
 
         self.path_types.insert(path_id, variable_type);
 
-        let name_id = self.push_name(Arc::new(name), location);
+        let name_id = self.push_name(name, location);
         self.current_extended_context_mut().insert_name_origin(name_id, Origin::Local(name_id));
         self.current_extended_context_mut().insert_path_origin(path_id, Origin::Local(name_id));
         (path_id, name_id)
@@ -438,21 +472,24 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         let branch_var = self.branch_variable(&rows);
         let location = self.checker.current_extended_context().path_location(branch_var);
 
-        let definition_type = &self.checker.path_types[&branch_var];
+        let (definition_type, _) = self.checker.match_through_reference(&self.checker.path_types[&branch_var]);
+        let definition_type = &definition_type;
         match self.checker.follow_type(definition_type) {
             Type::Primitive(PrimitiveType::Int(_)) => {
                 let (cases, fallback) = self.compile_int_cases(rows, branch_var)?;
                 Ok(DecisionTree::Switch(branch_var, cases, Some(fallback)))
             },
             Type::Primitive(PrimitiveType::Bool) => {
-                let cases =
-                    vec![(Constructor::False, Vec::new(), Vec::new()), (Constructor::True, Vec::new(), Vec::new())];
+                let cases = vec![
+                    (Constructor::False, Vec::new(), None, Vec::new()),
+                    (Constructor::True, Vec::new(), None, Vec::new()),
+                ];
 
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
             },
             Type::Primitive(PrimitiveType::Unit) => {
-                let cases = vec![(Constructor::Unit, Vec::new(), Vec::new())];
+                let cases = vec![(Constructor::Unit, Vec::new(), None, Vec::new())];
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
             },
@@ -482,23 +519,53 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::Function(_)
             | Type::Forall(..)
             | Type::Tuple(_)
-            | Type::U32(_) => {
+            | Type::U32(_)
+            | Type::Effects(..)
+            | Type::Place(_)
+            | Type::Places(..)
+            | Type::PlaceProjection(..) => {
                 let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
             },
         }
     }
 
+    /// `typ` is the type `branch_var` refers to if it is a reference
     fn compile_userdefined_cases(
         &mut self, rows: Vec<Row>, branch_var: PathId, typ: &Type, origin: Origin, generics: &[Type],
         location: Location,
     ) -> Result<DecisionTree, Diagnostic> {
+        let (_, reference) = self.checker.match_through_reference(&self.checker.path_types[&branch_var]);
+        let reference = reference.as_ref();
+
+        // Which variant indices have a `Circle ..c`-style row
+        let rest_variant_indices: BTreeSet<usize> = rows
+            .iter()
+            .filter_map(|row| row.columns.iter().find(|c| c.variable_to_match == branch_var))
+            .filter_map(|col| match &col.pattern {
+                Pattern::ConstructorRest(constructor, _, _) => Some(constructor.variant_index()),
+                _ => None,
+            })
+            .collect();
+
         match self.classify_type_origin(origin, generics) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
-                let cases = mapvec(variants.iter().enumerate(), |(idx, (_name, args))| {
+                let Origin::TopLevelDefinition(enum_name) = origin else { unreachable!() };
+
+                let cases = mapvec(variants.iter().enumerate(), |(idx, (name_id, _name, fields))| {
                     let constructor = Constructor::Variant(typ.clone(), idx);
-                    let args = self.fresh_match_variables(args, location.clone());
-                    (constructor, args, Vec::new())
+                    let arg_types = mapvec(fields, |(_, t)| t.clone());
+                    let arg_types = self.checker.fields_through_reference(typ, reference, arg_types);
+                    let args = self.fresh_match_variables(arg_types.iter(), location.clone());
+                    let whole_value = rest_variant_indices.contains(&idx).then(|| {
+                        let variant_name = TopLevelName::new(enum_name.top_level_item, *name_id);
+                        let mut variant_type = typ.retarget_user_defined(variant_name);
+                        if let Some(reference) = reference {
+                            variant_type = self.checker.field_through_reference(reference, variant_type, true);
+                        }
+                        self.fresh_match_variables(std::iter::once(&variant_type), location.clone())[0]
+                    });
+                    (constructor, args, whole_value, Vec::new())
                 });
 
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
@@ -506,8 +573,16 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             },
             Some(UserDefinedTypeKind::Product(fields)) => {
                 let constructor = Constructor::struct_(typ.clone());
-                let field_variables = self.fresh_match_variables(&fields, location);
-                let cases = vec![(constructor, field_variables, Vec::new())];
+                let fields = self.checker.fields_through_reference(typ, reference, fields);
+                let field_variables = self.fresh_match_variables(fields.iter(), location.clone());
+                let whole_type = match reference {
+                    Some(reference) => self.checker.field_through_reference(reference, typ.clone(), false),
+                    None => typ.clone(),
+                };
+                let whole_value = rest_variant_indices
+                    .contains(&0)
+                    .then(|| self.fresh_match_variables(std::iter::once(&whole_type), location.clone())[0]);
+                let cases = vec![(constructor, field_variables, whole_value, Vec::new())];
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
             },
@@ -526,7 +601,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         }
     }
 
-    fn fresh_match_variables(&mut self, variable_types: &[Type], location: Location) -> Vec<PathId> {
+    fn fresh_match_variables<'a>(
+        &mut self, variable_types: impl ExactSizeIterator<Item = &'a Type>, location: Location,
+    ) -> Vec<PathId> {
         mapvec(variable_types, |typ| self.checker.fresh_variable("match_var", typ.clone(), location.clone()).0)
     }
 
@@ -573,7 +650,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
         let cases = try_mapvec(raw_cases, |(cons, vars, rows)| {
             let rows = self.compile_rows(rows)?;
-            Ok::<_, Diagnostic>(Case::new(cons, vars, rows))
+            Ok::<_, Diagnostic>(Case::new(cons, vars, None, rows))
         })?;
 
         Ok((cases, Box::new(self.compile_rows(fallback_rows)?)))
@@ -605,32 +682,46 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     /// separately; they don't need most of this work anyway.
     #[allow(clippy::type_complexity)]
     fn compile_constructor_cases(
-        &mut self, rows: Vec<Row>, branch_var: PathId, mut cases: Vec<(Constructor, Vec<PathId>, Vec<Row>)>,
+        &mut self, rows: Vec<Row>, branch_var: PathId,
+        mut cases: Vec<(Constructor, Vec<PathId>, Option<PathId>, Vec<Row>)>,
     ) -> Result<(Vec<Case>, Option<Box<DecisionTree>>), Diagnostic> {
         for mut row in rows {
             if let Some(col) = row.remove_column(branch_var) {
-                if let Pattern::Constructor(constructor, args) = col.pattern {
-                    let idx = constructor.variant_index();
-                    let mut cols = row.columns;
+                let (idx, extra_columns) = match col.pattern {
+                    Pattern::Constructor(constructor, args) => {
+                        let idx = constructor.variant_index();
+                        let columns = mapvec(cases[idx].1.iter().zip(args), |(var, pat)| Column::new(*var, pat));
+                        (idx, columns)
+                    },
+                    Pattern::ConstructorRest(constructor, args, name) => {
+                        let idx = constructor.variant_index();
+                        let mut columns = mapvec(cases[idx].1.iter().zip(args), |(var, pat)| Column::new(*var, pat));
+                        if let Some(name) = name
+                            && let Some(whole_var) = cases[idx].2
+                        {
+                            columns.push(Column::new(whole_var, Pattern::Variable(name)));
+                        }
+                        (idx, columns)
+                    },
+                    // Type-checking should reject any other pattern shape at this position.
+                    _ => continue,
+                };
 
-                    for (var, pat) in cases[idx].1.iter().zip(args.into_iter()) {
-                        cols.push(Column::new(*var, pat));
-                    }
-
-                    let mut new_row = Row::new(cols, row.guard, row.body, row.location);
-                    new_row.original_body = row.original_body;
-                    cases[idx].2.push(new_row);
-                }
+                let mut cols = row.columns;
+                cols.extend(extra_columns);
+                let mut new_row = Row::new(cols, row.guard, row.body, row.location);
+                new_row.original_body = row.original_body;
+                cases[idx].3.push(new_row);
             } else {
-                for (_, _, rows) in &mut cases {
+                for (_, _, _, rows) in &mut cases {
                     rows.push(row.clone());
                 }
             }
         }
 
-        let cases = try_mapvec(cases, |(cons, vars, rows)| {
+        let cases = try_mapvec(cases, |(cons, vars, whole_value, rows)| {
             let rows = self.compile_rows(rows)?;
-            Ok::<_, Diagnostic>(Case::new(cons, vars, rows))
+            Ok::<_, Diagnostic>(Case::new(cons, vars, whole_value, rows))
         })?;
 
         Ok(Self::deduplicate_cases(cases))
@@ -757,7 +848,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match self.classify_type(type_matched_on) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
                 if !variants.is_empty() {
-                    let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| name).collect();
+                    let cases: BTreeSet<_> = variants.into_iter().map(|(_, name, _)| name).collect();
                     self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
                 }
                 return;
@@ -794,7 +885,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 }
 
                 if let Some(else_case) = else_case {
-                    let typ = self.checker.path_types[variable].clone();
+                    let (typ, _) = self.checker.match_through_reference(&self.checker.path_types[variable]);
 
                     for case in self.missing_cases(cases, &typ, location) {
                         env.insert(*variable, case);
@@ -905,10 +996,12 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 Origin::TopLevelDefinition(top_level_name) => {
                     match top_level_name.top_level_item.type_body(None, self.checker.compiler) {
                         TypeBody::Product { type_name, .. } => type_name,
-                        TypeBody::Sum(variants) => variants[variant_index].0.clone(),
+                        TypeBody::Sum(variants) => variants[variant_index].1.clone(),
                     }
                 },
-                Origin::Local(_) | Origin::TypeResolution => unreachable!(),
+                Origin::Local(_) | Origin::TypeResolution | Origin::TraitMember(_) | Origin::EffectOperation { .. } => {
+                    unreachable!()
+                },
                 Origin::Builtin(builtin) => Arc::new(builtin.to_string()),
             },
             Type::Application(constructor, _) => {
@@ -934,7 +1027,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                     vec![(Constructor::Variant(typ.clone(), 0), fields.len())]
                 },
                 Some(UserDefinedTypeKind::Sum(variants)) => {
-                    mapvec(variants.into_iter().enumerate(), |(i, (_, fields))| {
+                    mapvec(variants.into_iter().enumerate(), |(i, (_, _, fields))| {
                         (Constructor::Variant(typ.clone(), i), fields.len())
                     })
                 },
@@ -955,6 +1048,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     }
 
     fn classify_type(&mut self, typ: &Type) -> Option<UserDefinedTypeKind> {
+        let (typ, _) = self.checker.match_through_reference(typ);
+        let typ = &typ;
         match self.checker.follow_type(typ) {
             Type::Application(constructor, arguments) => match self.checker.follow_type(constructor) {
                 Type::UserDefined(origin) => {
@@ -978,7 +1073,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         // case of a bug elsewhere in the compiler.
         match origin {
             Origin::TopLevelDefinition(top_level_name) => {
-                match top_level_name.top_level_item.type_body(Some(arguments), self.checker.compiler) {
+                let compiler = self.checker.compiler;
+                let body = top_level_name.type_body(Some(arguments), compiler);
+                match body {
                     TypeBody::Product { type_name: _, fields } => {
                         let fields = mapvec(fields, |(_name, typ)| typ);
                         Some(UserDefinedTypeKind::Product(fields))
@@ -987,6 +1084,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 }
             },
             Origin::Local(_) => unreachable!("Origin::Local used in classify_type_origin"),
+            Origin::TraitMember(_) | Origin::EffectOperation { .. } => {
+                unreachable!("Ability member used as a type in classify_type_origin")
+            },
             Origin::TypeResolution => {
                 unreachable!(
                     "Origin::TypeResolution encountered in classify_type_origin, should be unreachable in a type position"
@@ -1002,5 +1102,5 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 enum UserDefinedTypeKind {
     NotUserDefined(Type),
     Product(Vec<Type>),
-    Sum(Vec<(Name, Vec<Type>)>),
+    Sum(Vec<(NameId, Name, Vec<(Name, Type)>)>),
 }

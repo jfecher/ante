@@ -1,12 +1,12 @@
 import Std.C.malloc, free, VoidPtr
 
 export
-    Thread, spawn, join, detach,
-    Mutex, with_lock,
-    Condvar, wait, signal, broadcast,
-    Atomic, load, store, swap, compare_and_swap,
-    fetch_add, fetch_sub, fetch_and, fetch_or, fetch_xor,
-    Arc, as_ref, clone_arc, drop_arc, drop_mutex
+    Thread, Thread.spawn, Thread.join, Thread.detach,
+    Mutex, Mutex.with_lock,
+    Condvar, Condvar.wait, Condvar.signal, Condvar.broadcast,
+    Atomic, Atomic.load, Atomic.store, Atomic.swap, Atomic.compare_and_swap,
+    Atomic.fetch_add, Atomic.fetch_sub, Atomic.fetch_and, Atomic.fetch_or, Atomic.fetch_xor,
+    Arc, Arc.as_ref, clone_arc, drop_arc, drop_mutex
 
 pthread_create: fn VoidPtr VoidPtr (fn VoidPtr -> VoidPtr) VoidPtr -> I32 = extern "pthread_create"
 pthread_join: fn VoidPtr (Ptr VoidPtr) -> I32 = extern "pthread_join"
@@ -75,32 +75,32 @@ Atomic.fetch_xor (a: ref Atomic t) (mask: t): t = atomic_ptr_fetch_xor a.value m
 // ================================================
 type Mutex t =
     // Actually a pthread_mutex_t
-    handle: VoidPtr
+    raw: VoidPtr
     value: t
 
 Mutex.of (value: t): Mutex t =
-    handle = malloc mutex_buf_size
-    pthread_mutex_init handle (null ())
-    Mutex handle value
+    raw = malloc mutex_buf_size
+    pthread_mutex_init raw (null ())
+    Mutex raw value
 
 /// Acquires the lock, blocking until it can be acquired, then runs `f`, then releases the
 /// lock, returning the result of `f`.
 ///
 /// This may deadlock 
 Mutex.with_lock (m: ref Mutex t) (f: fn (mut t) => r): r =
-    pthread_mutex_lock m.handle
+    pthread_mutex_lock m.raw
 
     // We have to use an unsafe conversion for the internal mutability here
     ref_to_mut: fn (ref t) -> mut t = transmute
     result = f (ref_to_mut m.value)
 
-    pthread_mutex_unlock m.handle
+    pthread_mutex_unlock m.raw
     result
 
-impl drop_mutex {Drop t}: Drop (Mutex t) with
+impl drop_mutex {Drop t e}: Drop (Mutex t) e with
     drop (m: mut Mutex t) =
-        pthread_mutex_destroy m.handle
-        free m.handle
+        pthread_mutex_destroy m.raw
+        free m.raw
         drop m.value
 
 // ================================================
@@ -118,7 +118,7 @@ Condvar.new (): Condvar =
 /// captured `m`).
 /// TODO: Add MutexGuard and require that instead of a Mutex
 Condvar.wait (c: ref Condvar) (m: ref Mutex t): Unit =
-    pthread_cond_wait c.raw m.handle
+    pthread_cond_wait c.raw m.raw
     ()
 
 /// Unblock one thread waiting on this condvar
@@ -131,7 +131,7 @@ Condvar.broadcast (c: ref Condvar): Unit =
     pthread_cond_broadcast c.raw
     ()
 
-impl drop_condvar: Drop Condvar with
+impl drop_condvar: Drop Condvar pure with
     drop c =
         pthread_cond_destroy c.raw
         free c.raw
@@ -139,45 +139,48 @@ impl drop_condvar: Drop Condvar with
 // ================================================
 // Thread
 // ================================================
-type Thread a = handle: VoidPtr
+type Thread a = raw: VoidPtr
 
 /// Spawn a new OS thread running `f`. The returned thread must be joined or detached.
-Thread.spawn (f: fn Unit [e] -> a): Thread a =
-    // pthread_create needs a free function so we use this wrapper to take a pointer
-    // to the closure to run as an argument.
-    wrapper (thunk: VoidPtr): VoidPtr =
-        closure_ptr = transmute thunk : Ptr (fn Unit [e] -> a)
-        thunk = deref_ptr closure_ptr
-        free closure_ptr
+Thread.spawn (f: fn Unit [e] -> a is pure): Thread a =
+    // `run` captures nothing, so its pointer environment is null and `thread_entry` needs neither `a` nor `e`
+    run: fn VoidPtr [Ptr Unit] -> VoidPtr is pure = fn payload ->
+        pair = transmute payload : Ptr (fn VoidPtr [Ptr Unit] -> VoidPtr is pure, fn Unit [e] -> a is pure)
+        _, thunk = deref_ptr pair
+        free pair
         out = malloc (size_of (MkType: Type a))
         ptr_store out (thunk ())
         transmute out
 
-    closure_ptr = malloc (size_of (MkType: Type (fn Unit [e] -> a)))
-    ptr_store closure_ptr f
-    args_ptr = transmute closure_ptr : VoidPtr
-    handle = malloc pthread_t_size
-    pthread_create handle (null ()) wrapper args_ptr
-    Thread handle
+    pair = malloc (size_of (MkType: Type (fn VoidPtr [Ptr Unit] -> VoidPtr is pure, fn Unit [e] -> a is pure)))
+    ptr_store pair (run, f)
+    raw = malloc pthread_t_size
+    pthread_create raw (null ()) thread_entry (transmute pair)
+    Thread raw
+
+/// pthread_create needs a free function, so this takes a pointer whose first field is the closure to run
+thread_entry (payload: VoidPtr): VoidPtr =
+    run = deref_ptr (transmute payload : Ptr (fn VoidPtr [Ptr Unit] -> VoidPtr is pure))
+    run payload
 
 /// Block until the thread finishes and return its result.
 Thread.join (t: Thread a): a =
     var ret = null ()
 
-    tid = deref_ptr (transmute t.handle : Ptr VoidPtr)
+    tid = deref_ptr (transmute t.raw : Ptr VoidPtr)
     // TODO: this can mangle ret with PTHREAD_CANCELED
     pthread_join tid (transmute (mut ret))
     result = deref_ptr ret
     free ret
-    free t.handle
+    free t.raw
     result
 
 /// Detach the thread so its resources are reclaimed automatically on exit.
 /// The result value is leaked; use `join` if you need it.
 Thread.detach (t: Thread a): Unit =
-    tid = deref_ptr (transmute t.handle : Ptr VoidPtr)
+    tid = deref_ptr (transmute t.raw : Ptr VoidPtr)
     pthread_detach tid
-    free t.handle
+    free t.raw
 
 // ================================================
 // Arc
@@ -194,9 +197,8 @@ Arc.of (value: t): Arc t =
     ptr_store ptr (ArcInner count value)
     Arc ptr
 
-Arc.as_ref (a: imm Arc t): imm t =
-    ptr_to_imm: fn (Ptr (ArcInner t)) -> imm ArcInner t = transmute
-    inner = ptr_to_imm a.ptr
+Arc.as_ref (a: ref 'a Arc t): ref 'a t =
+    inner = ptr_to_mut a.ptr
     inner.value
 
 impl clone_arc: Clone (Arc t) with
@@ -205,7 +207,7 @@ impl clone_arc: Clone (Arc t) with
         inner.count.fetch_add 1
         deref a
 
-impl drop_arc {Drop t}: Drop (Arc t) with
+impl drop_arc {Drop t e}: Drop (Arc t) e with
     drop (a: mut Arc t) =
         inner = ptr_to_mut a.ptr
         previous = inner.count.fetch_sub 1

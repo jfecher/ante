@@ -13,8 +13,16 @@ type Maybe a =
 
 type List a = | Nil | Cons a (ref List a)
 
+type Shape = | Circle (radius: U32) | Square (length: U32) | Rect (width: U32) (height: U32) String
 
 type UniquePtr a = ref a
+
+type Expr =
+   | Var String
+   | Lit I64
+   with location: I32
+
+type Pair2 = | A I32 | B String with tag: I32
 
 t = 3 : I32
 
@@ -39,9 +47,24 @@ t = 3 : I32
 // 
 // type List a =
 //     | Nil
-//     | Cons (a (ref (List a)))
+//     | Cons a (ref List a)
+// 
+// type Shape =
+//     | Circle (radius: U32)
+//     | Square (length: U32)
+//     | Rect (width: U32) (height: U32) String
 // 
 // type UniquePtr a = ref a
+// 
+// type Expr =
+//     | Var String
+//     | Lit I64
+//     with location: I32
+// 
+// type Pair2 =
+//     | A I32
+//     | B String
+//     with tag: I32
 // 
 // t = 3: I32
 

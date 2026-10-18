@@ -1,5 +1,6 @@
 main () =
     // Basic compound assignment on var integers
+    print_to_stdout do
     var x = 10
     x += 5
     println x

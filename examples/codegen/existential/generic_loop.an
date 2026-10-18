@@ -1,0 +1,26 @@
+// Storage for generic values is allocated once per call, so looping in generic code does not
+// grow the stack.
+
+step (x: (a, U64)): (a, U64) =
+    (value, n) = x
+    (value, n + 1)
+
+run (x: a) (iterations: U64): (a, U64) =
+    var state = (x, 0)
+    var i = 0
+    while i < iterations do
+        state := step state
+        i += 1
+    state
+
+main () =
+    print_to_stdout do
+    (s, n) = run "value" 200000
+    println "${s} ${n}"
+    (c, n) = run 'c' 10
+    println "${c} ${n}"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// value 200000
+// c 10

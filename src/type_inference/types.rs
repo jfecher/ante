@@ -1,8 +1,4 @@
-use std::{
-    borrow::Cow,
-    num::NonZeroUsize,
-    sync::{Arc, LazyLock},
-};
+use std::{borrow::Cow, sync::LazyLock};
 
 use inc_complete::DbGet;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -17,10 +13,20 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
-        cst::{self, KindAnnotation, ReferenceKind},
+        cst::{self, KindAnnotation, PlaceSegment, ReferenceKind},
+        desugar_context::DesugarContext,
         ids::{NameId, NameStore, TopLevelName},
     },
-    type_inference::{TypeChecker, generics::Generic, kinds::Kind},
+    shared_arc::Shared,
+    type_inference::{
+        TypeChecker,
+        generics::Generic,
+        kinds::Kind,
+        places::{self, Place},
+        row::{
+            Row, RowKind, canonicalize_row, construct_row, flatten_row_into, follow_row, is_open, sort_and_dedup_row,
+        },
+    },
 };
 
 /// Tracks the kind of each local type variable encountered while lowering a
@@ -31,7 +37,8 @@ pub(crate) fn kind_from_annotation(kind: KindAnnotation) -> Kind {
     match kind {
         KindAnnotation::Type => Kind::Type,
         KindAnnotation::U32 => Kind::U32,
-        KindAnnotation::Lifetime => Kind::Lifetime,
+        KindAnnotation::Place => Kind::Place,
+        KindAnnotation::Effect => Kind::Effect,
     }
 }
 
@@ -51,24 +58,42 @@ pub enum Type {
     /// version so we use a BTreeMap internally then freeze it in an Arc when finished to be
     /// able to access it from other threads.
     Variable(TypeVariableId),
-    Function(Arc<FunctionType>),
-    Application(Arc<Type>, Arc<Vec<Type>>),
+    Function(Shared<FunctionType>),
+    Application(Shared<Type>, Shared<Vec<Type>>),
     UserDefined(Origin),
 
     /// A polytype such as `forall a. fn a -> a`.
     /// During unification the ordering of the type variables matters.
     /// `forall a b. (a, b)` will not unify with `forall b a. (a, b)`
-    Forall(Arc<Vec<Generic>>, Arc<Type>),
+    Forall(Shared<Vec<Generic>>, Shared<Type>),
 
     /// This is an internal type only created when handling closure environments.
     /// Most tuple types in source code refer to the `,` type defined in the prelude. While they
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
     /// mechanisms to automatically define their constructor and retrieve their fields.
-    Tuple(Arc<Vec<Type>>),
+    Tuple(Shared<Vec<Type>>),
 
     /// A type-level U32 constant, used as the length parameter of [PrimitiveType::Array].
     /// Has [Kind::U32].
     U32(u32),
+
+    /// An effects row, each effect is sorted & deduplicated
+    ///
+    /// A value of None corresponds to an empty effect set to avoid allocation
+    Effects(Row<Type>),
+
+    /// A single concrete place a reference may point to. Only ever appears as an entry
+    /// inside a [Type::Places] row
+    Place(Place),
+
+    /// The set of places a reference may borrow from, sorted & deduplicated.
+    /// Each entry is a [Type::Place] or generic when concrete or a [Type::Variable] when not.
+    ///
+    /// A value of None corresponds to a reference pointing to nothing
+    Places(Row<Type>),
+
+    /// A generic or unbound place followed by fields and `!`s, like `'a!`
+    PlaceProjection(Shared<Type>, Shared<Vec<PlaceSegment>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -81,6 +106,8 @@ pub struct FunctionType {
     pub environment: Type,
 
     pub return_type: Type,
+
+    pub effects: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -163,6 +190,18 @@ impl Type {
 
     pub const NO_CLOSURE_ENV: Type = Type::Primitive(PrimitiveType::NoClosureEnv);
 
+    /// If this is an `App (UserDefined id) args`, return `App (UserDefined new_name) args`,
+    /// otherwise return `UserDefined new_name`
+    /// TODO: Remove
+    pub fn retarget_user_defined(&self, new_name: TopLevelName) -> Type {
+        match self {
+            Type::Application(_, args) => {
+                Type::Application(Shared::new(Type::UserDefined(Origin::TopLevelDefinition(new_name))), args.clone())
+            },
+            _ => Type::UserDefined(Origin::TopLevelDefinition(new_name)),
+        }
+    }
+
     pub fn integer(kind: crate::lexer::token::IntegerKind) -> Type {
         match kind {
             crate::lexer::token::IntegerKind::I8 => Type::I8,
@@ -232,6 +271,16 @@ impl Type {
         matches!(self, Type::Primitive(PrimitiveType::Int(_)))
     }
 
+    /// True if this type is `Type::Primitive(PrimitiveType::Error)`
+    pub(crate) fn is_error(&self) -> bool {
+        matches!(self, Type::Primitive(PrimitiveType::Error))
+    }
+
+    /// True if this is a place, a places row, or a projection of one
+    pub(crate) fn is_place_row(&self) -> bool {
+        matches!(self, Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..))
+    }
+
     /// Follow all of this type's type variable bindings so that we only return
     /// `Type::Variable` if the type variable is unbound. Note that this may still return
     /// a composite type such as `Type::Application` with bound type variables within.
@@ -269,6 +318,33 @@ impl Type {
         panic!("Infinite loop in follow_two!")
     }
 
+    /// True if any type variable in this type is still unbound. Row tails of effect and place
+    /// rows are ignored since open rows do not affect which implicits match a type.
+    pub fn has_unbound_type_variables(&self, bindings: &TypeBindings) -> bool {
+        match self.follow(bindings) {
+            Type::Variable(_) => true,
+            Type::Primitive(_)
+            | Type::Generic(_)
+            | Type::UserDefined(_)
+            | Type::U32(_)
+            | Type::Place(_)
+            | Type::Effects(_)
+            | Type::Places(_)
+            | Type::PlaceProjection(..) => false,
+            Type::Function(function) => {
+                function.parameters.iter().any(|param| param.typ.has_unbound_type_variables(bindings))
+                    || function.environment.has_unbound_type_variables(bindings)
+                    || function.return_type.has_unbound_type_variables(bindings)
+            },
+            Type::Application(constructor, args) => {
+                constructor.has_unbound_type_variables(bindings)
+                    || args.iter().any(|arg| arg.has_unbound_type_variables(bindings))
+            },
+            Type::Forall(_, typ) => typ.has_unbound_type_variables(bindings),
+            Type::Tuple(elements) => elements.iter().any(|element| element.has_unbound_type_variables(bindings)),
+        }
+    }
+
     /// Similar to [Self::follow] but will replace all bound type variables reachable within
     /// this type with their bindings if found. This is sometimes referred to as "zonking."
     pub fn follow_all(&self, bindings: &TypeBindings) -> Type {
@@ -281,10 +357,10 @@ impl Type {
 
     /// Returns `Some(new_type)` when a binding was substituted somewhere in this subtree, and `None`
     /// when the subtree is unchanged so the caller can reuse the original `Arc` instead of allocating.
-    fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
+    pub(super) fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
         match self {
-            Type::Primitive(_) | Type::Generic(Generic::Named(_)) | Type::UserDefined(_) | Type::U32(_) => None,
-            Type::Generic(Generic::Inferred(id)) | Type::Variable(id) => {
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => None,
+            Type::Variable(id) => {
                 let binding = bindings.get(id).or_else(|| more_bindings.get(id))?;
                 Some(binding.follow_all_two(bindings, more_bindings))
             },
@@ -298,14 +374,16 @@ impl Type {
 
                 let environment = function.environment.follow_all_opt(bindings, more_bindings);
                 let return_type = function.return_type.follow_all_opt(bindings, more_bindings);
-                if parameters.is_none() && environment.is_none() && return_type.is_none() {
+                let effects = function.effects.follow_all_opt(bindings, more_bindings);
+                if parameters.is_none() && environment.is_none() && return_type.is_none() && effects.is_none() {
                     return None;
                 }
 
-                Some(Type::Function(Arc::new(FunctionType {
+                Some(Type::Function(Shared::new(FunctionType {
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
+                    effects: effects.unwrap_or_else(|| function.effects.clone()),
                 })))
             },
             Type::Application(constructor, args) => {
@@ -314,24 +392,29 @@ impl Type {
                 if new_constructor.is_none() && new_args.is_none() {
                     return None;
                 }
-                let constructor = new_constructor.map(Arc::new).unwrap_or_else(|| constructor.clone());
-                let args = new_args.map(Arc::new).unwrap_or_else(|| args.clone());
+                let constructor = new_constructor.map(Shared::new).unwrap_or_else(|| constructor.clone());
+                let args = new_args.map(Shared::new).unwrap_or_else(|| args.clone());
                 Some(Type::Application(constructor, args))
             },
             Type::Forall(generics, typ) => {
-                for generic in generics.iter() {
-                    if let Generic::Inferred(id) = generic {
-                        assert!(!bindings.contains_key(id));
-                        assert!(!more_bindings.contains_key(id));
-                    }
-                }
-
                 let typ = typ.follow_all_opt(bindings, more_bindings)?;
-                Some(Type::Forall(generics.clone(), Arc::new(typ)))
+                Some(Type::Forall(generics.clone(), Shared::new(typ)))
             },
             Type::Tuple(elements) => {
                 let new_elements = Self::follow_all_each(elements, |t| t.follow_all_opt(bindings, more_bindings))?;
-                Some(Type::Tuple(Arc::new(new_elements)))
+                Some(Type::Tuple(Shared::new(new_elements)))
+            },
+            Type::Effects(effects) => {
+                let effects = Self::follow_all_each(effects.as_ref()?, |e| e.follow_all_opt(bindings, more_bindings))?;
+                Some(Type::effects(&effects, bindings, more_bindings))
+            },
+            Type::Places(places) => {
+                let places = Self::follow_all_each(places.as_ref()?, |p| p.follow_all_opt(bindings, more_bindings))?;
+                Some(Type::places(&places, bindings, more_bindings))
+            },
+            Type::PlaceProjection(base, segments) => {
+                let base = base.follow_all_opt(bindings, more_bindings)?;
+                Some(Type::project_place(&base, segments, bindings, more_bindings))
             },
         }
     }
@@ -368,7 +451,7 @@ impl Type {
         let self_is_var = matches!(self, Type::Variable(_));
 
         match self.follow(bindings_in_scope) {
-            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) => None,
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => None,
             Type::Generic(generic) => bindings_to_substitute.get(generic).cloned(),
             Type::Variable(id) => bindings_to_substitute.get(&Generic::Inferred(*id)).cloned(),
             Type::Function(function) => {
@@ -380,13 +463,20 @@ impl Type {
                 });
                 let environment = function.environment.substitute_opt(bindings_to_substitute, bindings_in_scope);
                 let return_type = function.return_type.substitute_opt(bindings_to_substitute, bindings_in_scope);
-                if parameters.is_none() && environment.is_none() && return_type.is_none() && !self_is_var {
+                let effects = function.effects.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                if parameters.is_none()
+                    && environment.is_none()
+                    && return_type.is_none()
+                    && effects.is_none()
+                    && !self_is_var
+                {
                     return None;
                 }
-                Some(Type::Function(Arc::new(FunctionType {
+                Some(Type::Function(Shared::new(FunctionType {
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
+                    effects: effects.unwrap_or_else(|| function.effects.clone()),
                 })))
             },
             Type::Application(constructor, args) => {
@@ -397,8 +487,8 @@ impl Type {
                 if new_constructor.is_none() && new_args.is_none() && !self_is_var {
                     return None;
                 }
-                let constructor = new_constructor.map(Arc::new).unwrap_or_else(|| constructor.clone());
-                let args = new_args.map(Arc::new).unwrap_or_else(|| args.clone());
+                let constructor = new_constructor.map(Shared::new).unwrap_or_else(|| constructor.clone());
+                let args = new_args.map(Shared::new).unwrap_or_else(|| args.clone());
                 Some(Type::Application(constructor, args))
             },
             Type::Forall(generics, typ) => {
@@ -423,7 +513,41 @@ impl Type {
                     return None;
                 }
                 let elements = new_elements.unwrap_or_else(|| elements.to_vec());
-                Some(Type::Tuple(Arc::new(elements)))
+                Some(Type::Tuple(Shared::new(elements)))
+            },
+            Type::Effects(effects) => {
+                let new_effects = effects.as_ref().and_then(|effects| {
+                    Self::follow_all_each(effects, |e| e.substitute_opt(bindings_to_substitute, bindings_in_scope))
+                });
+                if new_effects.is_none() && !self_is_var {
+                    return None;
+                }
+                let entries = match &new_effects {
+                    Some(new_effects) => new_effects.as_slice(),
+                    None => effects.as_ref().map_or(&[][..], |effects| effects.as_slice()),
+                };
+                Some(Type::effects(entries, bindings_in_scope, &Default::default()))
+            },
+            Type::Places(places) => {
+                let new_places = places.as_ref().and_then(|places| {
+                    Self::follow_all_each(places, |p| p.substitute_opt(bindings_to_substitute, bindings_in_scope))
+                });
+                if new_places.is_none() && !self_is_var {
+                    return None;
+                }
+                let entries = match &new_places {
+                    Some(new_places) => new_places.as_slice(),
+                    None => places.as_ref().map_or(&[][..], |places| places.as_slice()),
+                };
+                Some(Type::places(entries, bindings_in_scope, &Default::default()))
+            },
+            Type::PlaceProjection(base, segments) => {
+                let new_base = base.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                if new_base.is_none() && !self_is_var {
+                    return None;
+                }
+                let base = new_base.as_ref().unwrap_or(base.as_ref());
+                Some(Type::project_place(base, segments, bindings_in_scope, &Default::default()))
             },
         }
     }
@@ -462,7 +586,7 @@ impl Type {
     /// Otherwise, return the non-forall type as is.
     fn remove_forall(self) -> Type {
         match self {
-            Type::Forall(_, typ) => Arc::unwrap_or_clone(typ),
+            Type::Forall(_, typ) => Shared::unwrap_or_clone(typ),
             other => other,
         }
     }
@@ -475,9 +599,18 @@ impl Type {
     /// - A name [Origin] was used which does not point to a type
     pub(crate) fn from_cst_type(
         typ: &cst::Type, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32, local_kinds: &mut LocalKinds,
-        insert_implicit_type_vars: bool,
+        insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
-        Self::from_cst_type_with_kind(typ, Kind::Type, resolve, db, next_id, local_kinds, insert_implicit_type_vars)
+        Self::from_cst_type_with_kind(
+            typ,
+            Kind::Type,
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+        )
     }
 
     /// Converts an ast type to a generalized Type, with any free type variables
@@ -485,7 +618,7 @@ impl Type {
     /// will not be wrapped in a `forall`.
     pub(crate) fn from_cst_type_generalized(
         typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle,
-        insert_implicit_type_vars: bool,
+        insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
         let mut next_id = 0;
         let mut local_kinds = LocalKinds::default();
@@ -497,6 +630,7 @@ impl Type {
             &mut next_id,
             &mut local_kinds,
             insert_implicit_type_vars,
+            open_effects_by_default,
         );
 
         if next_id == 0 {
@@ -509,13 +643,22 @@ impl Type {
 
     /// Convert this [cst::Type] into a [Type] with the expected [Kind].
     /// Error if the converted [Kind] does not match the expected [Kind].
-    fn from_cst_type_with_kind(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_cst_type_with_kind(
         typ: &cst::Type, expected: Kind, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, &mut visited)
-            .convert_with_kind(typ, expected)
+        TypeConverter::new(
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            &mut visited,
+        )
+        .convert_with_kind(typ, expected)
     }
 
     /// Returns a tuple of:
@@ -523,13 +666,40 @@ impl Type {
     /// - The kind of the converted type
     ///
     /// Does not error if the returned type is not of kind [Kind::Type].
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_cst_type_helper(
         typ: &cst::Type, expected: Option<&Kind>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> (Type, Kind) {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, &mut visited)
-            .convert(typ, expected)
+        TypeConverter::new(
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            &mut visited,
+        )
+        .convert(typ, expected)
+    }
+
+    /// Convert an effects clause into an effect row [Type].
+    pub(crate) fn from_cst_effects_clause(
+        effects: Option<&[cst::Type]>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
+    ) -> Type {
+        let mut visited = Vec::new();
+        TypeConverter::new(
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            &mut visited,
+        )
+        .convert_effects_clause(effects)
     }
 }
 
@@ -540,26 +710,46 @@ struct TypeConverter<'a, 'b> {
     next_id: &'a mut u32,
     local_kinds: &'a mut LocalKinds,
     insert_implicit_type_vars: bool,
+
+    /// Whether an omitted `can` clause converts to an open effect row instead of a closed one.
+    open_effects_by_default: bool,
+
     /// The stack of type aliases currently being expanded, used to detect recursive aliases
     visited: &'a mut Vec<TopLevelName>,
+
+    /// The place to use for the return type, if it has an elided place
+    elided_return_place: Option<Type>,
 }
 
 impl<'a, 'b> TypeConverter<'a, 'b> {
     fn new(
         resolve: &'a ResolutionResult, db: &'a DbHandle<'b>, next_id: &'a mut u32, local_kinds: &'a mut LocalKinds,
-        insert_implicit_type_vars: bool, visited: &'a mut Vec<TopLevelName>,
+        insert_implicit_type_vars: bool, open_effects_by_default: bool, visited: &'a mut Vec<TopLevelName>,
     ) -> Self {
-        TypeConverter { resolve, db, next_id, local_kinds, insert_implicit_type_vars, visited }
+        TypeConverter {
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            visited,
+            elided_return_place: None,
+        }
     }
 
     /// Convert `typ` and error if its [Kind] does not unify with `expected`.
     fn convert_with_kind(&mut self, typ: &cst::Type, expected: Kind) -> Type {
-        let location = typ.location.clone();
-        let (typ, kind) = self.convert(typ, Some(&expected));
-        if !expected.unifies(&kind) {
-            self.db.accumulate(Diagnostic::ExpectedKind { actual: kind, expected, location });
+        let (converted, kind) = self.convert(typ, Some(&expected));
+        self.check_kind(kind, expected, &typ.location);
+        converted
+    }
+
+    /// Error if `actual` does not unify with `expected`
+    fn check_kind(&self, actual: Kind, expected: Kind, location: &Location) {
+        if !expected.unifies(&actual) {
+            self.db.accumulate(Diagnostic::ExpectedKind { actual, expected, location: location.clone() });
         }
-        typ
     }
 
     /// Convert a [cst::Type] into a [Type]. Returns the converted type and its kind.
@@ -588,29 +778,51 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             crate::parser::cst::TypeKind::Char => (Type::CHAR, Kind::Type),
             crate::parser::cst::TypeKind::Named(path) => {
                 let origin = self.resolve.path_origins.get(path).copied();
+                let location = &typ.location;
                 let (typ, kind) =
-                    Type::convert_origin_to_type(origin, self.db, &typ.location, self.local_kinds, Type::UserDefined);
+                    Type::convert_origin_to_type(origin, self.db, location, self.local_kinds, Type::UserDefined);
 
-                // Expand a type alias if necessary
-                if kind == Kind::Type
-                    && let Type::UserDefined(Origin::TopLevelDefinition(name)) = typ
-                    && let Some(expanded) = self.expand_alias(name, &[])
-                {
-                    (expanded, Kind::Type)
-                } else {
-                    (typ, kind)
+                if let Type::UserDefined(Origin::TopLevelDefinition(name)) = typ {
+                    // A bare type with all-default parameters gets them, unless it is an application head or constructor
+                    if expected.is_some()
+                        && kind.required_argument_count() != 0
+                        && self.required_parameter_count(name) == Some(0)
+                    {
+                        return self.convert_application(typ, kind, &[], location);
+                    }
+
+                    // Expand a type or effect alias if necessary
+                    if kind == Kind::Type
+                        && let Some(expanded) = self.expand_type_alias(name, &[])
+                    {
+                        return (expanded, Kind::Type);
+                    } else if kind == Kind::Effect
+                        && let Some(expanded) = self.expand_effect_alias(name, &[])
+                    {
+                        return (expanded, Kind::Effect);
+                    }
                 }
+                (typ, kind)
             },
-            crate::parser::cst::TypeKind::Variable(name) | crate::parser::cst::TypeKind::Lifetime(name) => {
-                let origin = self.resolve.name_origins.get(name).copied();
-                if let (Some(expected), Some(Origin::Local(name_id))) = (expected, origin) {
-                    self.local_kinds.entry(name_id).or_insert_with(|| expected.clone());
-                }
-                Type::convert_origin_to_type(origin, self.db, &typ.location, self.local_kinds, |origin| {
-                    Type::Generic(Generic::Named(origin))
-                })
+            crate::parser::cst::TypeKind::Variable(name) => self.convert_type_variable(*name, expected, &typ.location),
+            crate::parser::cst::TypeKind::Place(paths) => {
+                let none = TypeBindings::default();
+                let entries = mapvec(paths, |path| {
+                    let (root, kind) = self.convert_type_variable(path.root, Some(&Kind::Place), &typ.location);
+                    self.check_kind(kind, Kind::Place, &typ.location);
+                    Type::project_place(&root, &path.segments, &none, &none)
+                });
+                let place =
+                    if let [entry] = entries.as_slice() { entry.clone() } else { Type::places(&entries, &none, &none) };
+                (place, Kind::Place)
             },
             crate::parser::cst::TypeKind::Function(function) => {
+                // TODO: Places on higher-order functions should likely be inferred to have
+                // a `forall` over the function type rather than changing elided places as is done
+                // here and still placing all places in the same forall over the outer function.
+                let outer_shared_place = std::mem::take(&mut self.elided_return_place);
+                self.elided_return_place = self.find_elided_place(function);
+
                 let parameters = mapvec(&function.parameters, |param| {
                     let typ = self.convert_with_kind(&param.typ, Kind::Type);
                     ParameterType::new(typ, param.is_implicit)
@@ -619,51 +831,29 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     Some(environment) => self.convert_with_kind(environment, Kind::Type),
                     None => Type::NO_CLOSURE_ENV,
                 };
-                let return_type = self.convert_with_kind(&function.return_type, Kind::Type);
 
-                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type }));
+                let return_type = self.convert_with_kind(&function.return_type, Kind::Type);
+                self.elided_return_place = outer_shared_place;
+
+                let effects = self.convert_effects_clause(function.effects.as_deref());
+
+                let f = Type::Function(Shared::new(FunctionType { parameters, environment, return_type, effects }));
                 (f, Kind::Type)
             },
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
                 let (f, f_kind) = self.convert(f, None);
-
-                if !f_kind.accepts_n_arguments(args.len()) {
-                    let expected = f_kind.required_argument_count();
-                    let location = typ.location.clone();
-                    self.db.accumulate(Diagnostic::FunctionArgCountMismatch { actual: args.len(), expected, location });
-                    return (Type::ERROR, Kind::Type);
-                }
-
-                let converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
-                    let expected_kind = f_kind.get_nth_parameter_kind(i);
-                    self.convert_with_kind(arg, expected_kind)
-                });
-
-                assert!(!converted_args.is_empty());
-
-                // Expand a generic type alias if necessary
-                if let Type::UserDefined(Origin::TopLevelDefinition(name)) = &f
-                    && let Some(expanded) = self.expand_alias(*name, &converted_args)
-                {
-                    return (expanded, Kind::Type);
-                }
-
-                let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
-                (typ, Kind::Type)
+                self.convert_application(f, f_kind, args, &typ.location)
             },
-            crate::parser::cst::TypeKind::Reference(kind) => (
-                Type::Primitive(PrimitiveType::Reference(*kind)),
-                Kind::TypeConstructorComplex(vec![Kind::Lifetime, Kind::Type]),
-            ),
+            crate::parser::cst::TypeKind::Reference(kind) => {
+                (Type::Primitive(PrimitiveType::Reference(*kind)), Kind::from_args(vec![Kind::Place, Kind::Type]))
+            },
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
-            crate::parser::cst::TypeKind::Pointer => {
-                (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()))
-            },
+            crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements = mapvec(elements, |t| self.convert_with_kind(t, Kind::Type));
-                (Type::Tuple(Arc::new(elements)), Kind::Type)
+                (Type::Tuple(Shared::new(elements)), Kind::Type)
             },
             crate::parser::cst::TypeKind::Hole if self.insert_implicit_type_vars => {
                 let typ = Type::Variable(TypeVariableId(*self.next_id));
@@ -676,12 +866,20 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             },
             // TODO: There is a separate check in type definition bodies to reject these.
             // Rework it to be more similar to the HoleCantBeUsed above.
-            crate::parser::cst::TypeKind::ImplicitLifetime => {
-                let typ = Type::Variable(TypeVariableId(*self.next_id));
-                *self.next_id += 1;
-                (typ, Kind::Lifetime)
+            crate::parser::cst::TypeKind::ImplicitPlace => {
+                if let Some(place) = &self.elided_return_place {
+                    (place.clone(), Kind::Place)
+                } else {
+                    let typ = Type::Variable(TypeVariableId(*self.next_id));
+                    *self.next_id += 1;
+                    (typ, Kind::Place)
+                }
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
+            crate::parser::cst::TypeKind::Pure => (Type::pure(), Kind::Effect),
+            crate::parser::cst::TypeKind::EffectUnion(operands) => {
+                (self.convert_effect_row_entries(operands), Kind::Effect)
+            },
             crate::parser::cst::TypeKind::Forall(generics, body) => {
                 for param in generics {
                     let kind = param.kind.map(kind_from_annotation).unwrap_or(Kind::Type);
@@ -692,12 +890,142 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         }
     }
 
+    /// Convert a type variable or place name, recording its kind as `expected` if it has none yet
+    fn convert_type_variable(&mut self, name: NameId, expected: Option<&Kind>, location: &Location) -> (Type, Kind) {
+        let origin = self.resolve.name_origins.get(&name).copied();
+        if let (Some(expected), Some(Origin::Local(name_id))) = (expected, origin) {
+            self.local_kinds.entry(name_id).or_insert_with(|| expected.clone());
+        }
+        Type::convert_origin_to_type(origin, self.db, location, self.local_kinds, |origin| {
+            Type::Generic(Generic::Named(origin))
+        })
+    }
+
+    /// Apply the type constructor `f` to `args`, filling in the defaults of any omitted trailing arguments
+    fn convert_application(&mut self, f: Type, f_kind: Kind, args: &[cst::Type], location: &Location) -> (Type, Kind) {
+        let arity = f_kind.required_argument_count();
+        let name = match &f {
+            Type::UserDefined(Origin::TopLevelDefinition(name)) => Some(*name),
+            _ => None,
+        };
+
+        if !f_kind.accepts_n_arguments(args.len()) {
+            let required = name.and_then(|name| self.required_parameter_count(name)).unwrap_or(arity);
+            if !(required..arity).contains(&args.len()) {
+                let expected = if args.len() < required { required } else { arity };
+                let location = location.clone();
+                self.db.accumulate(Diagnostic::FunctionArgCountMismatch { actual: args.len(), expected, location });
+                return (Type::ERROR, Kind::Type);
+            }
+        }
+
+        let result_kind = f_kind.result_kind();
+
+        let mut converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
+            let expected_kind = f_kind.get_nth_parameter_kind(i);
+            self.convert_with_kind(arg, expected_kind)
+        });
+
+        if let Some(name) = name {
+            if converted_args.len() < arity {
+                self.push_default_arguments(name, &f_kind, &mut converted_args, location);
+            }
+
+            // Expand a generic type or effect alias if necessary
+            if let Some(expanded) = self.expand_type_alias(name, &converted_args) {
+                return (expanded, Kind::Type);
+            } else if let Some(expanded) = self.expand_effect_alias(name, &converted_args) {
+                return (expanded, Kind::Effect);
+            }
+        }
+
+        assert!(!converted_args.is_empty());
+        let typ = Type::Application(Shared::new(f), Shared::new(converted_args));
+        (typ, result_kind)
+    }
+
+    /// The minimum number of arguments `name` accepts. Returns `None` if it is not a type definition
+    fn required_parameter_count(&self, name: TopLevelName) -> Option<usize> {
+        let (item, _) = GetItem(name.top_level_item).get(self.db);
+        let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return None;
+        };
+        Some(definition.required_generic_count())
+    }
+
+    /// Push the defaults of `name`'s parameters after `args`
+    fn push_default_arguments(&mut self, name: TopLevelName, kind: &Kind, args: &mut Vec<Type>, location: &Location) {
+        let (item, ctx) = GetItem(name.top_level_item).get(self.db);
+        let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return;
+        };
+
+        for (i, param) in definition.generics.iter().enumerate().skip(args.len()) {
+            let default = param.default.as_ref().expect("omitted parameters should all have defaults");
+
+            let typ = if !self.insert_implicit_type_vars && default.contains_hole() {
+                let typ = ctx[definition.name].to_string();
+                let param = ctx[param.name].to_string();
+                self.db.accumulate(Diagnostic::DefaultHoleCantBeUsed { typ, param, location: location.clone() });
+                Type::ERROR
+            } else {
+                let implicit = self.insert_implicit_type_vars;
+                let kind = kind.get_nth_parameter_kind(i);
+                self.expand_alias(name, &ctx, definition, args, implicit, |c| c.convert_with_kind(default, kind))
+            };
+            args.push(typ);
+        }
+    }
+
+    /// If this function's return type has an elided place in its return,
+    /// return what it should be treated as, or error if it is ambiguous.
+    fn find_elided_place(&mut self, function: &cst::FunctionType) -> Option<Type> {
+        if !function.return_type.has_elided_place() {
+            return None;
+        }
+
+        match places::function_place_elision(self.resolve, function) {
+            places::PlaceElision::Elided => {
+                let place = Type::Variable(TypeVariableId(*self.next_id));
+                *self.next_id += 1;
+                Some(place)
+            },
+            places::PlaceElision::Free => None,
+            places::PlaceElision::Named(place) => Some(self.convert(place, Some(&Kind::Place)).0),
+            places::PlaceElision::Ambiguous => {
+                let location = function.return_type.location.clone();
+                self.db.accumulate(Diagnostic::AmbiguousElidedPlace { location });
+                None
+            },
+        }
+    }
+
+    /// Convert an effects clause into an effect row; `None` is open or closed per `self.open_effects_by_default`.
+    fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>) -> Type {
+        match effects {
+            None if self.open_effects_by_default => Type::Effects(Some(Shared::new(vec![self.next_type_variable()]))),
+            None => Type::pure(),
+            Some(list) => self.convert_effect_row_entries(list),
+        }
+    }
+
+    /// Convert a list of effect type entries into an effect row
+    fn convert_effect_row_entries(&mut self, list: &[cst::Type]) -> Type {
+        let effects = mapvec(list, |e| self.convert_with_kind(e, Kind::Effect));
+        Type::effects(&effects, &Default::default(), &Default::default())
+    }
+
+    fn next_type_variable(&mut self) -> Type {
+        let id = TypeVariableId(*self.next_id);
+        *self.next_id += 1;
+        Type::Variable(id)
+    }
+
     /// If `name` refers to a type alias, return its body type with `args` substituted
-    /// for the alias's generic parameters, with any aliases referenced within the body expanded
-    /// transparently as well. Returns `None` if `name` is not a type alias.
+    /// for the alias's generic parameters. Returns `None` if `name` is not a type alias.
     ///
     /// Emits [Diagnostic::RecursiveTypeAlias] if the type alias is infinitely recursive.
-    fn expand_alias(&mut self, name: TopLevelName, args: &[Type]) -> Option<Type> {
+    fn expand_type_alias(&mut self, name: TopLevelName, args: &[Type]) -> Option<Type> {
         let (item, ctx) = GetItem(name.top_level_item).get(self.db);
         let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
             return None;
@@ -705,19 +1033,54 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         let cst::TypeDefinitionBody::Alias(body) = &definition.body else {
             return None;
         };
+        Some(self.expand_alias(name, &ctx, definition, args, false, |converter| {
+            converter.convert(body, Some(&Kind::Type)).0
+        }))
+    }
 
+    /// If `name` refers to an effect alias, return its expansion with `args` substituted
+    /// for the alias's generic parameters. Returns `None` if `name` is not an effect alias.
+    ///
+    /// Emits [Diagnostic::RecursiveTypeAlias] if the effect alias is infinitely recursive.
+    fn expand_effect_alias(&mut self, name: TopLevelName, args: &[Type]) -> Option<Type> {
+        let (item, ctx) = GetItem(name.top_level_item).get(self.db);
+        let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return None;
+        };
+        let cst::TypeDefinitionBody::EffectAlias(effects) = &definition.body else {
+            return None;
+        };
+        Some(self.expand_alias(name, &ctx, definition, args, false, |converter| {
+            converter.convert_effects_clause(Some(effects))
+        }))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn expand_alias(
+        &mut self, name: TopLevelName, ctx: &DesugarContext, definition: &cst::TypeDefinition, args: &[Type],
+        insert_implicit_type_vars: bool, convert_body: impl FnOnce(&mut TypeConverter) -> Type,
+    ) -> Type {
         if self.visited.contains(&name) {
             let typ = ctx[definition.name].to_string();
             let location = ctx.name_location(definition.name).clone();
             self.db.accumulate(Diagnostic::RecursiveTypeAlias { typ, location });
-            return Some(Type::ERROR);
+            return Type::ERROR;
         }
         self.visited.push(name);
 
         let resolve = Resolve(name.top_level_item).get(self.db);
         let mut local_kinds = TypeChecker::local_kinds_from_generics(&definition.generics);
-        let (body_type, _) = TypeConverter::new(&resolve, self.db, self.next_id, &mut local_kinds, false, self.visited)
-            .convert(body, Some(&Kind::Type));
+        let mut converter = TypeConverter::new(
+            &resolve,
+            self.db,
+            self.next_id,
+            &mut local_kinds,
+            insert_implicit_type_vars,
+            false,
+            self.visited,
+        );
+
+        let body_type = convert_body(&mut converter);
 
         let result = if definition.generics.is_empty() {
             body_type
@@ -729,8 +1092,19 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         };
 
         self.visited.pop();
-        Some(result)
+        result
     }
+}
+
+/// Expand an effect alias to `IO` into a row like `Fs, Net`.
+/// Returns `None` if `name` is not an effect alias.
+pub(crate) fn expand_effect_alias(db: &DbHandle, name: TopLevelName, next_id: &mut u32) -> Option<Type> {
+    // TODO: This is a lot of setup just to call one function
+    let mut visited = Vec::new();
+    let resolve = Resolve(name.top_level_item).get(db);
+    let mut local_kinds = LocalKinds::default();
+    let mut converter = TypeConverter::new(&resolve, db, next_id, &mut local_kinds, false, false, &mut visited);
+    converter.expand_effect_alias(name, &[])
 }
 
 impl Type {
@@ -743,8 +1117,8 @@ impl Type {
                 Builtin::Unit => (Type::UNIT, Kind::Type),
                 Builtin::Char => (Type::CHAR, Kind::Type),
                 Builtin::Bool => (Type::BOOL, Kind::Type),
-                Builtin::Ptr => (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap())),
-                Builtin::Array => (Type::ARRAY, Kind::TypeConstructorComplex(vec![Kind::U32, Kind::Type])),
+                Builtin::Ptr => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
+                Builtin::Array => (Type::ARRAY, Kind::from_args(vec![Kind::U32, Kind::Type])),
                 Builtin::Never => (Type::NEVER, Kind::Type),
                 Builtin::Intrinsic => (Type::ERROR, Kind::Error),
             },
@@ -766,9 +1140,9 @@ impl Type {
                 let kind = local_kinds.get(&name).cloned().unwrap_or(Kind::Type);
                 (make_type(origin), kind)
             },
+            // Assume name resolution has already issued an error for these cases
+            Some(Origin::TraitMember(_) | Origin::EffectOperation { .. }) | None => (Type::ERROR, Kind::Error),
             Some(origin) => (make_type(origin), Kind::Type),
-            // Assume name resolution has already issued an error for this case
-            None => (Type::ERROR, Kind::Error),
         }
     }
 
@@ -781,15 +1155,202 @@ impl Type {
         } else {
             let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(*var))).collect();
             let typ = self.substitute(&substitutions, bindings);
-            Type::Forall(Arc::new(free_vars), Arc::new(typ))
+            Type::Forall(Shared::new(free_vars), Shared::new(typ))
+        }
+    }
+
+    /// Instantiates only `Generic::Inferred` generics with fresh type variables.
+    /// Also returns a forall-wrapped type with each new type variable.
+    pub(crate) fn open_inferred_generics(&self, next_id: &mut u32) -> (Type, Type) {
+        let (generics, body) = match self {
+            Type::Forall(generics, body) => (generics.as_slice(), body.as_ref()),
+            other => return (other.clone(), other.clone()),
+        };
+
+        let place_kinded = body.place_kinded_generics();
+        let mut new_generics = Vec::with_capacity(generics.len());
+        let mut seed_substitutions = GenericSubstitutions::default();
+        let mut declared_substitutions = GenericSubstitutions::default();
+        for generic in generics.iter() {
+            match generic {
+                Generic::Named(_) => new_generics.push(*generic),
+                Generic::Inferred(_) => {
+                    let id = TypeVariableId(*next_id);
+                    *next_id += 1;
+                    let new_generic = Generic::Inferred(id);
+                    new_generics.push(new_generic);
+                    let seed = if place_kinded.contains(generic) {
+                        Type::places(&[Type::Variable(id)], &TypeBindings::default(), &TypeBindings::default())
+                    } else {
+                        Type::Variable(id)
+                    };
+                    seed_substitutions.insert(*generic, seed);
+                    declared_substitutions.insert(*generic, Type::Generic(new_generic));
+                },
+            }
+        }
+
+        let seeded = if seed_substitutions.is_empty() {
+            body.clone()
+        } else {
+            body.substitute(&seed_substitutions, &TypeBindings::default())
+        };
+        let declared_body = if declared_substitutions.is_empty() {
+            body.clone()
+        } else {
+            body.substitute(&declared_substitutions, &TypeBindings::default())
+        };
+        (seeded, Type::Forall(Shared::new(new_generics), Shared::new(declared_body)))
+    }
+
+    /// Collect each [Type::Generic] with [Kind::Place].
+    /// FIXME: This is approximate until we track the kind of type variables
+    pub(crate) fn place_kinded_generics(&self) -> FxHashSet<Generic> {
+        let mut out = FxHashSet::default();
+        self.collect_place_kinded_generics(&mut out);
+        out
+    }
+
+    fn collect_place_kinded_generics(&self, out: &mut FxHashSet<Generic>) {
+        match self {
+            Type::Application(constructor, args) => {
+                if constructor.reference_constructor(&TypeBindings::default()).is_some() {
+                    let place = match args.first() {
+                        Some(Type::PlaceProjection(base, _)) => Some(base.as_ref()),
+                        other => other,
+                    };
+                    if let Some(Type::Generic(g)) = place {
+                        out.insert(*g);
+                    }
+                }
+                for arg in args.iter() {
+                    arg.collect_place_kinded_generics(out);
+                }
+            },
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    element.collect_place_kinded_generics(out);
+                }
+            },
+            Type::Function(f) => {
+                for parameter in &f.parameters {
+                    parameter.typ.collect_place_kinded_generics(out);
+                }
+                f.environment.collect_place_kinded_generics(out);
+                f.return_type.collect_place_kinded_generics(out);
+            },
+            Type::Forall(_, body) => body.collect_place_kinded_generics(out),
+            Type::Primitive(_)
+            | Type::Generic(_)
+            | Type::Variable(_)
+            | Type::UserDefined(_)
+            | Type::U32(_)
+            | Type::Effects(_)
+            | Type::Place(_)
+            | Type::Places(_)
+            | Type::PlaceProjection(..) => (),
+        }
+    }
+
+    /// Collect all unbound effects in every effect row within this type.
+    pub(crate) fn unbound_effect_entries(&self, bindings: &TypeBindings) -> Vec<TypeVariableId> {
+        fn go(typ: &Type, bindings: &TypeBindings, ends: &mut Vec<TypeVariableId>) {
+            let followed = typ.follow(bindings);
+            match followed {
+                Type::Effects(_) => {
+                    for effect in followed.effect_entries() {
+                        match effect.follow(bindings) {
+                            Type::Variable(id) => ends.push(*id),
+                            nested => go(nested, bindings, ends),
+                        }
+                    }
+                },
+                Type::Function(function) => {
+                    for parameter in &function.parameters {
+                        go(&parameter.typ, bindings, ends);
+                    }
+                    go(&function.return_type, bindings, ends);
+                    go(&function.effects, bindings, ends);
+                },
+                Type::Application(constructor, args) => {
+                    go(constructor, bindings, ends);
+                    for arg in args.iter() {
+                        go(arg, bindings, ends);
+                    }
+                },
+                Type::Tuple(elements) => {
+                    for element in elements.iter() {
+                        go(element, bindings, ends);
+                    }
+                },
+                Type::Forall(_, inner) => go(inner, bindings, ends),
+                _ => (),
+            }
+        }
+
+        let mut ends = Vec::new();
+        go(self, bindings, &mut ends);
+        ends
+    }
+
+    /// Walk every subterm of this type, although does not recur into [Type::Forall].
+    fn for_each_subterm(&self, bindings: &TypeBindings, f: &mut impl FnMut(&Type, &TypeBindings)) {
+        let typ = self.follow(bindings);
+        f(typ, bindings);
+        match typ {
+            Type::Primitive(_)
+            | Type::UserDefined(_)
+            | Type::Variable(_)
+            | Type::Generic(_)
+            | Type::U32(_)
+            | Type::Place(_) => (),
+            Type::Function(function) => {
+                for parameter in &function.parameters {
+                    parameter.typ.for_each_subterm(bindings, f);
+                }
+                function.environment.for_each_subterm(bindings, f);
+                function.return_type.for_each_subterm(bindings, f);
+                function.effects.for_each_subterm(bindings, f);
+            },
+            Type::Application(constructor, args) => {
+                constructor.for_each_subterm(bindings, f);
+                for arg in args.iter() {
+                    arg.for_each_subterm(bindings, f);
+                }
+            },
+            // Bound generics need different treatment per-caller (e.g. `free_vars` filters
+            // them back out after recursing), so `f` is responsible for recursing into `typ`.
+            Type::Forall(..) => (),
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    element.for_each_subterm(bindings, f);
+                }
+            },
+            Type::Effects(effects) => {
+                if let Some(effects) = effects.as_ref() {
+                    for effect in effects.iter() {
+                        effect.for_each_subterm(bindings, f);
+                    }
+                }
+            },
+            Type::Places(places) => {
+                if let Some(places) = places.as_ref() {
+                    for place in places.iter() {
+                        place.for_each_subterm(bindings, f);
+                    }
+                }
+            },
+            Type::PlaceProjection(base, _) => base.for_each_subterm(bindings, f),
         }
     }
 
     /// Return the list of unbound type variables or generics within this type
     pub fn free_vars(&self, bindings: &TypeBindings) -> Vec<Generic> {
-        fn free_vars_helper(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<Generic>) {
-            match typ.follow(bindings) {
-                Type::Primitive(_) | Type::UserDefined(_) => (),
+        let mut free_vars = Vec::new();
+
+        // `for_each_subterm` doesn't recur into Type::Forall, so do it manually here
+        fn go(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<Generic>) {
+            typ.for_each_subterm(bindings, &mut |typ, bindings| match typ {
                 Type::Variable(id) => {
                     // The number of free vars is expected to remain too small so we're
                     // not too worried about asymptotic behavior. It is more important we
@@ -804,39 +1365,15 @@ impl Type {
                         free_vars.push(*generic);
                     }
                 },
-                Type::Function(function) => {
-                    for parameter in &function.parameters {
-                        free_vars_helper(&parameter.typ, bindings, free_vars);
-                    }
-                    free_vars_helper(&function.environment, bindings, free_vars);
-                    free_vars_helper(&function.return_type, bindings, free_vars);
-                },
-                Type::Application(constructor, args) => {
-                    free_vars_helper(constructor, bindings, free_vars);
-                    for arg in args.iter() {
-                        free_vars_helper(arg, bindings, free_vars);
-                    }
-                },
-                Type::Forall(generics, typ) => {
-                    free_vars_helper(typ, bindings, free_vars);
-
-                    // Remove any free variable contained within `generics`.
-                    // This is technically incorrect in the case any of these variables appeared in
-                    // `free_vars` before the previous call to `free_vars_helper(_, typ, _)`, but
-                    // we expect scoping rules to prevent these cases.
+                Type::Forall(generics, inner) => {
+                    go(inner, bindings, free_vars);
                     free_vars.retain(|generic| !generics.contains(generic));
                 },
-                Type::Tuple(elements) => {
-                    for element in elements.iter() {
-                        free_vars_helper(element, bindings, free_vars);
-                    }
-                },
-                Type::U32(_) => (),
-            }
+                _ => (),
+            });
         }
 
-        let mut free_vars = Vec::new();
-        free_vars_helper(self, bindings, &mut free_vars);
+        go(self, bindings, &mut free_vars);
         free_vars
     }
 
@@ -844,6 +1381,24 @@ impl Type {
     /// Unlike [Self::free_vars], this excludes [Type::Generic]s within the type and it returns a set.
     pub fn free_unification_vars(&self, bindings: &TypeBindings) -> FxHashSet<TypeVariableId> {
         self.free_vars(bindings).into_iter().filter_map(Generic::as_inferred).collect::<FxHashSet<_>>()
+    }
+
+    /// Counts every occurrence of `target` within this type, unlike [Self::free_unification_vars] which dedups into a set.
+    pub fn count_unification_var_occurrences(&self, target: TypeVariableId, bindings: &TypeBindings) -> usize {
+        fn go(typ: &Type, target: TypeVariableId, bindings: &TypeBindings, count: &mut usize) {
+            typ.for_each_subterm(bindings, &mut |typ, bindings| match typ {
+                Type::Variable(id) => {
+                    if *id == target {
+                        *count += 1;
+                    }
+                },
+                Type::Forall(_, inner) => go(inner, target, bindings, count),
+                _ => (),
+            });
+        }
+        let mut count = 0;
+        go(self, target, bindings, &mut count);
+        count
     }
 
     /// If this is a function, return its return type. Otherwise return None.
@@ -855,7 +1410,7 @@ impl Type {
     }
 
     /// If this is a type application, return the constructor and arguments
-    pub fn as_application(&self) -> Option<(&Arc<Type>, &Arc<Vec<Type>>)> {
+    pub fn as_application(&self) -> Option<(&Shared<Type>, &Shared<Vec<Type>>)> {
         match self {
             Type::Application(constructor, args) => Some((constructor, args)),
             _ => None,
@@ -920,6 +1475,60 @@ impl Type {
         }
     }
 
+    /// Flatten every effect reachable from `effects` into `found`
+    pub(crate) fn flatten_effects_into(
+        effects: &[Type], found: &mut Vec<Type>, bindings: &TypeBindings, more_bindings: &TypeBindings,
+    ) {
+        flatten_row_into(RowKind::Effects, effects, found, bindings, more_bindings);
+    }
+
+    /// Flatten, follow, sort, and deduplicate `effects` by exact equality rather than unification
+    pub(crate) fn canonicalize_effects(
+        effects: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
+    ) -> Vec<Type> {
+        canonicalize_row(RowKind::Effects, effects, bindings, more_bindings)
+    }
+
+    /// Zonk each entry in place
+    pub(crate) fn follow_effects(effects: &mut [Type], bindings: &TypeBindings, more_bindings: &TypeBindings) {
+        follow_row(effects, bindings, more_bindings);
+    }
+
+    /// Sort and deduplicate the given effect set. Entries must already be zonked.
+    pub(crate) fn sort_and_dedup_effects(effects: &mut Vec<Type>) {
+        sort_and_dedup_row(RowKind::Effects, effects);
+    }
+
+    /// Construct a canonicalized effect row by following & deduplicating entries.
+    pub(crate) fn effects(list: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
+        construct_row(RowKind::Effects, list, bindings, more_bindings)
+    }
+
+    /// The effect constructor an effect-row entry refers to, ignoring its type arguments.
+    pub(crate) fn effect_head(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Origin> {
+        match self.follow_two(bindings, more_bindings) {
+            Type::UserDefined(origin) => Some(origin),
+            Type::Application(constructor, _) => match constructor.follow_two(bindings, more_bindings) {
+                Type::UserDefined(origin) => Some(origin),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// If this is [Type::Effects], return the inner effects. Otherwise return an empty slice.
+    pub(crate) fn effect_entries(&self) -> &[Type] {
+        match self {
+            Type::Effects(Some(effects)) => effects,
+            _ => &[],
+        }
+    }
+
+    /// An empty, closed effect row
+    pub fn pure() -> Type {
+        Type::Effects(None)
+    }
+
     /// If this is a `Array n t`, return its element type `t`.
     pub fn array_element(&self, bindings: &TypeBindings) -> Option<Type> {
         match self.follow(bindings) {
@@ -934,14 +1543,14 @@ impl Type {
 
 pub struct TypePrinter<'a, Db, Names> {
     typ: &'a Type,
-    bindings: &'a TypeBindings,
+    pub(super) bindings: &'a TypeBindings,
     /// Unbound variables in these sets render as their literal default (I32/F64) instead of `_`.
     integer_literal_vars: &'a FxHashSet<TypeVariableId>,
     float_literal_vars: &'a FxHashSet<TypeVariableId>,
     /// In error messages we omit the `[env]` block and instead write `=>` for functions
     /// with an environment. The typed AST dump keeps the env.
     hide_environments: bool,
-    names: &'a Names,
+    pub(super) names: &'a Names,
     db: &'a Db,
 }
 
@@ -967,7 +1576,7 @@ where
     Db: DbGet<GetItem>,
     Names: NameStore,
 {
-    fn fmt_type(&self, typ: &Type, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    pub(super) fn fmt_type(&self, typ: &Type, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match typ {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
             Type::UserDefined(origin) => self.fmt_type_origin(*origin, f),
@@ -1009,36 +1618,48 @@ where
                     }
                     write!(f, " -> ")?;
                 }
-                self.fmt_type(&function.return_type, false, f)
+                let returns_fn = matches!(function.return_type.follow(self.bindings), Type::Function(_));
+                self.fmt_type(&function.return_type, returns_fn, f)?;
+                self.fmt_effects_suffix(&function.effects, f)
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
-                // Hack: If the constructor formats to `,` then print it infix
                 let constructor = constructor.follow(self.bindings);
-                let is_pair = if let Type::UserDefined(Origin::TopLevelDefinition(name)) = constructor {
-                    let (item, context) = GetItem(name.top_level_item).get(self.db);
-                    if let cst::ItemName::Single(name) = item.kind.name() {
-                        context[name].as_str() == ","
-                    } else {
-                        unreachable!()
-                    }
-                } else {
-                    false
+                let item = match constructor {
+                    Type::UserDefined(Origin::TopLevelDefinition(name)) => {
+                        Some(GetItem(name.top_level_item).get(self.db))
+                    },
+                    _ => None,
                 };
+
+                // Hack: If the constructor formats to `,` then print it infix
+                let is_pair = item.as_ref().is_some_and(|(item, context)| match item.kind.name() {
+                    cst::ItemName::Single(name) => context[name].as_str() == ",",
+                    _ => unreachable!(),
+                });
 
                 if is_pair && args.len() == 2 {
                     self.fmt_type(&args[0], true, f)?;
                     write!(f, ", ")?;
                     self.fmt_type(&args[1], true, f)
                 } else {
-                    let skip_implicit_lifetime = args.len() == 2
-                        && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference(_)))
-                        && matches!(args[0].follow(self.bindings), Type::Variable(_));
+                    let is_reference = args.len() == 2
+                        && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference(_)));
+
+                    let generics = match item.as_ref().map(|(item, _)| &item.kind) {
+                        Some(cst::TopLevelItemKind::TypeDefinition(definition)) => definition.generics.as_slice(),
+                        _ => &[],
+                    };
 
                     self.fmt_type(constructor, true, f)?;
-                    let start = if skip_implicit_lifetime { 1 } else { 0 };
-                    for arg in args[start..].iter() {
-                        write!(f, " ")?;
-                        self.fmt_type(arg, true, f)?;
+                    for (i, arg) in args.iter().enumerate() {
+                        let place_param =
+                            generics.get(i).is_some_and(|param| param.kind == Some(KindAnnotation::Place));
+                        if (is_reference && i == 0) || place_param || arg.follow(self.bindings).is_place_row() {
+                            self.fmt_place_arg(arg, is_reference, f)?;
+                        } else {
+                            write!(f, " ")?;
+                            self.fmt_type(arg, true, f)?;
+                        }
                     }
                     Ok(())
                 }
@@ -1062,17 +1683,89 @@ where
                 Ok(())
             }),
             Type::U32(n) => write!(f, "{n}"),
+            Type::Effects(effects) => self.fmt_effects(effects, parenthesize, f),
+            Type::Place(atom) => write!(f, "{}", atom.display_name(self.names)),
+            Type::Places(_) => {
+                let entries = self.printed_places(typ).unwrap_or_default();
+                if entries.is_empty() { write!(f, "()") } else { self.fmt_place_entries(&entries, f) }
+            },
+            Type::PlaceProjection(base, segments) => {
+                self.fmt_type(base, false, f)?;
+                write!(f, "{}", cst::Segments(segments))
+            },
+        }
+    }
+
+    fn fmt_effects(
+        &self, effects: &Option<Shared<Vec<Type>>>, parenthesize: bool, f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
+        let effects = self.canonicalize(effects);
+        match effects.as_slice() {
+            [] => write!(f, "pure"),
+            [effect] => self.fmt_type(effect, parenthesize, f),
+            _ => try_parenthesize(parenthesize, f, |f| self.fmt_non_empty_effects(&effects, f)),
+        }
+    }
+
+    /// Canonicalize a row for printing, showing any number of open ends as one `_`
+    fn canonicalize(&self, effects: &Option<Shared<Vec<Type>>>) -> Vec<Type> {
+        let effects = effects.as_deref().map_or(&[][..], Vec::as_slice);
+        let mut effects = Type::canonicalize_effects(effects, self.bindings, &Default::default());
+        // Open ends are sorted last
+        if let Some(first_open) = effects.iter().position(is_open) {
+            effects.truncate(first_open + 1);
+        }
+        effects
+    }
+
+    /// Print each entry of an already-canonicalized, non-empty row
+    fn fmt_non_empty_effects(&self, effects: &[Type], f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for (i, effect) in effects.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            self.fmt_type(effect, false, f)?;
+        }
+        Ok(())
+    }
+
+    fn fmt_effects_suffix(&self, effects: &Type, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match effects.follow(self.bindings) {
+            Type::Variable(_) => Ok(()),
+            Type::Effects(effects) => {
+                let effects = self.canonicalize(effects);
+                if effects.is_empty() {
+                    write!(f, " is pure")
+                } else {
+                    write!(f, " can ")?;
+                    self.fmt_non_empty_effects(&effects, f)
+                }
+            },
+            other => {
+                write!(f, " can ")?;
+                self.fmt_type(other, true, f)
+            },
         }
     }
 
     fn fmt_type_origin(&self, origin: Origin, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match origin {
-            Origin::TopLevelDefinition(id) => {
+            Origin::TopLevelDefinition(id)
+            | Origin::TraitMember(crate::name_resolution::TraitMember { name: id, .. })
+            | Origin::EffectOperation { name: id, .. } => {
                 let (item, context) = GetItem(id.top_level_item).get(self.db);
-                if let cst::ItemName::Single(name) = item.kind.name() {
-                    write!(f, "{}", context[name])
-                } else {
-                    unreachable!()
+                match &item.kind {
+                    // A variant type
+                    cst::TopLevelItemKind::TypeDefinition(def) if id.local_name_id != def.name => {
+                        write!(f, "{}.{}", context[def.name], context[id.local_name_id])
+                    },
+                    _ => {
+                        if let cst::ItemName::Single(name) = item.kind.name() {
+                            write!(f, "{}", context[name])
+                        } else {
+                            unreachable!()
+                        }
+                    },
                 }
             },
             Origin::Local(name) => {

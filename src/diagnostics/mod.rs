@@ -7,10 +7,14 @@ use std::{
 };
 
 use colored::{Color, ColoredString, Colorize};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, ValidateExports},
+    incremental::{
+        self, CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, TypeCheckDependencyGraph,
+        ValidateExports,
+    },
     iterator_extensions::mapvec,
     lexer::{
         Lexer,
@@ -80,6 +84,11 @@ pub enum Diagnostic {
         name: Name,
         location: Location,
     },
+    MethodExportRequiresType {
+        name: Name,
+        type_name: Name,
+        location: Location,
+    },
     NameNotInScope {
         name: Name,
         location: Location,
@@ -96,6 +105,9 @@ pub enum Diagnostic {
     ExpectedKind {
         actual: Kind,
         expected: Kind,
+        location: Location,
+    },
+    MultipleEffectRowVariables {
         location: Location,
     },
     RecursiveType {
@@ -138,7 +150,7 @@ pub enum Diagnostic {
         expected: usize,
         location: Location,
     },
-    ConstructorFieldDuplicate {
+    DuplicateField {
         name: Name,
         first_location: Location,
         second_location: Location,
@@ -188,6 +200,9 @@ pub enum Diagnostic {
     /// A variable is bound by some but not all alternatives of an OR-pattern.
     OrPatternBindingMismatch {
         name: Name,
+        location: Location,
+    },
+    OrInIrrefutablePattern {
         location: Location,
     },
     Unimplemented {
@@ -257,18 +272,56 @@ pub enum Diagnostic {
         context: RepeatedContext,
         location: Location,
     },
+    ReferenceToMovedValue {
+        name: String,
+        location: Location,
+        moved_in: Location,
+    },
+    UseOfInvalidatedReference {
+        name: String,
+        location: Location,
+        invalidated_at: Location,
+    },
+    InvalidatedInRepeatedContext {
+        name: String,
+        context: RepeatedContext,
+        location: Location,
+        invalidated_at: Location,
+    },
+    PlacesMayAlias {
+        function: String,
+        first: String,
+        second: String,
+        place: Option<String>,
+        location: Location,
+    },
     AbilityTypeCantBeUsed {
         location: Location,
     },
     HoleCantBeUsed {
         location: Location,
     },
-    /// A reference type appeared in a type-constructor position (e.g. inside a
-    /// `type ... = ...` body) without an explicit `'name` lifetime.
-    MissingExplicitLifetime {
+    DefaultHoleCantBeUsed {
+        typ: String,
+        param: String,
+        location: Location,
+    },
+    RequiredTypeParameterAfterDefault {
+        location: Location,
+    },
+    MissingExplicitPlace {
+        location: Location,
+    },
+    AmbiguousElidedPlace {
         location: Location,
     },
     FreeVarsInTypeConstructor {
+        location: Location,
+    },
+    EffectOperationMustBeFunction {
+        location: Location,
+    },
+    EffectOperationWithEffectClause {
         location: Location,
     },
     HandlerMissingMethods {
@@ -290,10 +343,23 @@ pub enum Diagnostic {
         name: Option<Name>,
         location: Location,
     },
+    AssignThroughImmutableReference {
+        typ: String,
+        location: Location,
+    },
+    MutableReferenceToImmutable {
+        name: String,
+        location: Location,
+    },
     ConfusingOperatorAfterBody {
         body_kind: ConfusingBodyKind,
         operator_location: Location,
         body_location: Location,
+    },
+    EscapingReference {
+        name: Option<String>,
+        location: Location,
+        declared_at: Location,
     },
 }
 
@@ -346,6 +412,7 @@ pub enum RepeatedContext {
     HandlerBranch,
     ForLoop,
     WhileLoop,
+    Closure,
 }
 
 impl RepeatedContext {
@@ -354,6 +421,7 @@ impl RepeatedContext {
             RepeatedContext::HandlerBranch => "a handler branch",
             RepeatedContext::ForLoop => "a for loop",
             RepeatedContext::WhileLoop => "a while loop",
+            RepeatedContext::Closure => "a closure",
         }
     }
 }
@@ -444,6 +512,9 @@ impl Diagnostic {
             Diagnostic::ExportedItemNotFound { name, location: _ } => {
                 format!("`{name}` is not defined")
             },
+            Diagnostic::MethodExportRequiresType { name, type_name, location: _ } => {
+                format!("`{name}` must be exported as `{type_name}.{name}`")
+            },
             Diagnostic::NameNotInScope { name, location: _ } => {
                 format!("`{name}` not found in scope")
             },
@@ -481,8 +552,7 @@ impl Diagnostic {
             Diagnostic::NoSuchFieldForType { name, typ, location: _ } => {
                 format!("{} has no field named `{name}`", color_type(typ))
             },
-            Diagnostic::ConstructorFieldDuplicate { name, first_location: _, second_location: _ } => {
-                // TODO: Show both locations in same error
+            Diagnostic::DuplicateField { name, first_location: _, second_location: _ } => {
                 format!("Duplicate field `{name}`")
             },
             Diagnostic::ConstructorMissingFields { missing_fields, location: _ } => {
@@ -538,6 +608,9 @@ impl Diagnostic {
             },
             Diagnostic::OrPatternBindingMismatch { name, location: _ } => {
                 format!("Variable {} is not bound by every alternative of this OR-pattern", color_constant(name))
+            },
+            Diagnostic::OrInIrrefutablePattern { location: _ } => {
+                format!("`|` can only be used in {} or {} patterns, ", color_keyword("match"), color_keyword("is"))
             },
             Diagnostic::Unimplemented { item, location: _ } => {
                 format!("{item} are currently unimplemented")
@@ -607,9 +680,13 @@ impl Diagnostic {
                 "Type annotations are required on top-level implicits".to_string()
             },
             Diagnostic::ExpectedTypeKind { actual, location: _ } => {
-                let n = actual.required_argument_count();
-                let s = if n == 1 { "" } else { "s" };
-                format!("Expected a type here, this type constructor is missing {n} argument{s}")
+                if actual.result_kind() == Kind::Effect {
+                    "This is an effect and cannot be used as an ordinary type".to_string()
+                } else {
+                    let n = actual.required_argument_count();
+                    let s = if n == 1 { "" } else { "s" };
+                    format!("Expected a type here, this type constructor is missing {n} argument{s}")
+                }
             },
             Diagnostic::ExpectedKind { actual, expected, location } => {
                 if *expected == Kind::Type {
@@ -619,6 +696,9 @@ impl Diagnostic {
                     let actual = color_type(&actual.to_string());
                     format!("Expected a type constructor of kind {expected}, but found one of kind {actual}")
                 }
+            },
+            Diagnostic::MultipleEffectRowVariables { location: _ } => {
+                format!("A {} clause may only have one variable", color_keyword("can"))
             },
             Diagnostic::ReturnNotInFunction { location: _ } => "`return` can only be used in a function".to_string(),
             Diagnostic::BreakNotInLoop { location: _ } => "`break` can only be used inside a loop".to_string(),
@@ -640,15 +720,54 @@ impl Diagnostic {
                     context.description()
                 )
             },
+            Diagnostic::ReferenceToMovedValue { name, location: _, moved_in: _ } => {
+                format!("This reference may refer to {} which has already been moved", color_name(name))
+            },
+            Diagnostic::UseOfInvalidatedReference { name, location: _, invalidated_at: _ } => {
+                format!("{} may have been invalidated by an earlier mutation", color_name(name))
+            },
+            Diagnostic::PlacesMayAlias { function, first, second, place, location: _ } => {
+                let function = color_name(function);
+                let shared = match place {
+                    Some(place) => format!("{} was used for both", color_name(place)),
+                    None => "both may refer to the same place".to_string(),
+                };
+                format!("{first} cannot alias {second} in this use of {function}, but {shared}")
+            },
+            Diagnostic::InvalidatedInRepeatedContext { name, context, location: _, invalidated_at: _ } => {
+                format!(
+                    "{} may be invalidated by a later mutation in {}, which may run again",
+                    color_name(name),
+                    context.description()
+                )
+            },
             Diagnostic::AbilityTypeCantBeUsed { location: _ } => {
                 "Ability types can't be used in this position".to_string()
             },
             Diagnostic::HoleCantBeUsed { location: _ } => "A type hole can't be used in this position".to_string(),
-            Diagnostic::MissingExplicitLifetime { location: _ } => {
-                "A reference in this position requires an explicit `'a` lifetime".to_string()
+            Diagnostic::DefaultHoleCantBeUsed { typ, param, location: _ } => {
+                let suffix = if typ.ends_with("s") { "'" } else { "'s" };
+                format!(
+                    "{}{suffix} omitted parameter {} defaults to `_`, which can't be used in this position",
+                    color_type(typ),
+                    color_type(param)
+                )
             },
+            Diagnostic::RequiredTypeParameterAfterDefault { location: _ } => {
+                "Type parameters without a default must come before those with one".to_string()
+            },
+            Diagnostic::MissingExplicitPlace { location: _ } => {
+                "A reference in this position requires an explicit `'a` place".to_string()
+            },
+            Diagnostic::AmbiguousElidedPlace { location: _ } => "Place annotation required here".to_string(),
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
                 "Internal compiler error: there are free variables in this type constructor".to_string()
+            },
+            Diagnostic::EffectOperationMustBeFunction { location: _ } => {
+                "Effect operations must be function types".to_string()
+            },
+            Diagnostic::EffectOperationWithEffectClause { location: _ } => {
+                "Effect operations cannot declare their own effects".to_string()
             },
             Diagnostic::HandlerMissingMethods { effect_name, missing_methods, location: _ } => {
                 let s = if missing_methods.len() == 1 { "" } else { "s" };
@@ -672,11 +791,30 @@ impl Diagnostic {
                     format!("Cannot assign to lvalue, declare it as a mutable variable first with {var}")
                 }
             },
+            Diagnostic::AssignThroughImmutableReference { typ, location: _ } => {
+                let typ = color_type(typ);
+                let mutable = color_keyword("mut");
+                let unique = color_keyword("uniq");
+                format!("Cannot assign through a value of type {typ}, a {mutable} or {unique} reference is required")
+            },
+            Diagnostic::MutableReferenceToImmutable { name, location: _ } => {
+                let name = color_name(name);
+                let var = color_keyword("var");
+                let mutable = color_keyword("mut");
+                format!("Cannot take a {mutable} reference to {name}, declare it with {var} to make it mutable")
+            },
             Diagnostic::ConfusingOperatorAfterBody { body_kind, .. } => {
                 let kind = body_kind.description();
                 format!(
                     "This operator looks like it is in the {kind}, but it is actually part of the outer expression. Use parentheses to avoid confusion"
                 )
+            },
+            Diagnostic::EscapingReference { name, location: _, declared_at: _ } => {
+                if let Some(name) = name {
+                    format!("This reference to {} outlives its scope", color_name(name))
+                } else {
+                    "This reference to a temporary value outlives its scope".to_string()
+                }
             },
         }
     }
@@ -696,6 +834,7 @@ impl Diagnostic {
             | Diagnostic::UnknownImportItem { location, .. }
             | Diagnostic::ItemNotExported { location, .. }
             | Diagnostic::ExportedItemNotFound { location, .. }
+            | Diagnostic::MethodExportRequiresType { location, .. }
             | Diagnostic::NameNotInScope { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
@@ -710,7 +849,7 @@ impl Diagnostic {
             | Diagnostic::NoSuchFieldForType { location, .. }
             | Diagnostic::ConstructorMissingFields { location, .. }
             | Diagnostic::ConstructorNotAStruct { location, .. }
-            | Diagnostic::ConstructorFieldDuplicate { second_location: location, .. }
+            | Diagnostic::DuplicateField { second_location: location, .. }
             | Diagnostic::CannotMatchOnType { location, .. }
             | Diagnostic::UnreachableCase { location, .. }
             | Diagnostic::MissingCases { location, .. }
@@ -718,6 +857,7 @@ impl Diagnostic {
             | Diagnostic::InvalidRangeInPattern { location, .. }
             | Diagnostic::InvalidPattern { location }
             | Diagnostic::OrPatternBindingMismatch { location, .. }
+            | Diagnostic::OrInIrrefutablePattern { location }
             | Diagnostic::TypeMustBeKnownMemberAccess { location }
             | Diagnostic::ConstructorExpectedFoundType { location, .. }
             | Diagnostic::ImplicitNotAVariable { location }
@@ -727,6 +867,7 @@ impl Diagnostic {
             | Diagnostic::TopLevelImplicitTypeAnnotationRequired { location }
             | Diagnostic::ExpectedTypeKind { location, .. }
             | Diagnostic::ExpectedKind { location, .. }
+            | Diagnostic::MultipleEffectRowVariables { location }
             | Diagnostic::ReturnNotInFunction { location }
             | Diagnostic::BreakNotInLoop { location }
             | Diagnostic::ContinueNotInLoop { location }
@@ -736,15 +877,27 @@ impl Diagnostic {
             | Diagnostic::NotAType { location, .. }
             | Diagnostic::UseOfMovedValue { location, .. }
             | Diagnostic::MoveInRepeatedContext { location, .. }
+            | Diagnostic::ReferenceToMovedValue { location, .. }
+            | Diagnostic::UseOfInvalidatedReference { location, .. }
+            | Diagnostic::InvalidatedInRepeatedContext { location, .. }
+            | Diagnostic::PlacesMayAlias { location, .. }
             | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
-            | Diagnostic::MissingExplicitLifetime { location, .. }
+            | Diagnostic::DefaultHoleCantBeUsed { location, .. }
+            | Diagnostic::RequiredTypeParameterAfterDefault { location, .. }
+            | Diagnostic::MissingExplicitPlace { location, .. }
+            | Diagnostic::AmbiguousElidedPlace { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
+            | Diagnostic::EffectOperationMustBeFunction { location, .. }
+            | Diagnostic::EffectOperationWithEffectClause { location, .. }
             | Diagnostic::HandlerMissingMethods { location, .. }
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
             | Diagnostic::HandlerCrossEffect { location, .. }
             | Diagnostic::AssignToImmutable { location, .. }
-            | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. } => location,
+            | Diagnostic::AssignThroughImmutableReference { location, .. }
+            | Diagnostic::MutableReferenceToImmutable { location, .. }
+            | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. }
+            | Diagnostic::EscapingReference { location, .. } => location,
         }
     }
 
@@ -752,9 +905,15 @@ impl Diagnostic {
     fn note(&self) -> Option<(&Location, String)> {
         match self {
             Diagnostic::ParserExpected { location, hint: Some(hint), .. } => Some((location, hint.to_string())),
-            Diagnostic::UseOfMovedValue { name, location: _, moved_in } => {
+            Diagnostic::UseOfMovedValue { name, location: _, moved_in }
+            | Diagnostic::ReferenceToMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))
+            },
+            Diagnostic::UseOfInvalidatedReference { name, location: _, invalidated_at }
+            | Diagnostic::InvalidatedInRepeatedContext { name, location: _, invalidated_at, .. } => {
+                let message = format!("{} may be invalidated by this mutation", color_name(name));
+                Some((invalidated_at, message))
             },
             Diagnostic::NoImplicitFound { suggestions, .. } if !suggestions.is_empty() => {
                 let first = color_name(&suggestions[0].qualified_path);
@@ -788,6 +947,17 @@ impl Diagnostic {
             )),
             Diagnostic::UnusedName { name: _, location } => {
                 Some((location, "Prefix the name with `_` to silence this warning".to_string()))
+            },
+            Diagnostic::DuplicateField { first_location, .. } => {
+                Some((first_location, "Originally used here".to_string()))
+            },
+            Diagnostic::EscapingReference { name, declared_at, .. } => {
+                let message = if let Some(name) = name {
+                    format!("{} is only valid until the end of this scope", color_name(name))
+                } else {
+                    "this value is only valid until the end of this scope".to_string()
+                };
+                Some((declared_at, message))
             },
             _ => None,
         }
@@ -1191,19 +1361,26 @@ impl std::fmt::Display for DiagnosticDisplay<'_> {
 
 /// Check the entire program, collecting all diagnostics
 pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
-    let crates = GetCrateGraph.get(compiler);
+    incremental::enter_query();
+    incremental::println(format_args!("Checking the entire program"));
 
-    for crate_ in crates.values() {
-        for file in crate_.source_files.values() {
+    // Built first so rayon workers aren't all blocked on it while it runs its own par_iter
+    TypeCheckDependencyGraph.get(compiler);
+
+    let crates = GetCrateGraph.get(compiler);
+    crates.par_iter().for_each(|(_, crate_)| {
+        crate_.source_files.par_iter().for_each(|(_, file)| {
             let parse = Parse(*file).get(compiler);
 
-            for item in &parse.cst.top_level_items {
+            parse.cst.top_level_items.par_iter().for_each(|item| {
                 TypeCheck(item.id).get(compiler);
-            }
+            });
 
             ValidateExports(*file).get(compiler);
-        }
-    }
+        });
+    });
+
+    incremental::exit_query();
 }
 
 pub fn collect_all_diagnostics(compiler: &mut Db) -> BTreeSet<Diagnostic> {

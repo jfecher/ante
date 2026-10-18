@@ -1,0 +1,53 @@
+import Std.Vec.Vec, of, get, get_mut
+import Std.Stream.stream_array
+import Std.Fail.Fail
+
+use (_x: ref t): Unit = ()
+
+type S = a: Vec (Vec String), b: Vec (Vec String)
+
+first (s: ref 's S): ref 's! (Vec String) can Fail = s.a.get 0
+
+first_mut (s: mut 's S): mut 's! (Vec String) can Fail = s.a.get_mut 0
+
+// `inner` may be `x.a`'s first element, so replacing it may drop what `elem` points into
+replaced_through_summary (x: mut S): Unit can Mutate 'x, Fail, Panic =
+    // element: ref 'x.a!!
+    elem = (x.a.get 0).get 0
+    inner = first_mut x
+    inner := Vec.empty ()
+    use elem
+
+// The replaced element itself is still valid
+element_survives (x: mut S): Unit can Mutate 'x, Fail, Panic =
+    // element: ref 'x.a!
+    element = x.a.get 0
+    inner = first_mut x
+    inner := Vec.empty ()
+    use element
+
+summary_survives (x: mut S): Unit can Mutate 'x, Fail, Panic =
+    // element: ref 'x!
+    element = first x
+    inner = x.a.get_mut 0
+    inner := Vec.empty ()
+    use element
+
+sibling_field (x: mut S): Unit can Mutate 'x, Fail, Panic =
+    elem = (x.a.get 0).get 0
+    other = x.b.get_mut 0
+    other := Vec.empty ()
+    use elem
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/coerced_place_invalidation.an:19:9
+// 17 |     inner = first_mut x
+// 18 |     inner := Vec.empty ()	// note: elem may be invalidated by this mutation
+//    |     ---------------------
+// 19 |     use elem	// error: elem may have been invalidated by an earlier mutation
+//    |         ^^^^
+// 
+// Found 1 error and 0 warnings
+

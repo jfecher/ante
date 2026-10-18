@@ -10,6 +10,7 @@ use crate::{
         cst::{Expr, Name, Path, Pattern},
         ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId},
     },
+    shared_arc::Shared,
 };
 
 /// Extends a [TopLevelContext] with additional expressions, names, paths, and patterns
@@ -19,7 +20,7 @@ use crate::{
 /// Modeled after [crate::type_inference::fresh_expr::ExtendedTopLevelContext].
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DesugarContext {
-    original: Arc<TopLevelContext>,
+    original: Shared<TopLevelContext>,
 
     /// Stores both newly-added items (id >= original length) and overrides to existing
     /// items (id < original length). Reads check this map first before falling back to
@@ -36,7 +37,7 @@ pub struct DesugarContext {
 }
 
 impl DesugarContext {
-    pub fn new(original: Arc<TopLevelContext>) -> Self {
+    pub fn new(original: Shared<TopLevelContext>) -> Self {
         Self {
             original,
             more_exprs: Default::default(),
@@ -100,6 +101,10 @@ impl DesugarContext {
         self.more_exprs.insert(id, expr);
     }
 
+    pub fn set_pattern(&mut self, id: PatternId, pattern: Pattern) {
+        self.more_patterns.insert(id, pattern);
+    }
+
     pub fn expr_location(&self, id: ExprId) -> &Location {
         match self.more_expr_locations.get(&id) {
             Some(loc) => loc,
@@ -154,6 +159,14 @@ impl DesugarContext {
 
     pub fn pattern_locations(&self) -> impl Iterator<Item = (PatternId, &Location)> {
         self.original.pattern_locations.iter().chain(self.more_pattern_locations.iter().map(|(k, v)| (*k, v)))
+    }
+
+    /// A field's declared name if present in the source, or its field index if not
+    pub fn field_name_or_index(&self, name: Option<NameId>, index: usize) -> Name {
+        match name {
+            Some(name) => self[name].clone(),
+            None => Arc::new(index.to_string()),
+        }
     }
 }
 

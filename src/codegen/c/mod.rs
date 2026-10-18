@@ -35,6 +35,8 @@ use crate::{
 mod cfile;
 use cfile::CFile;
 
+use crate::timings::time_phase;
+
 use super::{
     OverflowingIntOp,
     constant::{self, ConstantValue},
@@ -44,29 +46,31 @@ use super::{
 /// a object file and a binary. On success, the object file is removed, but
 /// the .c file is kept.
 pub fn codegen_c_for_mir(
-    mir: &mir::Mir, binary_name: &str, opt_level: OptLevel, selected_main: Option<TopLevelName>,
-    link_options: &super::LinkOptions,
+    mir: &mir::Mir, ptr_size: u32, binary_name: &str, opt_level: OptLevel, selected_main: Option<TopLevelName>,
+    link_options: &super::LinkOptions, show_time: bool,
 ) {
     // Create the C file
-    let c_file = build_c_file(mir, selected_main);
+    let c_file = time_phase("C codegen", show_time, || build_c_file(mir, ptr_size, selected_main));
     let c_file_name = format!("{binary_name}.c");
     std::fs::write(&c_file_name, c_file).unwrap();
 
     // Create the .o file
     let o_file_name = format!("{binary_name}.o");
-    let mut child = Command::new("cc")
-        .arg(&c_file_name)
-        .arg(format!("-o{o_file_name}"))
-        .arg(opt_level.as_cc_opt_string())
-        .arg("-c")
-        .arg("-w")
-        .spawn()
-        .unwrap();
+    let status = time_phase("C compilation", show_time, || {
+        Command::new("cc")
+            .arg(&c_file_name)
+            .arg(format!("-o{o_file_name}"))
+            .arg(opt_level.as_cc_opt_string())
+            .arg("-fno-strict-aliasing")
+            .arg("-c")
+            .arg("-w")
+            .status()
+            .unwrap()
+    });
 
     // And link it into a binary
-    let status = child.wait().unwrap();
     if status.success() {
-        super::link_with_cc(&o_file_name, binary_name, link_options);
+        time_phase("Linking", show_time, || super::link_with_cc(&[o_file_name.clone()], binary_name, link_options));
         std::fs::remove_file(&c_file_name).unwrap();
     }
 }
@@ -82,6 +86,11 @@ struct Builder {
 
     /// Shared across all builders so the same tuple type resolves to the same C type.
     tuples: TupleCache,
+
+    /// Each external symbol's declared type
+    externs: Arc<DashMap<String, mir::Type>>,
+
+    ptr_size: u32,
 }
 
 /// A concurrent cache mapping each distinct tuple type to a stable id and its generated C
@@ -95,7 +104,7 @@ struct TupleCache {
 }
 
 /// Builds a C File for the given [mir::Mir] in-memory. Returns the file contents
-pub(crate) fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) -> String {
+pub(crate) fn build_c_file(mir: &mir::Mir, ptr_size: u32, selected_main: Option<TopLevelName>) -> String {
     // Split Mir definitions into N groups and compile in parallel.
     // Each worker `i` compiles definitions with id `Id % N = i`
     let n = rayon::current_num_threads() as u32;
@@ -103,10 +112,21 @@ pub(crate) fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) 
     // One cache shared by every worker so a tuple type from any of them is named consistently.
     let tuples = TupleCache::default();
 
-    let mut file = (0..n)
+    let externs = Arc::new(DashMap::new());
+
+    let file = (0..n)
         .into_par_iter()
-        .map(|i| c_file_with_definitions_subset(mir, n, i, tuples.clone()))
+        .map(|i| c_file_with_definitions_subset(mir, ptr_size, n, i, tuples.clone(), externs.clone()))
         .reduce(CFile::default, CFile::extend);
+
+    // Declared after the workers, which record each extern's first use. Must precede
+    // collecting tuple definitions since declaring a type may register new tuples.
+    let mut declarations = Builder { tuples: tuples.clone(), ..Default::default() };
+    let externs: std::collections::BTreeMap<_, _> = Arc::unwrap_or_clone(externs).into_iter().collect();
+    for (name, typ) in externs {
+        declarations.emit_extern_declaration(&name, &typ);
+    }
+    let mut file = file.extend(declarations.file);
 
     // Emit tuple structs in id order. Inner tuples are registered while generating the body of
     // the tuples that embed them, so they receive smaller ids and are defined first as C requires.
@@ -136,8 +156,19 @@ pub(crate) fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) 
         let accessors = "static int32_t ante_argc = 0;\nstatic void* ante_argv = 0;\n\
             int32_t ante_get_argc(Unit _0) { return ante_argc; }\n\
             void* ante_get_argv(Unit _0) { return ante_argv; }\n";
+        // Pass a zeroed value for each of `main`'s parameters
+        let mut arguments = Builder { tuples: tuples.clone(), ..Default::default() };
+        let parameters = mir.definitions.get(&id).map_or(&[][..], |main| &main.entry_block().parameter_types[..]);
+        let arguments = arguments.capture(|this| {
+            for (i, parameter) in parameters.iter().enumerate() {
+                if i != 0 {
+                    this.write(", ");
+                }
+                this.write_zeroed(parameter);
+            }
+        });
         let wrapper = format!(
-            "int main(int argc, char** argv) {{ ante_argc = argc; ante_argv = (void*)argv; {init_call} main_{}((Unit){{0}}); return 0; }}",
+            "int main(int argc, char** argv) {{ ante_argc = argc; ante_argv = (void*)argv; {init_call} main_{}({arguments}); return 0; }}",
             id.0
         );
         file.add_function_definition(accessors);
@@ -193,8 +224,10 @@ fn visit_initializer(
 
 /// Create a C file with only definitions of the mir with ids such that `id % n = i`.
 /// This is meant to distribute work over `n` workers evenly.
-fn c_file_with_definitions_subset(mir: &mir::Mir, n: u32, i: u32, tuples: TupleCache) -> CFile {
-    let mut builder = Builder { tuples, ..Default::default() };
+fn c_file_with_definitions_subset(
+    mir: &mir::Mir, ptr_size: u32, n: u32, i: u32, tuples: TupleCache, externs: Arc<DashMap<String, mir::Type>>,
+) -> CFile {
+    let mut builder = Builder { tuples, externs, ptr_size, ..Default::default() };
 
     mir.definitions
         .iter()
@@ -219,6 +252,12 @@ impl Builder {
     /// `current_item`. Used to build a self-contained fragment (a global, a typedef, an extern
     /// declaration) destined for a different output section without disturbing the function body
     /// currently being assembled in `current_item`.
+    fn write_zeroed(&mut self, typ: &mir::Type) {
+        self.write("(");
+        self.write_type(typ, "");
+        self.write("){0}");
+    }
+
     fn capture(&mut self, f: impl FnOnce(&mut Self)) -> String {
         let saved = std::mem::take(&mut self.current_item);
         f(self);
@@ -256,7 +295,7 @@ impl Builder {
     /// Build a global definition as a file-scope C variable `T name_id = <initializer>;`. The
     /// initializer is folded by the shared [constant] evaluator and rendered by [Self::write_constant].
     fn build_global(&mut self, definition: &mir::Definition, mir: &mir::Mir) {
-        let value = constant::evaluate_global(mir, definition);
+        let value = constant::evaluate_global(mir, definition, self.ptr_size);
 
         // Globals are emitted in arbitrary order (by worker, then id, with no dependency sort), so
         // forward-declare every global. This lets one global's initializer reference another (e.g.
@@ -316,8 +355,8 @@ impl Builder {
     }
 
     /// Render a folded [ConstantValue] as a C initializer expression into `current_item`.
-    /// `Shared` values are backed by uniquely-named file-scope statics (`aux_index` keeps the
-    /// names distinct within this global; the global's id keeps them distinct across globals).
+    /// `Shared` values are backed by file-scope statics named by their [constant::SharedCell], and
+    /// `aux_index` keeps the names of `Bytes` statics distinct within this global.
     fn write_constant(&mut self, value: &ConstantValue, global_id: DefinitionId, aux_index: &mut u32, mir: &mir::Mir) {
         match value {
             ConstantValue::Unit => self.write("{0}"),
@@ -338,36 +377,66 @@ impl Builder {
 
                 self.write(&name);
             },
-            ConstantValue::Extern { name, typ } => {
-                self.emit_extern_declaration(name, typ);
-                self.write(name);
-            },
-            ConstantValue::Shared { value, typ } => {
-                let name = format!("__shared_{}_{}", global_id.0, *aux_index);
-                *aux_index += 1;
+            ConstantValue::Extern { name, typ } => self.write_extern_value(name, typ),
+            ConstantValue::Shared { value, typ, cell } => {
+                let name = format!("__shared_{}_{}", cell.global.0, cell.index);
 
-                // Emit `static T name = <inner>;` into the globals section, then take its address.
-                // `write_constant` runs inside `capture`, so any nested statics it emits are routed
-                // to their own sections rather than into this fragment.
+                let owner = cell.global == global_id;
                 let backing = self.capture(|this| {
                     this.write("static ");
                     this.write_declarator(typ, &|this| this.write(&name));
-                    this.write(" = ");
-                    this.write_constant(value, global_id, aux_index, mir);
+                    if owner {
+                        this.write(" = ");
+                        this.write_constant(value, global_id, aux_index, mir);
+                    }
                     this.write(";");
                 });
-                self.file.add_global_definition(&backing);
+                if owner {
+                    self.file.add_global_definition(&backing);
+                } else {
+                    self.file.add_global_declaration(&backing);
+                }
 
                 self.write("&");
                 self.write(&name);
             },
-            ConstantValue::Transmute { typ } => {
-                // Zero-sized source: emit a zero-initializer of the destination type.
-                self.write("(");
+            ConstantValue::Zeroed { typ } => {
+                self.write_zeroed(typ);
+            },
+            ConstantValue::IntToPtr { bits, typ } => {
+                self.write("((");
                 self.write_type(typ, "");
-                self.write("){0}");
+                let _ = write!(self.current_item, ")(uintptr_t){bits}ULL)");
+            },
+            ConstantValue::PtrToInt { pointer, kind } => {
+                self.write("((");
+                self.write_type(&mir::Type::int(*kind), "");
+                self.write(")(uintptr_t)");
+                self.write_constant(pointer, global_id, aux_index, mir);
+                self.write(")");
+            },
+            // Punned through a union, so only valid in the startup initializer
+            ConstantValue::Reinterpret { value, from, to } => {
+                self.write("((union { ");
+                self.write_declarator(from, &|this| this.write("a"));
+                self.write("; ");
+                self.write_declarator(to, &|this| this.write("b"));
+                self.write("; }){ .a = ");
+                self.write_constant(value, global_id, aux_index, mir);
+                self.write(" }).b");
             },
         }
+    }
+
+    fn write_value_list(&mut self, values: &[mir::Value], mir: &mir::Mir) {
+        self.write("{");
+        for (i, value) in values.iter().enumerate() {
+            if i != 0 {
+                self.write(", ");
+            }
+            self.write_value(value, mir);
+        }
+        self.write("}");
     }
 
     fn write_brace_list(
@@ -571,6 +640,7 @@ impl Builder {
                 unreachable!("Function and Array types are handled by write_declarator")
             },
             mir::Type::Generic(_) => unreachable!("Generic found in C codegen"),
+            mir::Type::Evidence(_) => unreachable!("evidence is lowered before codegen"),
         };
         self.write(s);
     }
@@ -840,14 +910,8 @@ impl Builder {
                     }
                 } else {
                     self.write_result_binding(id, definition);
-                    self.write("{");
-                    for (i, value) in values.iter().enumerate() {
-                        if i != 0 {
-                            self.write(", ");
-                        }
-                        self.write_value(value, mir);
-                    }
-                    self.write("};");
+                    self.write_value_list(values, mir);
+                    self.write(";");
                 }
             },
             mir::Instruction::MakeArray(values) => {
@@ -869,14 +933,8 @@ impl Builder {
                     }
                 } else {
                     self.write_result_binding(id, definition);
-                    self.write("{");
-                    for (i, value) in values.iter().enumerate() {
-                        if i != 0 {
-                            self.write(", ");
-                        }
-                        self.write_value(value, mir);
-                    }
-                    self.write("};");
+                    self.write_value_list(values, mir);
+                    self.write(";");
                 }
             },
             mir::Instruction::StackAlloc(value) => {
@@ -902,6 +960,32 @@ impl Builder {
                 });
                 let _ = write!(self.current_item, "; void* {id} = &{id}_slot;");
             },
+            mir::Instruction::GlobalAddress(global) => {
+                let _ = write!(self.current_item, "void* {id} = (void*)&");
+                self.write_value(&mir::Value::Definition(*global), mir);
+                self.write(";");
+            },
+            mir::Instruction::StackAllocBytes(size) => {
+                let _ = write!(self.current_item, "void* {id} = __builtin_alloca_with_align(");
+                self.write_value(size, mir);
+                let _ = write!(self.current_item, ", {});", mir::MAX_ALIGNMENT * 8);
+            },
+            mir::Instruction::MemCopy { destination, source, size } => {
+                self.write("__builtin_memmove(");
+                self.write_value(destination, mir);
+                self.write(", ");
+                self.write_value(source, mir);
+                self.write(", ");
+                self.write_value(size, mir);
+                let _ = write!(self.current_item, "); Unit {id} = (Unit){{0}};");
+            },
+            mir::Instruction::PointerOffset { pointer, offset } => {
+                let _ = write!(self.current_item, "void* {id} = (char*)");
+                self.write_value(pointer, mir);
+                self.write(" + ");
+                self.write_value(offset, mir);
+                self.write(";");
+            },
             mir::Instruction::AllocShared(value) => {
                 let typ = mir.type_of_value(value, definition);
                 let _ = write!(self.current_item, "void* {id} = malloc(sizeof(");
@@ -914,9 +998,20 @@ impl Builder {
             },
             mir::Instruction::Store { pointer, value } => {
                 let typ = mir.type_of_value(value, definition);
+                // Arrays cannot be assigned in C
+                if matches!(typ, mir::Type::Array { .. }) {
+                    self.write("memcpy(");
+                    self.write_value(pointer, mir);
+                    self.write(", ");
+                    self.write_value(value, mir);
+                    self.write(", sizeof(");
+                    self.write_type(&typ, "");
+                    let _ = write!(self.current_item, ")); Unit {id} = (Unit){{0}};");
+                    return;
+                }
                 self.write("*(");
-                self.write_type(&typ, "");
-                self.write("*)");
+                self.write_declarator(&typ, &|this| this.write("*"));
+                self.write(")");
                 self.write_value(pointer, mir);
                 self.write(" = ");
                 self.write_value(value, mir);
@@ -957,9 +1052,8 @@ impl Builder {
             },
             mir::Instruction::Extern(name) => {
                 let typ = definition.instruction_result_type(id).clone();
-                self.emit_extern_declaration(name, &typ);
                 self.write_result_binding(id, definition);
-                self.write(name);
+                self.write_extern_value(name, &typ);
                 self.write(";");
             },
             mir::Instruction::AtomicLoad { pointer, ordering } => {
@@ -1011,12 +1105,7 @@ impl Builder {
                 self.write_value(pointer, mir);
                 let _ = write!(self.current_item, ", &{id}_exp, ");
                 self.write_value(desired, mir);
-                let _ = write!(
-                    self.current_item,
-                    ", 0, {}, {}); ",
-                    c_atomic_order(*success),
-                    c_atomic_order(*failure)
-                );
+                let _ = write!(self.current_item, ", 0, {}, {}); ", c_atomic_order(*success), c_atomic_order(*failure));
                 self.write_type(&typ, "");
                 let _ = write!(self.current_item, " {id} = {id}_exp;");
             },
@@ -1031,10 +1120,11 @@ impl Builder {
                     self.write_value(value, mir);
                     let _ = write!(self.current_item, ", sizeof({id}));");
                 } else {
+                    // `T (**)(args)`
                     self.write_result_binding(id, definition);
                     self.write("*(");
-                    self.write_type(result, "");
-                    self.write("*)");
+                    self.write_declarator(result, &|this| this.write("*"));
+                    self.write(")");
                     self.write_value(value, mir);
                     self.write(";");
                 }
@@ -1119,6 +1209,9 @@ impl Builder {
             mir::Instruction::Perform { .. } => unreachable!("Instruction::Perform remaining in C codegen"),
             mir::Instruction::Handle { .. } => unreachable!("Instruction::Handle remaining in C codegen"),
             mir::Instruction::Capability => unreachable!("Instruction::Capability remaining in C codegen"),
+            mir::Instruction::LookupEvidence { .. } | mir::Instruction::MakeEvidence { .. } => {
+                unreachable!("evidence instruction remaining in C codegen")
+            },
             mir::Instruction::PackClosure { .. } => unreachable!("Instruction::PackClosure remaining in C codegen"),
             mir::Instruction::Instantiate(..) => unreachable!("Instruction::Instantiate remaining in C codegen"),
             mir::Instruction::SizeOf(_) => todo!("SizeOf should be removed by monomorphization"),
@@ -1126,13 +1219,35 @@ impl Builder {
         }
     }
 
-    /// Forward-declare an external symbol referenced by an [mir::Instruction::Extern]. Function
-    /// types become prototypes; other types become `extern` variable declarations.
-    fn emit_extern_declaration(&mut self, name: &str, typ: &mir::Type) {
+    /// Write an external symbol's value through its address
+    fn write_extern_value(&mut self, name: &str, typ: &mir::Type) {
+        self.record_extern_use(name, typ);
+        if matches!(typ, mir::Type::Function(_)) {
+            self.write("((");
+            self.write_type(typ, "");
+            self.write(")&");
+            self.write(name);
+            self.write(")");
+        } else {
+            self.write("(*(");
+            self.write_type(typ, "");
+            self.write("*)&");
+            self.write(name);
+            self.write(")");
+        }
+    }
+
+    /// Record `name`'s declared type as the type of its first use
+    fn record_extern_use(&self, name: &str, typ: &mir::Type) {
         // These are already declared in [CFile::add_starter_items], redeclaring would conflict.
         if matches!(name, "malloc" | "memcpy" | "fmod") {
             return;
         }
+        self.externs.entry(name.to_string()).or_insert_with(|| typ.clone());
+    }
+
+    /// Forward-declare an external symbol as a function prototype or an `extern` variable
+    fn emit_extern_declaration(&mut self, name: &str, typ: &mir::Type) {
         let declaration = self.capture(|this| {
             match typ {
                 mir::Type::Function(function) => {

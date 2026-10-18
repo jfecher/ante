@@ -1,10 +1,11 @@
 use crate::{
     incremental::{self, DbHandle, GetItem, GetType, Resolve, TypeCheck},
     iterator_extensions::mapvec,
-    name_resolution::ResolutionResult,
+    name_resolution::{Origin, ResolutionResult},
     parser::{
         cst::{self, Definition, Expr, Pattern, TopLevelItemKind, TypeKind},
         desugar_context::DesugarContext,
+        ids::TopLevelName,
     },
     type_inference::types::{LocalKinds, Type, TypeBindings},
 };
@@ -20,7 +21,7 @@ use crate::{
 pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
     incremental::enter_query();
     let (item, item_context) = compiler.get(GetItem(context.0.top_level_item));
-    incremental::println(format!("Get type of {:?}", item.id));
+    incremental::println(format_args!("Get type of {:?}", item.id));
 
     let typ = match &item.kind {
         TopLevelItemKind::Definition(definition) => {
@@ -29,18 +30,75 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
                 .map(|t| t.generalize(&TypeBindings::default()))
                 .unwrap_or_else(|| {
                     let check = TypeCheck(context.0.top_level_item).get(compiler);
-                    let typ = check.get_generalized(context.0.local_name_id);
-                    typ.follow_all(&check.bindings)
+                    check.get_generalized(context.0.local_name_id)
                 })
         },
         _ => {
             let check = TypeCheck(context.0.top_level_item).get(compiler);
-            let typ = check.get_generalized(context.0.local_name_id);
-            typ.follow_all(&check.bindings)
+            check.get_generalized(context.0.local_name_id)
         },
     };
     incremental::exit_query();
     typ
+}
+
+/// True if the result type of a definition has a hole
+fn result_annotation_contains_hole(
+    definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
+) -> bool {
+    fn result_contains_hole(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
+        match &typ.kind {
+            TypeKind::Function(function) => contains_hole(&function.return_type, resolve, compiler),
+            TypeKind::Forall(_, typ) => result_contains_hole(typ, resolve, compiler),
+            _ => contains_hole(typ, resolve, compiler),
+        }
+    }
+    if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
+        return result_contains_hole(typ, resolve, compiler);
+    }
+    match &context[definition.rhs] {
+        Expr::Lambda(lambda) => match (&lambda.return_type, &context[lambda.body]) {
+            (Some(typ), _) | (None, Expr::Constructor(cst::Constructor { typ, .. })) => {
+                contains_hole(typ, resolve, compiler)
+            },
+            _ => false,
+        },
+        Expr::TypeAnnotation(annotation) => result_contains_hole(&annotation.rhs, resolve, compiler),
+        Expr::Constructor(constructor) => contains_hole(&constructor.typ, resolve, compiler),
+        _ => false,
+    }
+}
+
+/// True if `typ` has a hole, including one from an omitted type argument defaulting to `_`
+fn contains_hole(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
+    contains_hole_helper(typ, resolve, compiler, &mut Vec::new())
+}
+
+fn contains_hole_helper(
+    typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle, visited: &mut Vec<TopLevelName>,
+) -> bool {
+    typ.contains_hole_with(&mut |path, arg_count| {
+        let Some(Origin::TopLevelDefinition(name)) = resolve.path_origins.get(&path).copied() else {
+            return false;
+        };
+        let (item, _) = compiler.get(GetItem(name.top_level_item));
+        let TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return false;
+        };
+
+        // Omitted arguments are only filled in if they all have defaults
+        let omitted = definition.generics.get(arg_count..).unwrap_or_default();
+        if omitted.is_empty() || arg_count < definition.required_generic_count() || visited.contains(&name) {
+            return false;
+        }
+
+        visited.push(name);
+        let resolve = Resolve(name.top_level_item).get(compiler);
+        let mut defaults = omitted.iter().filter_map(|param| param.default.as_ref());
+        let result = defaults.any(|default| contains_hole_helper(default, &resolve, compiler, visited));
+        visited.pop();
+        result
+    })
 }
 
 /// Make a best-effort attempt to get the type of a definition.
@@ -55,8 +113,13 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
 pub fn try_get_generalized_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
 ) -> Option<Type> {
+    // A hole in the result, such as a returned `=>` function's environment, is only known from the body
+    if result_annotation_contains_hole(definition, context, resolve, compiler) {
+        return None;
+    }
+
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true));
+        return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true, false));
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
@@ -88,22 +151,23 @@ pub fn try_get_generalized_type(
         // Any lambda at global scope shouldn't be able to capture any local variables
         let environment = None;
 
-        let cst_function_type = cst::FunctionType { parameters, environment, return_type, has_resume: false };
+        let cst_function_type =
+            cst::FunctionType { parameters, environment, return_type, effects: lambda.effects.clone() };
 
         // We construct a function type to convert wholesale instead of converting as we go
         // to avoid repeating logic in [Type::from_cst_type], namely handling of effect types.
         let lambda_location = context.expr_location(definition.rhs).clone();
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
 
-        Some(Type::from_cst_type_generalized(&cst_fn_type, resolve, compiler, true))
+        Some(Type::from_cst_type_generalized(&cst_fn_type, resolve, compiler, true, false))
 
     // The body being a type annotation is common for `extern` declarations: `puts = extern "puts": fn ...`
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
-        Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true))
+        Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true, false))
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {
-        Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true))
+        Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true, false))
     } else {
         None
     }
@@ -112,7 +176,7 @@ pub fn try_get_generalized_type(
 fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
     match &typ.kind {
         TypeKind::Named(path) => match resolve.path_origins.get(path) {
-            Some(crate::name_resolution::Origin::TopLevelDefinition(name)) => {
+            Some(Origin::TopLevelDefinition(name)) => {
                 let (item, _) = compiler.get(GetItem(name.top_level_item));
                 match &item.kind {
                     TopLevelItemKind::TypeDefinition(definition) => definition.generics.is_empty(),
@@ -125,17 +189,29 @@ fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult
     }
 }
 
+/// If a definition is fully annotated with no type holes, this returns `(seeded, declared)`
+/// where `declared` is the declared type and `seeded` is `declared` but with all
+/// `Type::Generic(Generic::Inferred(id))` replaced with `Type::Variable(id)`.
+pub fn try_get_seeded_and_declared_type(
+    definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
+    next_id: &mut u32,
+) -> Option<(Type, Type)> {
+    let declared = try_get_generalized_type(definition, context, resolve, compiler)?;
+    let declared = declared.generalize(&TypeBindings::default());
+    let (seeded, declared) = declared.open_inferred_generics(next_id);
+    Some((seeded, declared))
+}
+
 /// Like `try_get_generalized_type` but allows the resulting type to contain fresh type variables
-/// for ability closure environments. The caller passes a `next_id` counter so that
-/// fresh IDs don't collide with other type variables.
-/// This function always succeeds. In the case there are no annotations, a fresh type variable is returned.
+/// for ability closure environments.
+/// In the case there are no annotations, a fresh type variable is returned.
 pub fn get_partial_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
     next_id: &mut u32,
 ) -> Type {
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
         let mut local_kinds = LocalKinds::default();
-        return Type::from_cst_type(typ, resolve, compiler, next_id, &mut local_kinds, true);
+        return Type::from_cst_type(typ, resolve, compiler, next_id, &mut local_kinds, true, true);
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
@@ -157,23 +233,24 @@ pub fn get_partial_type(
         });
 
         let environment = Some(Box::new(cst::Type::new(cst::TypeKind::Hole, lambda_location.clone())));
-        let cst_function_type = cst::FunctionType { parameters, environment, return_type, has_resume: false };
+        let cst_function_type =
+            cst::FunctionType { parameters, environment, return_type, effects: lambda.effects.clone() };
 
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, &mut local_kinds, true, true)
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true, true)
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&constructor.typ, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&constructor.typ, resolve, compiler, next_id, &mut local_kinds, true, true)
     } else {
         let lambda_location = context.expr_location(definition.rhs).clone();
         let hole = cst::Type::new(cst::TypeKind::Hole, lambda_location);
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&hole, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&hole, resolve, compiler, next_id, &mut local_kinds, true, true)
     }
 }

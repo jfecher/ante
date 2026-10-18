@@ -8,6 +8,7 @@ worker (m: Arc (Mutex U32)): Unit =
             v += 1
 
 main () =
+    print_to_stdout do
     m = Arc.of (Mutex.of 0)
     c1 = clone m
     c2 = clone m
@@ -18,5 +19,5 @@ main () =
     println (Mutex.with_lock (Arc.as_ref m) deref)
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 2000
+// expected stdout: 2000
+

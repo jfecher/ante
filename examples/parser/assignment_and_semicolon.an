@@ -1,0 +1,33 @@
+main () =
+    x := 3
+    x := 1; y := 2
+    a; x += 1; y -= 2
+    (x := 3)
+    x := f <| y
+    x := 1, 2
+    if c then x := 1; y := 2
+    if c then x := 1; y := 2 else x := 3; y := 4
+    match x; ()
+    | 3 -> x := 4; y := 5
+    | _ -> x := 0
+    a.[i] := v; b
+    f (do x := 2; y := 3)
+
+// args: -e ast --no-color
+// expected stdout:
+// main () =
+//     x := 3
+//     (x := 1) ; (y := 2)
+//     (a ; (x += 1)) ; (y -= 2)
+//     x := 3
+//     x := (f <| y)
+//     x := (1 , 2)
+//     if c then (x := 1) ; (y := 2)
+//     if c then (x := 1) ; (y := 2) else (x := 3) ; (y := 4)
+//     match x ; ()
+//     | 3 -> (x := 4) ; (y := 5)
+//     | _ -> x := 0
+//     (.[]:= (mut a) i v) ; b
+//     f (do 
+//     (x := 2) ; (y := 3))
+

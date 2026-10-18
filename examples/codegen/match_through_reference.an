@@ -1,0 +1,118 @@
+// Fields matched through a reference are pointers into the matched value
+type Shape =
+    | Circle F64
+    | Rect F64 F64
+    with name: String
+
+shared type Tree =
+    | Leaf I32
+    | Node Tree Tree
+
+set_some (b: mut Maybe String) =
+    if b is Some s then
+        s := "changed"
+
+bump_pair (p: mut (I32, I32)) =
+    match p
+    | (a, b) ->
+        a := a + 1
+        b := b * 2
+
+grow (s: mut Shape) =
+    match s
+    | Circle r n ->
+        r := r * 2.0
+        n := "big circle"
+    | Rect w h _ ->
+        w := w + 1.0
+        h := h + 1.0
+
+first_of (m: ref Maybe (I32, String)): I32 =
+    match m
+    | Some (x, _) -> x.*
+    | None -> 0
+
+is_zero (r: ref I32): Bool =
+    match r
+    | 0 -> true
+    | _ -> false
+
+whole_mut (m: mut Maybe I32) =
+    if m is Some ..c then
+        c.0 := 99
+
+leaf_or_left (t: ref Tree): I32 =
+    match t
+    | Leaf x -> x.*
+    | Node l _ ->
+        match l
+        | Leaf y -> y.* + 100
+        | Node _ _ -> -1
+
+param_pattern ((a, b): mut (I32, I32)) =
+    a := 10
+    b := 20
+
+main () =
+    print_to_stdout do
+    var m = Maybe.Some "orig"
+    set_some (mut m)
+    if m is Some s then println s
+
+    var p = (1, 2)
+    bump_pair (mut p)
+    println p.first
+    println p.second
+
+    var c = Shape.Circle 1.5 "small"
+    grow (mut c)
+    match c
+    | Circle r n ->
+        println r
+        println n
+    | Rect _ _ _ -> ()
+
+    var r = Shape.Rect 1.0 2.0 "rect"
+    grow (mut r)
+    match r
+    | Rect w h _ ->
+        println w
+        println h
+    | Circle _ _ -> ()
+
+    pair = Maybe.Some (7, "seven")
+    println (first_of (ref pair))
+    println (is_zero (ref 0))
+    println (is_zero (ref 3))
+
+    var w = Maybe.Some 1
+    whole_mut (mut w)
+    if w is Some x then println x
+
+    t = Tree.Node (Tree.Leaf 1) (Tree.Node (Tree.Leaf 2) (Tree.Leaf 3))
+    println (leaf_or_left (ref t))
+    println (leaf_or_left (ref (Tree.Leaf 5)))
+
+    var q = (0, 0)
+    param_pattern (mut q)
+    println q.first
+    println q.second
+
+// args: --delete-binary --no-color
+// expected stdout:
+// changed
+// 2
+// 4
+// 3.0
+// big circle
+// 2.0
+// 3.0
+// 7
+// true
+// false
+// 99
+// 101
+// 5
+// 10
+// 20
+

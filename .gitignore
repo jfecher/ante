@@ -1,4 +1,5 @@
 /target
+/stdlib/minicoro.o*
 ante-ls/target
 .vscode
 

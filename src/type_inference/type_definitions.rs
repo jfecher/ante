@@ -1,48 +1,66 @@
-use std::{borrow::Cow, sync::Arc};
-
 use rustc_hash::FxHashMap;
 
 use crate::{
     diagnostics::Diagnostic,
-    incremental::DbHandle,
     iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         cst,
         ids::{NameId, TopLevelId, TopLevelName},
     },
+    shared_arc::Shared,
     type_inference::{
         Locateable, TypeChecker,
         generics::Generic,
+        kinds::Kind,
         types::{self, GenericSubstitutions, ParameterType, Type},
     },
 };
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    /// A type definition always returns a unit value, but we must still create the
-    /// types of the type constructors
     pub(super) fn check_type_definition(&mut self, definition: &cst::TypeDefinition) {
         let id = self.current_item.unwrap();
+        self.check_generic_defaults(definition);
 
-        let constructors = match &definition.body {
-            cst::TypeDefinitionBody::Error => Cow::Owned(Vec::new()),
+        let constructors: Vec<(NameId, Vec<&cst::Type>)> = match &definition.body {
+            cst::TypeDefinitionBody::Error => Vec::new(),
             cst::TypeDefinitionBody::Alias(body) => {
                 // Convert the body even though the result is unused to issue kind or recursion errors
-                Self::reject_implicit_lifetimes(body, self.compiler);
+                Self::reject_implicit_places(body, self.compiler);
                 let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-                let _ = self.from_cst_type_with_local_kinds(body, false, &mut local_kinds);
+                let _ = self.from_cst_type_with_local_kinds(body, Kind::Type, false, false, &mut local_kinds);
+                return;
+            },
+            cst::TypeDefinitionBody::EffectAlias(effects) => {
+                // Convert each effect even though the result is unused to issue kind or recursion errors
+                let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
+                let _ = self.with_next_id(|next_id| {
+                    Type::from_cst_effects_clause(
+                        Some(effects),
+                        self.current_resolve(),
+                        self.compiler,
+                        next_id,
+                        &mut local_kinds,
+                        false,
+                        false,
+                    )
+                });
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {
-                // If this is from an ability, each field needs to be given its own type
-                // since they are publically visible, e.g. as `Eq.eq` or `Emit.emit`
-                if definition.is_ability {
+                // Ability fields are publicly visible (e.g. `Eq.eq`), so each needs its own type.
+                if definition.kind.is_ability() {
                     self.build_method_types(id, definition, fields);
                 }
-                let fields = mapvec(fields, |(_, field_type)| field_type.clone());
-                Cow::Owned(vec![(definition.name, fields)])
+                if definition.kind.is_effect() {
+                    return;
+                }
+                let fields = mapvec(fields, |(_, field_type)| field_type);
+                vec![(definition.name, fields)]
             },
-            cst::TypeDefinitionBody::Enum(variants) => Cow::Borrowed(variants),
+            cst::TypeDefinitionBody::Enum(variants, _) => {
+                mapvec(variants, |(name, fields)| (*name, mapvec(fields, |(_, field_type)| field_type)))
+            },
         };
 
         let type_name = TopLevelName::new(id, definition.name);
@@ -66,16 +84,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Checks for an unboxed recursive reference to `type_name` within the variant fields of `definition`.
+    /// Convert each parameter default to issue errors
+    fn check_generic_defaults(&mut self, definition: &cst::TypeDefinition) {
+        let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
+        for param in &definition.generics {
+            let Some(default) = &param.default else { continue };
+            Self::reject_implicit_places(default, self.compiler);
+
+            let kind = local_kinds[&param.name].clone();
+            let _ = self.from_cst_type_with_local_kinds(default, kind, true, false, &mut local_kinds);
+        }
+    }
+
     fn type_definition_is_recursive_and_unboxed(
         &self, definition: &cst::TypeDefinition, type_name: TopLevelName,
     ) -> bool {
         let resolve = self.current_resolve();
         let target = Origin::TopLevelDefinition(type_name);
         match &definition.body {
-            cst::TypeDefinitionBody::Enum(variants) => {
-                variants.iter().any(|(_, args)| args.iter().any(|t| Self::type_uses_target_unboxed(t, target, resolve)))
-            },
+            cst::TypeDefinitionBody::Enum(variants, _) => variants
+                .iter()
+                .any(|(_, args)| args.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))),
             cst::TypeDefinitionBody::Struct(fields) => {
                 fields.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))
             },
@@ -83,52 +112,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Walk a field type and emit a `MissingExplicitLifetime` diagnostic for
-    /// every `ImplicitLifetime` placeholder. Lifetimes on references must be written out
-    /// in type-definition bodies.
-    fn reject_implicit_lifetimes(typ: &cst::Type, db: &DbHandle) {
-        match &typ.kind {
-            cst::TypeKind::ImplicitLifetime => {
-                db.accumulate(Diagnostic::MissingExplicitLifetime { location: typ.location.clone() });
-            },
-            cst::TypeKind::Application(f, args) => {
-                Self::reject_implicit_lifetimes(f, db);
-                for arg in args {
-                    Self::reject_implicit_lifetimes(arg, db);
-                }
-            },
-            cst::TypeKind::Function(function) => {
-                for parameter in &function.parameters {
-                    Self::reject_implicit_lifetimes(&parameter.typ, db);
-                }
-                if let Some(env) = function.environment.as_ref() {
-                    Self::reject_implicit_lifetimes(env, db);
-                }
-                Self::reject_implicit_lifetimes(&function.return_type, db);
-            },
-            cst::TypeKind::Tuple(elements) => {
-                for element in elements {
-                    Self::reject_implicit_lifetimes(element, db);
-                }
-            },
-            cst::TypeKind::Forall(_, body) => Self::reject_implicit_lifetimes(body, db),
-            cst::TypeKind::Error
-            | cst::TypeKind::Named(_)
-            | cst::TypeKind::Variable(_)
-            | cst::TypeKind::Integer(_)
-            | cst::TypeKind::Float(_)
-            | cst::TypeKind::Char
-            | cst::TypeKind::Reference(_)
-            | cst::TypeKind::Pointer
-            | cst::TypeKind::NoClosureEnv
-            | cst::TypeKind::Hole
-            | cst::TypeKind::Unit
-            | cst::TypeKind::Lifetime(_)
-            | cst::TypeKind::IntegerConstant(_) => (),
-        }
-    }
-
-    /// True only if `typ` uses `target` unboxed.
     /// Used to check for recursively infinitely sized types.
     fn type_uses_target_unboxed(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
         match &typ.kind {
@@ -140,14 +123,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Self::type_uses_target_unboxed(f, target, resolve)
                     || args.iter().any(|a| Self::type_uses_target_unboxed(a, target, resolve))
             },
-            cst::TypeKind::Tuple(elements) => {
+            cst::TypeKind::Tuple(elements) | cst::TypeKind::EffectUnion(elements) => {
                 elements.iter().any(|e| Self::type_uses_target_unboxed(e, target, resolve))
             },
             cst::TypeKind::Forall(_, body) => Self::type_uses_target_unboxed(body, target, resolve),
-            // Function types are pointer-sized, so recursion through them does not require
-            // unbounded representation.
-            cst::TypeKind::Function(_)
-            | cst::TypeKind::Variable(_)
+            cst::TypeKind::Function(typ) => {
+                if let Some(env) = typ.environment.as_ref() {
+                    Self::type_uses_target_unboxed(env, target, resolve)
+                } else {
+                    false
+                }
+            },
+
+            cst::TypeKind::Variable(_)
             | cst::TypeKind::Reference(_)
             | cst::TypeKind::Pointer
             | cst::TypeKind::NoClosureEnv
@@ -157,8 +145,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Char
             | cst::TypeKind::Integer(_)
             | cst::TypeKind::Float(_)
-            | cst::TypeKind::Lifetime(_)
-            | cst::TypeKind::ImplicitLifetime
+            | cst::TypeKind::Place(_)
+            | cst::TypeKind::ImplicitPlace
+            | cst::TypeKind::Pure
             | cst::TypeKind::IntegerConstant(_) => false,
         }
     }
@@ -193,10 +182,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             if instantiate {
                 let fresh_vars = mapvec(&item.generics, |_| self.next_type_variable());
                 substitutions = Self::datatype_generic_substitutions(item, &fresh_vars);
-                data_type = Type::Application(Arc::new(data_type), Arc::new(fresh_vars));
+                data_type = Type::Application(Shared::new(data_type), Shared::new(fresh_vars));
             } else {
                 let generics = mapvec(&item.generics, |p| Type::Generic(Generic::Named(Origin::Local(p.name))));
-                data_type = Type::Application(Arc::new(data_type), Arc::new(generics));
+                data_type = Type::Application(Shared::new(data_type), Shared::new(generics));
             }
         }
 
@@ -215,38 +204,44 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// generics of the type since this is what [TopLevelId::type_body] later expects.
     fn build_constructor_type<'a>(
         &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, generics: &[Generic],
-        variant_args: &[cst::Type], local_kinds: &mut crate::type_inference::types::LocalKinds,
+        variant_args: &[&cst::Type], local_kinds: &mut crate::type_inference::types::LocalKinds,
     ) -> Type {
         let (mut result, substitutions) = self.type_definition_type(type_name, item, false);
         assert!(substitutions.is_empty());
 
         // TODO: Change lifetime desugaring to work on function types better.
         // `fn (ref t) (ref t) -> Bool` should likely be `forall 'a. fn (ref 'a t) (ref 'a t) -> Bool`
-        if !item.is_ability {
+        if !item.kind.is_ability() {
             for arg in variant_args {
-                Self::reject_implicit_lifetimes(arg, self.compiler);
+                Self::reject_implicit_places(arg, self.compiler);
             }
         }
 
+        // TODO: Review allowing abilities to desugar here; the new type variables need to be tracked.
+        let insert_implicit_type_vars = item.kind.is_ability();
+
+        // `false` here stops `can` clauses from being polymorphic by default.
         let parameters = mapvec(variant_args, |arg| {
-            let param = self.from_cst_type_with_local_kinds(arg, false, local_kinds);
+            let param =
+                self.from_cst_type_with_local_kinds(arg, Kind::Type, insert_implicit_type_vars, false, local_kinds);
             types::ParameterType::explicit(param)
         });
 
         if !variant_args.is_empty() {
-            result = Type::Function(Arc::new(types::FunctionType {
+            result = Type::Function(Shared::new(types::FunctionType {
                 parameters,
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: result,
+                effects: Type::pure(),
             }));
         }
 
         if !generics.is_empty() {
-            result = Type::Forall(Arc::new(generics.to_vec()), Arc::new(result));
+            result = Type::Forall(Shared::new(generics.to_vec()), Shared::new(result));
         }
 
         // The `false` flag above is normally enough to keep types closed, but ability
-        // method signatures may carry `ImplicitLifetime` placeholders that become fresh
+        // method signatures may carry `ImplicitPlace` placeholders that become fresh
         // type variables. Promote any such inferred free vars into the surrounding
         // `Forall` so the constructor stays a closed polytype.
         let free_vars = result.free_vars(&self.bindings);
@@ -271,9 +266,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         let mut combined = Vec::with_capacity(existing.len() + inferred.len());
                         combined.extend(existing.iter().copied());
                         combined.extend(inferred);
-                        Type::Forall(Arc::new(combined), body)
+                        Type::Forall(Shared::new(combined), body)
                     },
-                    other => Type::Forall(Arc::new(inferred), Arc::new(other)),
+                    other => Type::Forall(Shared::new(inferred), Shared::new(other)),
                 };
             }
         }
@@ -281,26 +276,46 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         result
     }
 
-    /// The name `Eq.eq` is publically visible. We want to give it the type:
+    /// For a trait, the name `Eq.eq` is publically visible. We want to give it the type:
     /// `Eq.eq: fn t t {Eq t} -> Bool`
     ///
     /// It should be generalized to `forall t. fn t t {Eq t} -> Bool` later.
     ///
     /// The function's closure environment is hard-coded to `Pointer` by the ability
     /// desugarer so every ability value has uniform size.
+    ///
+    /// For effects, each function in `E` gets a `can E` clause.
     fn build_method_types(&mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)]) {
         let type_name = TopLevelName::new(id, definition.name);
+        let is_effect = definition.kind.is_effect();
 
         for (method_name, method_type) in fields.iter() {
-            let (implicit_arg, substitutions) = self.type_definition_type(type_name, definition, false);
+            let (arg, substitutions) = self.type_definition_type(type_name, definition, false);
             assert!(substitutions.is_empty());
             // Each method is generalized independently, so it gets a fresh kind map seeded
             // from the trait/effect's own generic annotations.
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-            let mut method_type = self.from_cst_type_with_local_kinds(method_type, false, &mut local_kinds);
 
-            if matches!(method_type, Type::Function(_)) {
-                method_type = self.add_implicit_arg_to_function_type(method_type, implicit_arg);
+            let cst_method_type = method_type;
+            let mut method_type =
+                self.from_cst_type_with_local_kinds(cst_method_type, Kind::Type, true, false, &mut local_kinds);
+
+            if is_effect {
+                match &cst_method_type.kind {
+                    cst::TypeKind::Function(function) => {
+                        if function.effects.is_some() {
+                            let location = cst_method_type.location.clone();
+                            self.compiler.accumulate(Diagnostic::EffectOperationWithEffectClause { location });
+                        }
+                        method_type = self.set_effect_on_function_type(method_type, arg);
+                    },
+                    _ => {
+                        let location = cst_method_type.location.clone();
+                        self.compiler.accumulate(Diagnostic::EffectOperationMustBeFunction { location });
+                    },
+                }
+            } else if matches!(method_type, Type::Function(_)) {
+                method_type = self.add_implicit_arg_to_function_type(method_type, arg);
             }
             self.check_name(*method_name, &method_type);
         }
@@ -309,13 +324,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Given a function type, return a new function type with the given argument added to the end
     /// as an implicit argument.
     fn add_implicit_arg_to_function_type(&self, method_type: Type, implicit_arg: Type) -> Type {
+        Self::map_function_type(method_type, "add_implicit_arg_to_function_type", |function_type| {
+            function_type.parameters.push(ParameterType::implicit(implicit_arg));
+        })
+    }
+
+    /// Given an effect operation's function type, set its effect row to the closed singleton containing `effect_type`.
+    fn set_effect_on_function_type(&self, method_type: Type, effect_type: Type) -> Type {
+        Self::map_function_type(method_type, "set_effect_on_function_type", |function_type| {
+            function_type.effects = Type::Effects(Some(Shared::new(vec![effect_type])));
+        })
+    }
+
+    fn map_function_type(method_type: Type, caller: &str, f: impl FnOnce(&mut types::FunctionType)) -> Type {
         match method_type {
             Type::Function(function_type) => {
-                let mut function_type = Arc::unwrap_or_clone(function_type);
-                function_type.parameters.push(ParameterType::implicit(implicit_arg));
-                Type::Function(Arc::new(function_type))
+                let mut function_type = Shared::unwrap_or_clone(function_type);
+                f(&mut function_type);
+                Type::Function(Shared::new(function_type))
             },
-            other => unreachable!("add_implicit_arg_to_function_type expected function type, found {other:?}"),
+            other => unreachable!("{caller} expected function type, found {other:?}"),
         }
     }
 }

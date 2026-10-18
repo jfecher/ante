@@ -4,12 +4,12 @@
 
 ---
 
-Ante is a low-level functional language for exploring safe, shared mutability, algebraic
-effects, and other fun features. Here's a quick taste:
+Ante is a low-level functional language for exploring safe, shared mutability, effect
+handlers, and other fun features. Here's a quick taste:
 
 ```scala
-foo (x: mut Bar) (y: ref a) {Clone a} {Fail}: a =
-    // The `Fail` capability above lets us call `fail`
+foo (x: mut Bar) (y: ref a) {Clone a}: a can Fail =
+    // The `Fail` effect above lets us call `fail`
     if not valid x then fail ()
 
     // Safe, aliasable, borrowed mutable references
@@ -21,7 +21,7 @@ foo (x: mut Bar) (y: ref a) {Clone a} {Fail}: a =
 
 Ante is built upon a core of ownership and borrowing rules similar to rust but aims to
 be as readable as possible by encouraging high-level approaches that can be optimized with
-low-level details later on. Traits and effects are merged cleanly into one feature: abilities.
+low-level details later on.
 
 See the [website](https://antelang.org), [language tour](https://antelang.org/docs/language/),
 and [roadmap](https://antelang.org/docs/roadmap) for more information.

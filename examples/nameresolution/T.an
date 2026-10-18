@@ -17,6 +17,7 @@ t x = u x
 // // id = c1m690_3723
 // u_c1m690_3723_0 x_1 = t_? x_1
 
+
 // expected stderr:
 // examples/nameresolution/U.an:1:8
 // 1 | import T.t	// error: Could not find crate `T`

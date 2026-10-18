@@ -1,16 +1,15 @@
-use std::sync::Arc;
-
 use ante::incremental::{Db, GetItem, Parse, TypeCheck};
 use ante::name_resolution::namespace::SourceFileId;
 use ante::parser::desugar_context::DesugarContext;
 use ante::parser::ids::{IdStore, NameStore};
+use ante::shared_arc::Shared;
 
 use crate::util::{is_internal_only_type, SpanSearcher};
 
 /// Find the innermost node (path, name, or pattern) at `byte_offset` in
 /// `file_id` and return a hover string of the form `name : Type`.
 ///
-/// Position lookups are done against the **desugared** context from `GetItem`
+/// Position lookups are done against the desugared context from `GetItem`
 /// rather than the raw parse result, because type-checking runs on the
 /// desugared form and the node IDs must match.
 pub fn hover_at(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> Option<String> {
@@ -26,7 +25,7 @@ pub fn hover_at(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> Opt
     let parse = Parse(file_id).get(compiler);
 
     let mut searcher = SpanSearcher::new(byte_offset);
-    let mut best: Option<(Hit, TopLevelId, Arc<DesugarContext>)> = None;
+    let mut best: Option<(Hit, TopLevelId, Shared<DesugarContext>)> = None;
 
     for item in &parse.cst.top_level_items {
         // Use the desugared context so node IDs match what TypeCheck stored.
@@ -110,6 +109,6 @@ mod tests {
         let file_id = crate::diagnostics::file_id_for_path(&roots, &foo);
         // Byte 38 is the 'i' in `iota` on line 4.
         let result = hover_at(&db, file_id, 38);
-        assert_eq!(result.as_deref(), Some("iota : fn Usz -> fn (Emit Usz) [Usz] -> Unit"));
+        assert_eq!(result.as_deref(), Some("iota : fn Usz -> (fn Unit [Usz] -> Unit can Emit Usz) is pure"));
     }
 }

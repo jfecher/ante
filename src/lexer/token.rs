@@ -16,6 +16,8 @@ use std::{
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
+use crate::parser::cst::Name;
+
 /// This constant is meant to match the "name" of the index operator when used as an identifier in
 /// source code (the `Extract` ability's method). The surface index syntax is `a.[i]`, but the
 /// operator referenced as a value / defined in an ability is written `(.[])`.
@@ -234,7 +236,7 @@ pub enum Token {
 
     DocComment(String),
 
-    Identifier(String),
+    Identifier(Name),
     StringLiteral(String),
     IntegerLiteral(Integer, Option<IntegerKind>),
     FloatLiteral(F64, Option<FloatKind>),
@@ -246,13 +248,12 @@ pub enum Token {
     Quoted(Arc<Vec<Token>>),
 
     // Types
-    TypeName(String),
+    TypeName(Name),
     IntegerType(IntegerKind),
     FloatType(FloatKind),
     Mut,
 
     // Keywords
-    Ability,
     And,
     As,
     Block,
@@ -260,6 +261,7 @@ pub enum Token {
     Can,
     Continue,
     Do,
+    Effect,
     Else,
     Exists,
     Export,
@@ -269,7 +271,7 @@ pub enum Token {
     Forall,
     Freeze,
     Given,
-    Handler,
+    Handle,
     If,
     Imm,
     Impl,
@@ -289,6 +291,7 @@ pub enum Token {
     Return,
     Shared,
     Then,
+    Trait,
     Type,
     Uniq,
     Var,
@@ -374,6 +377,7 @@ impl Token {
                 | IndexBrackets
                 | IndexAssign
                 | Copy
+                | Semicolon
         )
     }
 }
@@ -504,7 +508,6 @@ impl Display for Token {
             Token::Mut => write!(f, "mut"),
 
             // Keywords
-            Token::Ability => write!(f, "ability"),
             Token::And => write!(f, "and"),
             Token::As => write!(f, "as"),
             Token::Block => write!(f, "block"),
@@ -512,6 +515,7 @@ impl Display for Token {
             Token::Can => write!(f, "can"),
             Token::Continue => write!(f, "continue"),
             Token::Do => write!(f, "do"),
+            Token::Effect => write!(f, "effect"),
             Token::Else => write!(f, "else"),
             Token::Exists => write!(f, "exists"),
             Token::Export => write!(f, "export"),
@@ -521,7 +525,7 @@ impl Display for Token {
             Token::Forall => write!(f, "forall"),
             Token::Freeze => write!(f, "freeze"),
             Token::Given => write!(f, "given"),
-            Token::Handler => write!(f, "handler"),
+            Token::Handle => write!(f, "handle"),
             Token::If => write!(f, "if"),
             Token::Imm => write!(f, "imm"),
             Token::Impl => write!(f, "impl"),
@@ -541,6 +545,7 @@ impl Display for Token {
             Token::Ref => write!(f, "ref"),
             Token::Shared => write!(f, "shared"),
             Token::Then => write!(f, "then"),
+            Token::Trait => write!(f, "trait"),
             Token::Type => write!(f, "type"),
             Token::Uniq => write!(f, "uniq"),
             Token::Var => write!(f, "var"),
@@ -632,7 +637,6 @@ pub fn lookup_keyword(word: &str) -> Option<Token> {
         "mut" => Some(Token::Mut),
         "true" => Some(Token::BooleanLiteral(true)),
         "false" => Some(Token::BooleanLiteral(false)),
-        "ability" => Some(Token::Ability),
         "and" => Some(Token::And),
         "as" => Some(Token::As),
         "block" => Some(Token::Block),
@@ -640,6 +644,7 @@ pub fn lookup_keyword(word: &str) -> Option<Token> {
         "can" => Some(Token::Can),
         "continue" => Some(Token::Continue),
         "do" => Some(Token::Do),
+        "effect" => Some(Token::Effect),
         "else" => Some(Token::Else),
         "exists" => Some(Token::Exists),
         "export" => Some(Token::Export),
@@ -649,7 +654,7 @@ pub fn lookup_keyword(word: &str) -> Option<Token> {
         "forall" => Some(Token::Forall),
         "freeze" => Some(Token::Freeze),
         "given" => Some(Token::Given),
-        "handler" => Some(Token::Handler),
+        "handle" => Some(Token::Handle),
         "if" => Some(Token::If),
         "imm" => Some(Token::Imm),
         "impl" => Some(Token::Impl),
@@ -669,6 +674,7 @@ pub fn lookup_keyword(word: &str) -> Option<Token> {
         "return" => Some(Token::Return),
         "shared" => Some(Token::Shared),
         "then" => Some(Token::Then),
+        "trait" => Some(Token::Trait),
         "type" => Some(Token::Type),
         "uniq" => Some(Token::Uniq),
         "var" => Some(Token::Var),

@@ -3,14 +3,14 @@ use std::{collections::BTreeMap, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{DbHandle, GetItem, Resolve, VisibleDefinitions, VisibleImplicits},
+    incremental::{self, DbHandle, GetItem, Resolve, VisibleDefinitions, VisibleImplicits},
     name_resolution::Origin,
     parser::{
         cst::{Name, TopLevelItemKind},
         ids::{TopLevelId, TopLevelName},
     },
     type_inference::{
-        get_type::{get_partial_type, try_get_generalized_type},
+        get_type::try_get_seeded_and_declared_type,
         types::{PrimitiveType, Type},
     },
 };
@@ -86,7 +86,8 @@ impl TypeKey {
             // TODO: Is this correct?
             Type::Forall(_, typ) => return TypeKey::from_type(typ),
             Type::Tuple(_) => TypeKey::Tuple,
-            Type::U32(_) => return None,
+            Type::U32(_) | Type::Place(_) | Type::Places(_) | Type::PlaceProjection(..) => return None,
+            Type::Effects(_) => TypeKey::Effects,
         })
     }
 }
@@ -94,6 +95,9 @@ impl TypeKey {
 /// Returns any global implicits visible to the given item in the context.
 /// This will always be a subset of all VisibleDefinitions to the same item.
 pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<Implicits> {
+    incremental::enter_query();
+    incremental::println(format_args!("Collecting visible implicits in {:?}", context.0));
+
     let definitions = VisibleDefinitions(context.0).get(db);
     let mut implicits = Implicits::default();
 
@@ -109,11 +113,16 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
         // A top-level implicit whose type cannot be derived from its annotation or RHS shape is
         // reported as a missing annotation error and must not contribute to global implicit resolution.
         // Otherwise, we get cascading errors for every implicit search
-        if try_get_generalized_type(definition, &item_context, &resolution, db).is_none() {
+        let Some((typ, _declared)) =
+            try_get_seeded_and_declared_type(definition, &item_context, &resolution, db, &mut 0)
+        else {
+            continue;
+        };
+
+        if typ.is_error() {
             continue;
         }
 
-        let typ = get_partial_type(definition, &item_context, &resolution, db, &mut 0);
         let mut inserted = false;
 
         if let Some((ability_id, arg_key)) = get_ability_id_and_first_argument(&typ, true) {
@@ -143,6 +152,7 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
         }
     }
 
+    incremental::exit_query();
     Arc::new(implicits)
 }
 

@@ -10,6 +10,7 @@ count_down n f =
 
 main () =
     // Making this mutable helps prevent inlining
+    print_to_stdout do
     var offset = 1
     count_down 3 fn x ->
         println (x + offset)

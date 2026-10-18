@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use inc_complete::DbGet;
 use namespace::{CRATE_ROOT_MODULE, Namespace, SourceFileId};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -12,9 +13,9 @@ pub mod namespace;
 
 use crate::{
     diagnostics::{Diagnostic, Location},
-    find_files::SRC_FOLDER,
     incremental::{
-        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
+        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, Submodules, VisibleDefinitions,
+        VisibleDefinitionsResult,
     },
     iterator_extensions::mapvec,
     name_resolution::{builtin::Builtin, namespace::CrateId},
@@ -26,6 +27,7 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
+    project::SRC_FOLDER,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -74,6 +76,10 @@ pub enum Origin {
     /// The `NameId` here is local to the given top-level definition, using it in another context
     /// is always a bug.
     TopLevelDefinition(TopLevelName),
+    /// A member of a trait, which reads that field of the trait's dictionary
+    TraitMember(TraitMember),
+    /// An operation of an effect, at `index` in its capability tuple
+    EffectOperation { name: TopLevelName, index: u32 },
     /// This name comes from a local binding (parameter, let-binding, match-binding, etc)
     Local(NameId),
     /// This name did not resolve, try to perform type based resolution on it during type inference
@@ -82,13 +88,24 @@ pub enum Origin {
     Builtin(Builtin),
 }
 
+/// A field in a trait dictionary
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
+pub struct TraitMember {
+    pub name: TopLevelName,
+    pub trait_name: NameId,
+    /// The field index in the trait's dictionary
+    pub index: u32,
+    pub generic_count: u32,
+    pub is_function: bool,
+}
+
 impl Origin {
     /// True if this Origin _may_ be a type. This does not have the proper context to check whether
     /// any internal IDs actually refer to types.
     pub fn may_be_a_type(self) -> bool {
         match self {
             Origin::TopLevelDefinition(..) | Origin::Local(_) => true,
-            Origin::TypeResolution => false,
+            Origin::TraitMember(_) | Origin::EffectOperation { .. } | Origin::TypeResolution => false,
             Origin::Builtin(builtin) => matches!(builtin, Builtin::Unit | Builtin::Char),
         }
     }
@@ -108,13 +125,27 @@ impl Origin {
                 }
                 let (item, item_context) = GetItem(id.top_level_item).get(db);
                 match &item.kind {
+                    // A variant type
+                    TopLevelItemKind::TypeDefinition(type_definition) if id.local_name_id != type_definition.name => {
+                        match type_definition.body.find_variant(id.local_name_id) {
+                            Some((_, (_, fields))) => {
+                                let names = fields
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, (name, _))| item_context.field_name_or_index(*name, i));
+                                FieldsResult::Fields(names.collect())
+                            },
+                            None => FieldsResult::NotAStruct,
+                        }
+                    },
                     TopLevelItemKind::TypeDefinition(type_definition) => match &type_definition.body {
                         TypeDefinitionBody::Error => FieldsResult::PriorError,
-                        TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
+                        TypeDefinitionBody::Enum(_, _) => FieldsResult::NotAStruct,
                         TypeDefinitionBody::Alias(body) => {
                             visited.push(id);
                             alias_body_fields(id.top_level_item, body, db, visited)
                         },
+                        TypeDefinitionBody::EffectAlias(_) => FieldsResult::NotAStruct,
                         TypeDefinitionBody::Struct(fields) => {
                             let names = fields.iter().map(|(name, _)| item_context[*name].clone());
                             FieldsResult::Fields(names.collect())
@@ -126,6 +157,24 @@ impl Origin {
             _ => FieldsResult::NotAStruct,
         }
     }
+}
+
+/// Whether `name` is a trait member, effect operation, or plain definition
+pub fn origin_of_top_level_definition(name: TopLevelName, item: &TopLevelItemKind) -> Origin {
+    if let TopLevelItemKind::TypeDefinition(definition) = item
+        && definition.kind.is_ability()
+        && let TypeDefinitionBody::Struct(fields) = &definition.body
+        && let Some(index) = fields.iter().position(|(field, _)| *field == name.local_name_id)
+    {
+        if definition.kind.is_effect() {
+            return Origin::EffectOperation { name, index: index as u32 };
+        }
+        let is_function = matches!(fields[index].1.kind, TypeKind::Function(_));
+        let generic_count = definition.generics.len() as u32;
+        let trait_name = definition.name;
+        return Origin::TraitMember(TraitMember { name, trait_name, index: index as u32, generic_count, is_function });
+    }
+    Origin::TopLevelDefinition(name)
 }
 
 /// Returns the fields of a struct type a type alias may refer to, if any
@@ -153,7 +202,7 @@ fn alias_body_head_origin(alias_item: TopLevelId, body: &Type, db: &DbHandle) ->
 pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> Arc<ResolutionResult> {
     incremental::enter_query();
     let (statement, statement_ctx) = GetItem(context.0).get(compiler);
-    incremental::println(format!("Resolving {:?}", statement.kind.name()));
+    incremental::println(format_args!("Resolving {:?}", statement.kind.name()));
 
     // Note that we discord errors here because they're errors for the entire file and we are
     // resolving just one statement in it. This does mean that `CompileFile` will later need to
@@ -171,8 +220,10 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> Arc<ResolutionRes
         TopLevelItemKind::Definition(definition) => resolver.resolve_expr(definition.rhs),
         TopLevelItemKind::TypeDefinition(type_definition) => resolver.resolve_type_definition(type_definition),
         TopLevelItemKind::Comptime(comptime_) => resolver.resolve_comptime(comptime_),
-        TopLevelItemKind::AbilityDefinition(_) => unreachable!("Desugared by GetItem"),
-        TopLevelItemKind::AbilityImpl(_) => unreachable!("Desugared by GetItem"),
+        TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
+            unreachable!("Desugared by GetItem")
+        },
+        TopLevelItemKind::TraitImpl(_) => unreachable!("Desugared by GetItem"),
     }
 
     incremental::exit_query();
@@ -254,65 +305,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     /// Retrieve each visible namespace in the given namespace, restricting the namespace
     /// to only items visible from `self.namespace()`
     fn get_child_namespace(&self, name: &String, namespace: Namespace) -> Option<Namespace> {
-        match namespace {
-            Namespace::Local => {
-                if let Some(submodule) = self.get_item_in_submodule(self.item.source_file, name) {
-                    return Some(submodule);
-                }
-
-                if let Some(&module_id) = self.names_in_global_scope.imported_modules.get(name) {
-                    return Some(Namespace::Module(module_id));
-                }
-
-                let type_id = self.names_in_global_scope.definitions.get(name)?;
-                let (item, _) = GetItem(type_id.top_level_item).get(self.compiler);
-                if matches!(&item.kind, TopLevelItemKind::TypeDefinition(_)) {
-                    Some(Namespace::Type(type_id.top_level_item))
-                } else {
-                    None
-                }
-            },
-            Namespace::Type(_) => None,
-            Namespace::Module(id) => {
-                if let Some(submodule) = self.get_item_in_submodule(id, name) {
-                    return Some(submodule);
-                }
-
-                let exported = ExportedTypes(id).get(self.compiler);
-                let id = exported.get(name)?;
-                Some(Namespace::Type(id.top_level_item))
-            },
-        }
-    }
-
-    fn get_item_in_submodule(&self, parent_module: SourceFileId, name: &str) -> Option<Namespace> {
-        if parent_module.local_module_id == CRATE_ROOT_MODULE {
-            let crates = GetCrateGraph.get(self.compiler);
-            let crate_ = crates.get(&parent_module.crate_id)?;
-            let module_file = std::path::PathBuf::from(name).with_extension("an");
-
-            // TODO: This should be a relative lookup, not an absolute one in the current crate
-            // TODO: calling `parent_module.get()` can panic if the parent module is not a valid
-            //       source file to begin with. We should ensure it is always valid.
-            if let Some(id) = crate_.source_files.get(&module_file).copied() {
-                return Some(Namespace::Module(id));
-            }
-
-            // A subdirectory of `src` is a nested module (e.g. `Crate.Dir.Module`).
-            let directory = std::path::PathBuf::from(name);
-            if let Some(id) = crate_.source_files.get(&directory).copied() {
-                return Some(Namespace::Module(id));
-            }
-
-            // Fall back to absolute path (crate_root/src/Vec.an)
-            let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
-            if let Some(id) = crate_.source_files.get(&absolute).copied() {
-                return Some(Namespace::Module(id));
-            }
-
-            None
-        } else {
-            parent_module.get(self.compiler).submodules.get(name).copied().map(Namespace::Module)
+        let current = match namespace {
+            Namespace::Local => None,
+            Namespace::Module(id) => Some(Qualifier::Module(id)),
+            Namespace::Type(_) => return None,
+        };
+        match resolve_qualifier_child(self.compiler, self.item.source_file, name, current)? {
+            Qualifier::Module(id) => Some(Namespace::Module(id)),
+            Qualifier::Type(type_name) => Some(Namespace::Type(type_name.top_level_item)),
         }
     }
 
@@ -353,7 +353,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         &mut self, mut path: Iter, mut namespace: Namespace, allow_type_based_resolution: bool,
     ) -> Result<Origin, Diagnostic>
     where
-        Iter: ExactSizeIterator<Item = &'a (String, Location)>,
+        Iter: ExactSizeIterator<Item = &'a (Name, Location)>,
     {
         while path.len() > 1 {
             let (item_name, item_location) = path.next().unwrap();
@@ -361,7 +361,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             if let Some(next_namespace) = self.get_child_namespace(item_name, namespace) {
                 namespace = next_namespace;
             } else {
-                let name = item_name.clone();
+                let name = item_name.to_string();
                 let location = item_location.clone();
                 return Err(Diagnostic::NamespaceNotFound { name, location });
             }
@@ -390,12 +390,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         // Ad-hoc check to define `intrinsic` only within the stdlib for compiler intrinsics
         } else if namespace == Namespace::Local
             && self.item.source_file.crate_id == CrateId::STDLIB
-            && name == "intrinsic"
+            && name.as_str() == "intrinsic"
         {
             Ok(Origin::Builtin(Builtin::Intrinsic))
         } else {
             let location = location.clone();
-            let name = Arc::new(name.clone());
+            let name = name.clone();
             Err(Diagnostic::NameNotInScope { name, location })
         }
     }
@@ -404,13 +404,16 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         Builtin::from_name(name).map(Origin::Builtin)
     }
 
+    /// Find a local `name` without marking it used
+    fn find_local(&self, name: &String) -> Option<NameId> {
+        self.names_in_local_scope.iter().rev().find_map(|scope| scope.get(name)).copied()
+    }
+
     /// Lookup a single name (not a full path) in local scope
     fn lookup_local_name(&mut self, name: &String) -> Option<Origin> {
-        for scope in self.names_in_local_scope.iter().rev() {
-            if let Some(expr) = scope.get(name) {
-                self.used_locals.insert(*expr);
-                return Some(Origin::Local(*expr));
-            }
+        if let Some(local) = self.find_local(name) {
+            self.used_locals.insert(local);
+            return Some(Origin::Local(local));
         }
 
         if let Some(id) = self.names_in_global_scope.definitions.get(name) {
@@ -456,14 +459,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 {
                     origin = followed;
                 }
+                if let Origin::TopLevelDefinition(name) = origin {
+                    let (item, _) = GetItem(name.top_level_item).get(self.compiler);
+                    origin = origin_of_top_level_definition(name, &item.kind);
+                }
                 if !self.is_valid_for_position(origin, is_type) {
                     let last = self.context[path].components.last().unwrap();
                     let location = self.context.path_location(path).clone();
                     if is_type {
-                        let name = Arc::new(last.0.clone());
+                        let name = last.0.clone();
                         self.emit_diagnostic(Diagnostic::TypeExpected { name, location });
                     } else {
-                        let typ = Arc::new(last.0.clone());
+                        let typ = last.0.clone();
                         self.emit_diagnostic(Diagnostic::ValueExpected { location, typ });
                     }
                 }
@@ -497,7 +504,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             if let Some(method) = methods.get(item_name_string) {
                 self.top_level_names.push(item_name);
                 self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
-                self.name_links.insert(item_name, Origin::TopLevelDefinition(*method));
+                let (item, _) = GetItem(method.top_level_item).get(self.compiler);
+                self.name_links.insert(item_name, origin_of_top_level_definition(*method, &item.kind));
             }
         } else {
             println!(
@@ -518,11 +526,22 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.link_existing_pattern(*arg);
                 }
             },
+            Pattern::ConstructorRest(constructor, args, name) => {
+                self.link(*constructor, false, false);
+                for arg in args {
+                    self.link_existing_pattern(*arg);
+                }
+                if let Some(name) = name {
+                    self.link_existing_global(*name);
+                }
+            },
             Pattern::TypeAnnotation(pattern, typ) => {
                 self.link_existing_pattern(*pattern);
                 self.resolve_type(typ, true);
             },
             Pattern::MethodName { type_name, item_name } => self.link_existing_union_variant(*type_name, *item_name),
+            // This is only called on top-level patterns where Or would be invalid anyway but it
+            // should be fine to link either way
             Pattern::Or(alts) => {
                 for alt in alts {
                     self.link_existing_pattern(*alt);
@@ -571,8 +590,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         match &target_def.body {
             TypeDefinitionBody::Struct(_) => Some(Origin::TopLevelDefinition(target)),
             TypeDefinitionBody::Alias(_) => self.follow_alias_to_constructor(target, visited),
-            // The name of an enum/union is only a type, not a constructor.
-            TypeDefinitionBody::Enum(_) | TypeDefinitionBody::Error => None,
+            TypeDefinitionBody::Enum(_, _) | TypeDefinitionBody::EffectAlias(_) | TypeDefinitionBody::Error => None,
         }
     }
 
@@ -582,6 +600,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Origin::TypeResolution => !is_type,
             // Local names (type vars or value bindings) are accepted in either position
             Origin::Local(_) => true,
+            Origin::TraitMember(_) | Origin::EffectOperation { .. } => !is_type,
             Origin::TopLevelDefinition(name) => {
                 let (item, _) = GetItem(name.top_level_item).get(self.compiler);
                 match &item.kind {
@@ -589,14 +608,23 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                         match &def.body {
                             // Struct type names may be used as a type OR value constructor
                             TypeDefinitionBody::Struct(_) | TypeDefinitionBody::Error => true,
-                            // Union (enum) type name is only valid as a type; its variants are handled below
-                            TypeDefinitionBody::Enum(_) | TypeDefinitionBody::Alias(_) => is_type,
+
+                            // Each of these are only valid as types
+                            TypeDefinitionBody::Enum(_, _)
+                            | TypeDefinitionBody::Alias(_)
+                            | TypeDefinitionBody::EffectAlias(_) => is_type,
                         }
                     },
-                    // Enum variants are only values, as are ability methods
+                    // Variant types are structs and are thus valid as types or values
+                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_, _)) => {
+                        true
+                    },
+                    // Ability methods are only values
                     TopLevelItemKind::TypeDefinition(_) => !is_type,
-                    TopLevelItemKind::AbilityDefinition(_) => unreachable!("Desugared by GetItem"),
-                    TopLevelItemKind::AbilityImpl(_) => unreachable!("Desugared by GetItem"),
+                    TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
+                        unreachable!("Desugared by GetItem")
+                    },
+                    TopLevelItemKind::TraitImpl(_) => unreachable!("Desugared by GetItem"),
                     TopLevelItemKind::Definition(_) | TopLevelItemKind::Comptime(_) => !is_type,
                 }
             },
@@ -618,11 +646,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 // Resolve body with the parameter name in scope
                 self.push_local_scope();
                 for parameter in &lambda.parameters {
-                    self.declare_names_in_pattern(parameter.pattern, true, false, !parameter.is_implicit);
+                    self.declare_names_in_pattern(parameter.pattern, true, false, !parameter.is_implicit, false);
                 }
                 if let Some(return_type) = &lambda.return_type {
                     self.resolve_type(return_type, true);
                 }
+                self.resolve_effects(&lambda.effects, true);
                 self.resolve_expr(lambda.body);
                 self.pop_local_scope();
             },
@@ -654,7 +683,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.resolve_expr(match_.expression);
                 for (pattern, branch) in &match_.cases {
                     self.push_local_scope();
-                    self.declare_names_in_pattern(*pattern, false, true, true);
+                    self.declare_names_in_pattern(*pattern, false, true, true, true);
                     self.resolve_expr(*branch);
                     self.pop_local_scope();
                 }
@@ -740,13 +769,13 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         if is_lambda {
             // Lambda definitions can call themselves recursively, so the name must be in scope
             // before resolving the body.
-            self.declare_names_in_pattern(definition.pattern, true, false, check_unused);
+            self.declare_names_in_pattern(definition.pattern, true, false, check_unused, false);
         }
         // TODO: Type variables declared in pattern type annotations should be in scope for the rhs,
         // but the value variable itself should not see itself in its own rhs.
         self.resolve_expr(definition.rhs);
         if !is_lambda {
-            self.declare_names_in_pattern(definition.pattern, true, false, check_unused);
+            self.declare_names_in_pattern(definition.pattern, true, false, check_unused, false);
         }
     }
 
@@ -765,11 +794,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
                     if let Some(first_location) = already_defined.get(&name).cloned() {
                         let second_location = location;
-                        self.emit_diagnostic(Diagnostic::ConstructorFieldDuplicate {
-                            name,
-                            first_location,
-                            second_location,
-                        });
+                        self.emit_diagnostic(Diagnostic::DuplicateField { name, first_location, second_location });
                         return;
                     }
 
@@ -823,8 +848,13 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     ///
     /// If `declare_type_vars` is true, any type variables used that are not in scope will
     /// automatically be declared. Otherwise an error will be issued.
+    ///
+    /// `refutable` should be `true` only for `match` arm patterns; any other pattern (a
+    /// `let`/`var` binding, function parameter, etc.) must always match, so an OR-pattern
+    /// there is rejected with a diagnostic instead of having its names declared.
     fn declare_names_in_pattern(
         &mut self, pattern: PatternId, declare_type_vars: bool, allow_type_based_resolution: bool, check_unused: bool,
+        refutable: bool,
     ) {
         match &self.context[pattern] {
             Pattern::Variable(name) => {
@@ -836,12 +866,39 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Pattern::Constructor(function, args) => {
                 self.link(*function, allow_type_based_resolution, false);
                 for arg in args {
-                    self.declare_names_in_pattern(*arg, declare_type_vars, allow_type_based_resolution, check_unused);
+                    self.declare_names_in_pattern(
+                        *arg,
+                        declare_type_vars,
+                        allow_type_based_resolution,
+                        check_unused,
+                        refutable,
+                    );
+                }
+            },
+            Pattern::ConstructorRest(function, args, name) => {
+                self.link(*function, allow_type_based_resolution, false);
+                for arg in args {
+                    self.declare_names_in_pattern(
+                        *arg,
+                        declare_type_vars,
+                        allow_type_based_resolution,
+                        check_unused,
+                        refutable,
+                    );
+                }
+                if let Some(name) = name {
+                    self.declare_name(*name, check_unused);
                 }
             },
             Pattern::Error => (),
             Pattern::TypeAnnotation(pattern, typ) => {
-                self.declare_names_in_pattern(*pattern, declare_type_vars, allow_type_based_resolution, check_unused);
+                self.declare_names_in_pattern(
+                    *pattern,
+                    declare_type_vars,
+                    allow_type_based_resolution,
+                    check_unused,
+                    refutable,
+                );
                 self.resolve_type(typ, declare_type_vars);
             },
             Pattern::MethodName { type_name, item_name } => {
@@ -849,11 +906,22 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.declare_name(*item_name, check_unused);
             },
             Pattern::Or(alts) => {
+                if !refutable {
+                    let location = self.context.pattern_location(pattern).clone();
+                    self.emit_diagnostic(Diagnostic::OrInIrrefutablePattern { location });
+                    return;
+                }
                 self.declare_names_in_or_pattern(alts, declare_type_vars, allow_type_based_resolution, check_unused);
             },
             Pattern::Alias(name, pattern) => {
                 self.declare_name(*name, check_unused);
-                self.declare_names_in_pattern(*pattern, declare_type_vars, allow_type_based_resolution, check_unused);
+                self.declare_names_in_pattern(
+                    *pattern,
+                    declare_type_vars,
+                    allow_type_based_resolution,
+                    check_unused,
+                    refutable,
+                );
             },
         }
     }
@@ -878,7 +946,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
         let names_in_each_alt = mapvec(alts, |alt| {
             self.push_local_scope();
-            self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution, check_unused);
+            self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution, check_unused, true);
             self.pop_scratch_scope()
         });
 
@@ -919,6 +987,15 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         }
     }
 
+    /// Resolves each effect in an optional effects clause.
+    fn resolve_effects(&mut self, effects: &Option<Vec<Type>>, declare_type_vars: bool) {
+        if let Some(effects) = effects {
+            for effect in effects {
+                self.resolve_type(effect, declare_type_vars);
+            }
+        }
+    }
+
     /// Resolves a type ensuring all names used are in scope and issuing errors
     /// for any that are not. If `declare_type_vars` is set then any type variables
     /// not already in scope will be declared in the current local scope. Otherwise,
@@ -934,10 +1011,16 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::Pointer
             | TypeKind::Hole
             | TypeKind::Reference(..)
-            | TypeKind::ImplicitLifetime
+            | TypeKind::ImplicitPlace
+            | TypeKind::Pure
             | TypeKind::IntegerConstant(_) => (),
             TypeKind::Named(path) => self.link(*path, false, true),
-            TypeKind::Variable(name) | TypeKind::Lifetime(name) => self.resolve_variable(*name, declare_type_vars),
+            TypeKind::Variable(name) => self.resolve_variable(*name, declare_type_vars),
+            TypeKind::Place(paths) => {
+                for path in paths {
+                    self.resolve_place_root(path.root, declare_type_vars);
+                }
+            },
             TypeKind::Function(function) => {
                 for parameter in &function.parameters {
                     self.resolve_type(&parameter.typ, declare_type_vars);
@@ -946,6 +1029,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(environment, declare_type_vars);
                 }
                 self.resolve_type(&function.return_type, declare_type_vars);
+                self.resolve_effects(&function.effects, declare_type_vars);
             },
             TypeKind::Application(f, args) => {
                 self.resolve_type(f, declare_type_vars);
@@ -953,7 +1037,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(arg, declare_type_vars);
                 }
             },
-            TypeKind::Tuple(elements) => {
+            TypeKind::Tuple(elements) | TypeKind::EffectUnion(elements) => {
                 for element in elements {
                     self.resolve_type(element, declare_type_vars);
                 }
@@ -986,6 +1070,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         }
     }
 
+    /// Like [Self::resolve_variable], but naming a variable's place doesn't count as using it
+    fn resolve_place_root(&mut self, name_id: NameId, auto_declare: bool) {
+        match self.find_local(&self.context[name_id]) {
+            Some(local) => {
+                self.name_links.insert(name_id, Origin::Local(local));
+            },
+            // Places named during desugaring are either a parameter's or fresh
+            None if self.context.is_synthetic_name(name_id) => self.declare_name(name_id, false),
+            None => self.resolve_variable(name_id, auto_declare),
+        }
+    }
+
     fn resolve_type_definition(&mut self, type_definition: &TypeDefinition) {
         self.declare_generics(&type_definition.generics);
 
@@ -993,16 +1089,17 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             TypeDefinitionBody::Error => (),
             TypeDefinitionBody::Struct(fields) => {
                 for (name, field_type) in fields {
-                    if type_definition.is_ability {
+                    if type_definition.kind.is_ability() {
                         self.link_existing_union_variant(type_definition.name, *name);
                     }
                     self.resolve_type(field_type, false);
                 }
             },
-            TypeDefinitionBody::Enum(variants) => {
+            TypeDefinitionBody::Enum(variants, common_fields) => {
+                self.check_common_field_duplicates(common_fields, variants);
                 for (name, variant_args) in variants {
                     self.link_existing_union_variant(type_definition.name, *name);
-                    for arg in variant_args {
+                    for (_, arg) in variant_args {
                         self.resolve_type(arg, false);
                     }
                 }
@@ -1010,11 +1107,60 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             TypeDefinitionBody::Alias(typ) => {
                 self.resolve_type(typ, false);
             },
+            TypeDefinitionBody::EffectAlias(effects) => {
+                for effect in effects {
+                    self.resolve_type(effect, false);
+                }
+            },
+        }
+    }
+
+    // Error if a union's with-clause fields conflict with any other fields in the type
+    fn check_common_field_duplicates(
+        &mut self, common_fields: &[(NameId, Type)], variants: &[(NameId, Vec<(Option<NameId>, Type)>)],
+    ) {
+        let common_ids: BTreeSet<NameId> = common_fields.iter().map(|(id, _)| *id).collect();
+
+        for (i, (name_id, _)) in common_fields.iter().enumerate() {
+            let name = self.context[*name_id].clone();
+            let first_location = self.context.name_location(*name_id).clone();
+
+            if let Some((other_id, _)) = common_fields[..i].iter().find(|(other, _)| self.context[*other] == name) {
+                let second_location = self.context.name_location(*other_id).clone();
+                self.emit_diagnostic(Diagnostic::DuplicateField {
+                    name,
+                    first_location: second_location,
+                    second_location: first_location,
+                });
+                continue;
+            }
+
+            for (_, fields) in variants {
+                let collision = fields.iter().find(|(field_name, _)| {
+                    field_name.is_some_and(|id| !common_ids.contains(&id) && self.context[id] == name)
+                });
+                if let Some((field_name, _)) = collision {
+                    let second_location = self.context.name_location(field_name.unwrap()).clone();
+                    self.emit_diagnostic(Diagnostic::DuplicateField {
+                        name: name.clone(),
+                        first_location: first_location.clone(),
+                        second_location,
+                    });
+                }
+            }
         }
     }
 
     fn declare_generics(&mut self, generics: &Generics) {
+        let mut seen_default = false;
         for generic in generics {
+            if let Some(default) = &generic.default {
+                self.resolve_type(default, false);
+                seen_default = true;
+            } else if seen_default {
+                let location = self.context.name_location(generic.name).clone();
+                self.emit_diagnostic(Diagnostic::RequiredTypeParameterAfterDefault { location });
+            }
             self.declare_name(generic.name, false);
         }
     }
@@ -1045,14 +1191,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             self.used_locals.insert(pattern.resume_name);
             self.resolve_expr(*branch);
 
-            let Some(Origin::TopLevelDefinition(name)) = self.path_links.get(&path).copied() else {
+            let Some(Origin::EffectOperation { name, .. }) = self.path_links.get(&path).copied() else {
                 continue;
             };
             let (item, item_context) = GetItem(name.top_level_item).get(self.compiler);
             let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else { continue };
-            if !type_definition.is_ability {
-                continue;
-            }
             let TypeDefinitionBody::Struct(fields) = &type_definition.body else { continue };
 
             let method_name = item_context[name.local_name_id].clone();
@@ -1107,4 +1250,109 @@ enum FieldsResult {
     /// A prior error occurred, avoid issuing another
     PriorError,
     NotAStruct,
+}
+
+/// Each component before the final in a path is a qualifier
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Qualifier {
+    Module(SourceFileId),
+    Type(TopLevelName),
+}
+
+/// Resolve the qualifier at `components[index]` as seen from `file`, walking the same
+/// namespaces `Resolver::lookup` does. `index` must not be the final component of a path.
+#[allow(unused)] // used by ante-ls
+pub fn resolve_path_qualifier<Db>(
+    db: &Db, file: SourceFileId, components: &[(Name, Location)], index: usize,
+) -> Option<Qualifier>
+where
+    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<Submodules>,
+{
+    if index + 1 >= components.len() {
+        return None;
+    }
+
+    let mut current = None;
+    let mut i = 0;
+
+    // The first component of a multi-component path may name a dependency crate.
+    let crates = GetCrateGraph.get(db);
+    if let Some(local_crate) = crates.get(&CrateId::LOCAL) {
+        let dependency =
+            local_crate.dependencies.iter().copied().find(|dependency| *components[0].0 == crates[dependency].name);
+
+        if let Some(crate_id) = dependency {
+            current = Some(Qualifier::Module(SourceFileId { crate_id, local_module_id: CRATE_ROOT_MODULE }));
+            i = 1;
+        }
+    }
+
+    while i <= index {
+        current = Some(resolve_qualifier_child(db, file, &components[i].0, current)?);
+        i += 1;
+    }
+    current
+}
+
+/// Resolve one qualifier component within `current`.
+/// `current = None` will resolve `name` in `current_file`
+fn resolve_qualifier_child<Db>(
+    db: &Db, current_file: SourceFileId, name: &String, current: Option<Qualifier>,
+) -> Option<Qualifier>
+where
+    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<Submodules>,
+{
+    match current {
+        None => {
+            if let Some(submodule) = get_item_in_submodule(db, current_file, name) {
+                return Some(Qualifier::Module(submodule));
+            }
+
+            let visible = VisibleDefinitions(current_file).get(db);
+            if let Some(&module_id) = visible.imported_modules.get(name) {
+                return Some(Qualifier::Module(module_id));
+            }
+
+            let type_id = visible.definitions.get(name)?;
+            let (item, _) = GetItem(type_id.top_level_item).get(db);
+            matches!(&item.kind, TopLevelItemKind::TypeDefinition(_)).then_some(Qualifier::Type(*type_id))
+        },
+        Some(Qualifier::Type(_)) => None,
+        Some(Qualifier::Module(id)) => {
+            if let Some(submodule) = get_item_in_submodule(db, id, name) {
+                return Some(Qualifier::Module(submodule));
+            }
+
+            let exported = ExportedTypes(id).get(db);
+            exported.get(name).copied().map(Qualifier::Type)
+        },
+    }
+}
+
+fn get_item_in_submodule(
+    db: &(impl DbGet<GetCrateGraph> + DbGet<Submodules>), parent_module: SourceFileId, name: &str,
+) -> Option<SourceFileId> {
+    if parent_module.local_module_id == CRATE_ROOT_MODULE {
+        let crates = GetCrateGraph.get(db);
+        let crate_ = crates.get(&parent_module.crate_id)?;
+        let module_file = std::path::PathBuf::from(name).with_extension("an");
+
+        // TODO: This should be a relative lookup, not an absolute one in the current crate
+        // TODO: calling `parent_module.get()` can panic if the parent module is not a valid
+        //       source file to begin with. We should ensure it is always valid.
+        if let Some(id) = crate_.source_files.get(&module_file).copied() {
+            return Some(id);
+        }
+
+        let directory = std::path::PathBuf::from(name);
+        if let Some(id) = crate_.source_files.get(&directory).copied() {
+            return Some(id);
+        }
+
+        // Fall back to absolute path
+        let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
+        crate_.source_files.get(&absolute).copied()
+    } else {
+        Submodules(parent_module).get(db).get(name).copied()
+    }
 }

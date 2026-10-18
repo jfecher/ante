@@ -1,0 +1,13 @@
+main () =
+    [1, 2] := [3, 4]
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/assign_to_non_lvalue.an:2:5
+// 1 | main () =
+//   |     // error: Cannot assign to lvalue, declare it as a mutable variable first with var
+// 2 |     [1, 2] := [3, 4]
+//   |     ^^^^^^
+// 
+// Found 1 error and 0 warnings

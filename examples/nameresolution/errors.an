@@ -38,6 +38,7 @@ a = 3 // already declared
 // // id = c1m416_4138
 // a_c1m416_7365_0 = 3
 
+
 // expected stderr:
 // examples/nameresolution/errors.an:5:18
 // 4 |     // Not a name resolution error at least. This isn't testing the type checker

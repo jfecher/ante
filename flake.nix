@@ -81,6 +81,7 @@
                 fileset = pkgs.lib.fileset.unions [
                   ./src
                   ./ante-ls
+                  ./ante-capi
                   ./Cargo.toml
                   ./Cargo.lock
                   ./build.rs
@@ -92,6 +93,7 @@
                 fileset = pkgs.lib.fileset.unions [
                   ./src
                   ./ante-ls
+                  ./ante-capi
                   ./tests
                   ./examples
                   ./Cargo.toml

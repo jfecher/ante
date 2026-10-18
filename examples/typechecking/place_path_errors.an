@@ -1,0 +1,40 @@
+type MyVec t =
+    data: Ptr t
+    len: Usz
+
+get (v: ref 'v MyVec t) (i: Usz): ref 'v! t =
+    transmute (offset v.data i)
+
+stable_lie (v: ref 'v MyVec t): ref 'v t = get v 0
+
+too_unstable (v: ref 'v MyVec t): ref 'v!! t = get v 0
+
+wrong_root (v: ref 'v MyVec t) (_w: ref 'w I32): ref 'w! t = get v 0
+
+kind_error (x: t) (_y: ref 't! I32): t = x
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/place_path_errors.an:8:48
+//    | // error: Argument 1 has type ref 'v (MyVec t) but ref '() (MyVec t) was expected
+//  8 | stable_lie (v: ref 'v MyVec t): ref 'v t = get v 0
+//    |                                                ^
+// 
+// examples/typechecking/place_path_errors.an:10:52
+//    | // error: Argument 1 has type ref 'v (MyVec t) but ref 'v! (MyVec t) was expected
+// 10 | too_unstable (v: ref 'v MyVec t): ref 'v!! t = get v 0
+//    |                                                    ^
+// 
+// examples/typechecking/place_path_errors.an:12:66
+//    | // error: Argument 1 has type ref 'v (MyVec t) but ref 'w (MyVec t) was expected
+// 12 | wrong_root (v: ref 'v MyVec t) (_w: ref 'w I32): ref 'w! t = get v 0
+//    |                                                                  ^
+// 
+// examples/typechecking/place_path_errors.an:14:28
+//    | // error: Expected a type constructor of kind place, but found one of kind type
+// 14 | kind_error (x: t) (_y: ref 't! I32): t = x
+//    |                            ^^^
+// 
+// Found 4 errors and 0 warnings
+

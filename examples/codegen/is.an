@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     x = Maybe.Some 5
     y = Maybe.Some 4
 

@@ -4,6 +4,7 @@ get_closure () =
     stuff
 
 main () =
+    print_to_stdout do
     foo = get_closure ()
     foo ()
 

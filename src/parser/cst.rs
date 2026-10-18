@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::{ErrorDefault, Location},
     lexer::token::{F64, FloatKind, Integer, IntegerKind, Token},
+    shared_arc::Shared,
 };
 
 use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId};
@@ -13,32 +14,51 @@ use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId};
 /// This is expected to mirror the source file without removing too much information.
 /// This isn't a perfect mirroring - we keep only enough information for pretty-printing
 /// the CST back into a file. So while things like comments are kept, certain syntax
-/// constructs like `foo = fn a -> expr` may be sugared into `foo x = expr`.
+/// constructs like `foo = fn a -> expr` may be sugared into `foo a = expr`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Cst {
     pub imports: Vec<Import>,
     /// `None` when the file has no `export` statement (all items are exported by default).
     /// `Some(list)` when an explicit `export` statement restricts visibility to those items.
-    pub exports: Option<Vec<(Name, Location)>>,
-    pub top_level_items: Vec<Arc<TopLevelItem>>,
+    pub exports: Option<Vec<ExportEntry>>,
+    pub top_level_items: Vec<Shared<TopLevelItem>>,
 
     /// Comments after the last top level item
     pub ending_comments: Vec<String>,
 }
 
+/// One entry in an export list
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct ExportEntry {
+    /// The `Vec` in `Vec.push`. `None` for unqualified identifiers.
+    pub qualifier: Option<(Name, Location)>,
+    pub name: Name,
+    pub location: Location,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TopLevelItem {
+    pub attributes: Vec<Attribute>,
     pub comments: Vec<String>,
     pub kind: TopLevelItemKind,
     pub id: TopLevelId,
+}
+
+/// A `#name arg0 arg1 .. argN` annotation on a top-level item
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct Attribute {
+    pub name: Name,
+    pub args: Vec<ExprId>,
+    pub location: Location,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum TopLevelItemKind {
     Definition(Definition),
     TypeDefinition(TypeDefinition),
-    AbilityDefinition(AbilityDefinition),
-    AbilityImpl(AbilityImpl),
+    TraitDefinition(TraitOrEffectDefinition),
+    EffectDefinition(TraitOrEffectDefinition),
+    TraitImpl(TraitImpl),
     Comptime(Comptime),
 }
 
@@ -47,8 +67,10 @@ impl TopLevelItemKind {
         match self {
             TopLevelItemKind::Definition(definition) => ItemName::Pattern(definition.pattern),
             TopLevelItemKind::TypeDefinition(type_definition) => ItemName::Single(type_definition.name),
-            TopLevelItemKind::AbilityDefinition(trait_definition) => ItemName::Single(trait_definition.name),
-            TopLevelItemKind::AbilityImpl(ability_impl) => ItemName::Single(ability_impl.name),
+            TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
+                ItemName::Single(def.name)
+            },
+            TopLevelItemKind::TraitImpl(trait_impl) => ItemName::Single(trait_impl.name),
             TopLevelItemKind::Comptime(_) => ItemName::None,
         }
     }
@@ -79,6 +101,8 @@ impl PatternId {
             Pattern::Variable(name) => context.get_name(*name).to_string(),
             Pattern::Literal(_) => "#literal".to_string(),
             Pattern::Constructor(..) => "#constructor".to_string(),
+            Pattern::ConstructorRest(_, _, Some(name)) => context.get_name(*name).to_string(),
+            Pattern::ConstructorRest(_, _, None) => "#constructor".to_string(),
             Pattern::TypeAnnotation(pattern, _) => pattern.name(context),
             Pattern::MethodName { type_name, item_name } => {
                 format!("{}.{}", context.get_name(*type_name), context.get_name(*item_name))
@@ -102,6 +126,52 @@ pub struct Type {
 impl Type {
     pub fn new(kind: TypeKind, location: Location) -> Type {
         Type { kind, location }
+    }
+
+    /// Does this type contain at least one `ImplicitPlace` outside of function types?
+    ///
+    /// TODO: Kinds for type variables aren't tracked yet so only places on reference types are
+    /// checked at the moment.
+    pub fn has_elided_place(&self) -> bool {
+        match &self.kind {
+            TypeKind::Application(f, args) => {
+                let is_elided_ref_place = matches!(f.kind, TypeKind::Reference(_))
+                    && args.first().is_some_and(|arg| matches!(arg.kind, TypeKind::ImplicitPlace));
+                is_elided_ref_place || args.iter().any(Type::has_elided_place)
+            },
+            TypeKind::Tuple(elements) => elements.iter().any(Type::has_elided_place),
+            _ => false,
+        }
+    }
+
+    /// True if this type has a hole to infer, such as the environment of a `=>` function type
+    pub fn contains_hole(&self) -> bool {
+        self.contains_hole_with(&mut |_, _| false)
+    }
+
+    /// Like [Type::contains_hole], but also calls `on_named(path, arg_count)` on each named type
+    pub fn contains_hole_with(&self, on_named: &mut impl FnMut(PathId, usize) -> bool) -> bool {
+        let mut recur = |typ: &Type| typ.contains_hole_with(on_named);
+        match &self.kind {
+            TypeKind::Hole => true,
+            TypeKind::Named(path) => on_named(*path, 0),
+            TypeKind::Function(function) => {
+                function.parameters.iter().any(|parameter| recur(&parameter.typ))
+                    || function.environment.as_ref().is_some_and(|environment| recur(environment))
+                    || recur(&function.return_type)
+                    || function.effects.iter().flatten().any(recur)
+            },
+            TypeKind::Application(function, args) => {
+                args.iter().any(&mut recur)
+                    || match &function.kind {
+                        TypeKind::Named(path) => on_named(*path, args.len()),
+                        _ => recur(function),
+                    }
+            },
+            TypeKind::Tuple(types) | TypeKind::EffectUnion(types) => types.iter().any(recur),
+            TypeKind::Forall(_, typ) => recur(typ),
+            _ => false,
+        }
     }
 }
 
@@ -128,6 +198,9 @@ pub enum TypeKind {
     /// mechanisms to automatically define their constructor and retrieve their fields.
     Tuple(Vec<Type>),
 
+    /// The `&` combinator to combine two effects, e.g. `Fs & Net`
+    EffectUnion(Vec<Type>),
+
     /// This type can't be parsed, it is only used by `GetItem` to desugar
     /// ability types into in some cases.
     NoClosureEnv,
@@ -139,17 +212,54 @@ pub enum TypeKind {
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
 
-    /// Synthesized by the parser for the lifetime arg of `ref t` / `mut t` / `imm t` /
-    /// `uniq t` when no `'name` was written. Becomes a fresh lifetime variable in normal
-    /// positions, and is rejected with `MissingExplicitLifetime` inside type-definition
-    /// bodies where lifetimes must be explicit.
-    ImplicitLifetime,
+    /// Synthesized by the parser for the place arg of `ref t` / `mut t` / `imm t` /
+    /// `uniq t` when no `'name` was written. Becomes a fresh place variable in normal
+    /// positions, and is rejected with `MissingExplicitPlace` inside type-definition
+    /// bodies where places must be explicit.
+    ImplicitPlace,
 
-    /// A generic prepended with '
-    Lifetime(NameId),
+    /// A place written with `'`, e.g. `'a`, `'p.f!` or `'(a, b!)`
+    Place(Vec<PlacePath>),
 
     /// An explicit `forall (n: U32) t. T` polytype
     Forall(Generics, Box<Type>),
+
+    /// An empty effect set
+    Pure,
+}
+
+/// A single place in a type, e.g. `'a.b!`
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct PlacePath {
+    pub root: NameId,
+    pub segments: Vec<PlaceSegment>,
+}
+
+/// One step along a place's path after its root
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
+pub enum PlaceSegment {
+    /// `.foo`
+    Field(Name),
+    /// `!`, this place may be invalidated by a mutation to any ancestor place.
+    Unstable,
+}
+
+impl std::fmt::Display for PlaceSegment {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PlaceSegment::Field(name) => write!(f, ".{name}"),
+            PlaceSegment::Unstable => write!(f, "!"),
+        }
+    }
+}
+
+/// Displays a place's segments in source form, like `.a!.b`
+pub struct Segments<'a>(pub &'a [PlaceSegment]);
+
+impl std::fmt::Display for Segments<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.0.iter().try_for_each(|segment| write!(f, "{segment}"))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
@@ -186,9 +296,8 @@ pub struct FunctionType {
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
 
-    /// True if this is a `resume fn`.
-    /// Only valid as an ability field.
-    pub has_resume: bool,
+    /// `None` for no clause, `Some(vec![])` for `is pure`, `Some(effects)` for `can e1, e2, ...`.
+    pub effects: Option<Vec<Type>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -211,28 +320,72 @@ impl ParameterType {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum TypeDefinitionKind {
+    Type,
+    Trait,
+    /// Effect operations get `Kind::Effect` and are type-checked as top-level `can`-annotated functions.
+    Effect,
+}
+
+impl TypeDefinitionKind {
+    /// True for traits and effects
+    pub fn is_ability(self) -> bool {
+        matches!(self, TypeDefinitionKind::Trait | TypeDefinitionKind::Effect)
+    }
+
+    pub fn is_effect(self) -> bool {
+        matches!(self, TypeDefinitionKind::Effect)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
     pub mutable: bool,
-    /// AbilityDefinitions are desugared into type definitions
-    pub is_ability: bool,
+    pub kind: TypeDefinitionKind,
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,
+}
+
+impl TypeDefinition {
+    /// Number of generic parameters without a default
+    pub fn required_generic_count(&self) -> usize {
+        self.generics.iter().rposition(|param| param.default.is_none()).map_or(0, |index| index + 1)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum TypeDefinitionBody {
     Error,
     Struct(Vec<(NameId, Type)>),
-    Enum(Vec<(NameId, Vec<Type>)>),
+    Enum(/*variants*/ Vec<(NameId, Vec<(Option<NameId>, Type)>)>, /*with-clause*/ Vec<(NameId, Type)>),
     Alias(Type),
+    EffectAlias(Vec<Type>),
 }
 
 impl ErrorDefault for TypeDefinitionBody {
     fn error_default(_: Location) -> Self {
         Self::Error
+    }
+}
+
+impl TypeDefinitionBody {
+    /// If this is an enum body, returns the variant named `name` along with its index
+    pub fn find_variant(&self, name: NameId) -> Option<(usize, &(NameId, Vec<(Option<NameId>, Type)>))> {
+        match self {
+            TypeDefinitionBody::Enum(variants, _) => variants.iter().enumerate().find(|(_, (n, _))| *n == name),
+            _ => None,
+        }
+    }
+
+    /// The `with`-clause common fields of an enum body, empty if this is not an enum
+    pub fn common_fields(&self) -> &[(NameId, Type)] {
+        match self {
+            TypeDefinitionBody::Enum(_, common_fields) => common_fields,
+            _ => &[],
+        }
     }
 }
 
@@ -288,18 +441,18 @@ impl Expr {
 /// A path is always guaranteed to have at least 1 component
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Path {
-    pub components: Vec<(String, Location)>,
+    pub components: Vec<(Name, Location)>,
 }
 
 impl Path {
-    pub fn ident(name: String, location: Location) -> Path {
+    pub fn ident(name: Name, location: Location) -> Path {
         Path { components: vec![(name, location)] }
     }
 
     pub fn into_file_path(self) -> Arc<PathBuf> {
         let mut path = PathBuf::new();
         for (component, _) in self.components {
-            path.push(component);
+            path.push(component.as_str());
         }
         Arc::new(path)
     }
@@ -308,6 +461,10 @@ impl Path {
     ///
     /// Paths are guaranteed to have at least 1 component, so this will never panic.
     pub fn last_ident(&self) -> &str {
+        self.last_name()
+    }
+
+    pub fn last_name(&self) -> &Name {
         &self.components.last().unwrap().0
     }
 }
@@ -387,7 +544,7 @@ impl Argument {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct MemberAccess {
     pub object: ExprId,
-    pub member: String,
+    pub member: Name,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -396,6 +553,9 @@ pub struct Lambda {
     pub return_type: Option<Type>,
     pub body: ExprId,
     pub is_move: bool,
+
+    /// `None` for no clause, `Some(vec![])` for `is pure`, `Some(effects)` for `can e1, e2, ...`.
+    pub effects: Option<Vec<Type>>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -446,9 +606,12 @@ pub struct Match {
     pub cases: Vec<(PatternId, ExprId)>,
 }
 
-/// `handler <name> for <cases> in <expression>`
+/// `handle <expression> | <cases>`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Handle {
+    /// Holdover from when `handler` expressions created named handlers
+    /// There's no name in the source now but some type checking/mir code uses the
+    /// effect type which is bound to this name.
     pub handler_name: NameId,
     pub expression: ExprId,
     pub cases: Vec<(HandlePattern, ExprId)>,
@@ -532,12 +695,12 @@ pub struct Loop {
     pub body: ExprId,
 }
 
-/// A `loop` parameter is either an existing variable in scope (e.g. `x`)
-/// or a pattern, expression pair where the pattern is the loop helper function
+/// A `loop` parameter is either a pattern over existing bindings in scope,
+/// or a `pattern = expression` pair where the pattern is the loop helper function
 /// parameter and the expression is its initial value - e.g `(y = 3)`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub enum LoopParameter {
-    Variable(NameId),
+    Pattern(PatternId),
     PatternAndExpr(PatternId, ExprId),
     UnitLiteral(Location),
 }
@@ -548,6 +711,8 @@ pub enum Pattern {
     Variable(NameId),
     Literal(Literal),
     Constructor(PathId, Vec<PatternId>),
+    // E.g. `Circle ..`, `Circle ..c`, `Circle a b ..`, `Circle a b ..c`
+    ConstructorRest(PathId, Vec<PatternId>, Option<NameId>),
     TypeAnnotation(PatternId, Type),
     MethodName { type_name: NameId, item_name: NameId },
     Or(Vec<PatternId>),
@@ -593,37 +758,38 @@ pub struct GenericParam {
     pub name: NameId,
     /// When `None`, this parameter's kind defaults to `Type`.
     pub kind: Option<KindAnnotation>,
+    /// The type used when this parameter's argument is omitted, e.g. `I32` for `(b = I32)`
+    pub default: Option<Type>,
 }
 
 impl GenericParam {
     pub fn new(name: NameId) -> Self {
-        Self { name, kind: None }
+        Self { name, kind: None, default: None }
     }
 }
 
 /// Surface syntax for kind annotations on generic parameters.
-/// `U32` is needed for type-level array lengths; `Lifetime` for reference lifetime
-/// parameters introduced via `'a`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum KindAnnotation {
     Type,
     U32,
-    Lifetime,
+    Place,
+    Effect,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct AbilityDefinition {
+pub struct TraitOrEffectDefinition {
     pub name: NameId,
     pub generics: Generics,
     pub body: Vec<Declaration>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct AbilityImpl {
+pub struct TraitImpl {
     pub name: NameId,
     pub parameters: Vec<Parameter>,
-    pub ability_path: PathId,
-    pub ability_arguments: Vec<Type>,
+    pub trait_path: PathId,
+    pub trait_arguments: Vec<Type>,
     pub body: Vec<(NameId, ExprId)>,
 }
 
@@ -637,19 +803,7 @@ pub struct Extern {
     pub name: String,
 }
 
-/// A top-level item evaluated at compile-time, e.g:
-/// ```ante
-/// #if foo then
-///     function () = 3
-///
-/// // or
-/// #modify
-/// foo bar = ()
-///
-/// // or
-/// derive Foo Bar
-/// type MyType = x: I32
-/// ```
+/// A top-level item evaluated at compile-time
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Comptime {
     Expr(ExprId),

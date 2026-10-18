@@ -1,5 +1,6 @@
 main () =
     ////////// F64 ////////
+    print_to_stdout do
 
     add_f64 = 3.0 + 4.0
     sub_f64 = 7.0 - 8.0

@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     var a, b = 1, 2
     println a
     println b

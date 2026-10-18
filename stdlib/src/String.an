@@ -1,8 +1,9 @@
 import Std.Vec
-import Std.C.malloc, memcpy, memcmp
+import Std.C
+import Std.C.malloc, memcpy, memcmp, strlen, copy_cstring
 import Std.Stream.Emit, emit, Stream, foldl, map, stream_fn
 import Std.Vec.Vec
-import Std.Char.is_whitespace, to_digit
+import Std.Char.is_whitespace, to_digit, to_ascii_lower, to_ascii_upper
 import Std.Math.CheckedNum, checked_add, checked_sub, checked_mul
 import Std.Math.checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i64, checked_num_isz
 import Std.Math.checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz
@@ -10,45 +11,12 @@ import Std.Fail.Fail, fail, fail_if
 
 // TODO: All functions in this file should be a method on String, but String isn't defined in this file
 
-utf8_accept = 0usz
-utf8_reject = 1usz
-
-// First 256 entries (byte classification)
-utf8d = [ 0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 00..1f
-  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 20..3f
-  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 40..5f
-  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 60..7f
-  1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8, // 80..9f
-  7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8, // a0..bf
-  8u8,8u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8, // c0..df
-  0xa,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x4,0x3,0x3, // e0..ef
-  0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
-  0x0u8,0x0u8,0x2u8,0x3,0x5,0x8,0x7u8,0x0u8,0x0u8,0x0u8,0x4,0x6,0x0u8,0x0u8,0x0u8,0x0u8, // s0..s0
-  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,1u8,1u8,1u8,1u8,1u8,1u8, // s1..s2
-  1u8,2u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8, // s3..s4
-  1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,3,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8, // s5..s6
-  1u8,3,1u8,1u8,1u8,1u8,1u8,3,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8 ] // s7..s8
-
-is_valid_utf8 (s: String): Bool =
-    var state = utf8_accept
-
-    for i in 0 .. Usz s.length do
-        b = U8 s.data.[i]
-        utf8_type = Usz utf8d.[Usz b]
-
-        state := Usz utf8d.[256usz + state * 16usz + utf8_type]
-
-        if state == utf8_reject then
-            return false
-
-    state == utf8_accept
-
-impl eq_string: Eq String with
+impl eq_string: Eq String pure with
     (==) l r =
         l.length == r.length and
             memcmp l.data r.data (Usz l.length) == 0
 
-reverse (var s: String): String =
+reverse (var s: String): String can Fs =
     // String literals have a null refcount and read-only data, so we must
     // copy them. Only attempt the in-place reverse when the buffer is heap
     // owned and uniquely referenced.
@@ -74,7 +42,7 @@ reverse (var s: String): String =
 ///
 /// For example `split "foo bar  baz "` will emit all of:
 /// ["foo", "bar", "", "baz", ""]
-split (s: String) (c: Char) = fn {Emit String} ->
+split (s: String) (c: Char) = fn () can Emit String, Fs ->
     var subend = 0usz
     var substart = 0usz
     while U32 subend < s.length do
@@ -101,7 +69,7 @@ substr (var s: String) (begin: Usz) (end: Usz): String =
     String buf s.refcount len (s.offset + U32 begin)
 
 /// Collect each character from the given stream into a String
-string_of (s: s) {Stream s Char}: String =
+string_of (s: s) {Stream s Char e}: String can Panic, e =
     var chars = Vec.of s
     result = String.from_parts (chars.data) (U32 chars.len)
     // Leak the Vec, it has been transferred to the String
@@ -109,19 +77,19 @@ string_of (s: s) {Stream s Char}: String =
     result
 
 /// Join each string from the stream into one string.
-///
+/// 
 /// If a separator is desired between each string, use this
 /// in combination with `intersperse`, e.g. `join <| intersperse my_stream (fn () -> "")`
-join (s: s) {Stream s String}: String =
+join (s: s) {Stream s String e}: String can e =
     foldl s "" (++)
 
 /// Emits each byte in this string
-bytes (s: String) = fn (e: Emit U8) ->
+bytes (s: String) = fn () can Emit U8 ->
     var data = transmute s.data : Usz
     for i in 0 .. s.length do
         ptr = data + Usz i
         c = deref_ptr <| transmute ptr : Ptr U8
-        e.emit c
+        emit c
 
 /// Emits each character in this string
 ///
@@ -153,8 +121,7 @@ contains (s: ref String) (needle: ref String): Bool =
     false
 
 /// Return a substring with leading ASCII whitespace removed.
-/// Reuses the source refcount; no allocation.
-trim_start (s: String): String =
+trim_start (s: String): String can Fs =
     len = Usz s.length
     for i in 0 .. len do
         c: Char = s.data.[i]
@@ -163,7 +130,7 @@ trim_start (s: String): String =
     ""
 
 /// Return a substring with trailing ASCII whitespace removed.
-trim_end (s: String): String =
+trim_end (s: String): String can Fs =
     len = Usz s.length
     var i = len
     while i > 0 do
@@ -174,43 +141,43 @@ trim_end (s: String): String =
     ""
 
 /// Return a substring with both leading and trailing ASCII whitespace removed.
-trim (s: String): String =
+trim (s: String): String can Fs =
     trim_start s |> trim_end
 
 /// Parse a base-10 I32 from a string.
 ///
 /// Fails for empty strings, sign-only strings, non-digits, or overflow.
-parse_i32 (s: String) {Fail}: I32 =
+parse_i32 (s: String): I32 can Fail, Fs =
     parse_signed_int s
 
-parse_i8 (s: String) {Fail}: I8 =
+parse_i8 (s: String): I8 can Fail, Fs =
     parse_signed_int s
 
-parse_i16 (s: String) {Fail}: I16 =
+parse_i16 (s: String): I16 can Fail, Fs =
     parse_signed_int s
 
-parse_i64 (s: String) {Fail}: I64 =
+parse_i64 (s: String): I64 can Fail, Fs =
     parse_signed_int s
 
-parse_isz (s: String) {Fail}: Isz =
+parse_isz (s: String): Isz can Fail, Fs =
     parse_signed_int s
 
-parse_u8 (s: String) {Fail}: U8 =
+parse_u8 (s: String): U8 can Fail, Fs =
     parse_unsigned_int s
 
-parse_u16 (s: String) {Fail}: U16 =
+parse_u16 (s: String): U16 can Fail, Fs =
     parse_unsigned_int s
 
-parse_u32 (s: String) {Fail}: U32 =
+parse_u32 (s: String): U32 can Fail, Fs =
     parse_unsigned_int s
 
-parse_u64 (s: String) {Fail}: U64 =
+parse_u64 (s: String): U64 can Fail, Fs =
     parse_unsigned_int s
 
-parse_usz (s: String) {Fail}: Usz =
+parse_usz (s: String): Usz can Fail, Fs =
     parse_unsigned_int s
 
-parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t} {Copy t} {Fail}: t =
+parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Copy t}: t can Fail, Fs, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -245,7 +212,7 @@ parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t} {Copy t} {Fa
 
     result
 
-parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t} {Fail}: t =
+parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {Copy t}: t can Fail, Fs, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -253,8 +220,7 @@ parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t} {F
 
     first: Char = s.data.[0]
     fail_if (first == '-')
-    if first == '+' then
-        i += 1
+    if first == '+' then i += 1
 
     fail_if (i == len)
 
@@ -267,39 +233,64 @@ parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t} {F
         | None -> fail ()
 
         result := checked_mul result ten.*
-
         result := checked_add result digit
-
         i += 1
 
     result
 
-impl try_cast_string_i8: TryCast String I8 with
-    try_cast s {Fail} = parse_i8 s
+impl try_cast_string_i8: TryCast String I8 Fs with
+    try_cast s = parse_i8 s
 
-impl try_cast_string_i16: TryCast String I16 with
-    try_cast s {Fail} = parse_i16 s
+impl try_cast_string_i16: TryCast String I16 Fs with
+    try_cast s = parse_i16 s
 
-impl try_cast_string_i32: TryCast String I32 with
-    try_cast s {Fail} = parse_i32 s
+impl try_cast_string_i32: TryCast String I32 Fs with
+    try_cast s = parse_i32 s
 
-impl try_cast_string_i64: TryCast String I64 with
-    try_cast s {Fail} = parse_i64 s
+impl try_cast_string_i64: TryCast String I64 Fs with
+    try_cast s = parse_i64 s
 
-impl try_cast_string_isz: TryCast String Isz with
-    try_cast s {Fail} = parse_isz s
+impl try_cast_string_isz: TryCast String Isz Fs with
+    try_cast s = parse_isz s
 
-impl try_cast_string_u8: TryCast String U8 with
-    try_cast s {Fail} = parse_u8 s
+impl try_cast_string_u8: TryCast String U8 Fs with
+    try_cast s = parse_u8 s
 
-impl try_cast_string_u16: TryCast String U16 with
-    try_cast s {Fail} = parse_u16 s
+impl try_cast_string_u16: TryCast String U16 Fs with
+    try_cast s = parse_u16 s
 
-impl try_cast_string_u32: TryCast String U32 with
-    try_cast s {Fail} = parse_u32 s
+impl try_cast_string_u32: TryCast String U32 Fs with
+    try_cast s = parse_u32 s
 
-impl try_cast_string_u64: TryCast String U64 with
-    try_cast s {Fail} = parse_u64 s
+impl try_cast_string_u64: TryCast String U64 Fs with
+    try_cast s = parse_u64 s
 
-impl try_cast_string_usz: TryCast String Usz with
-    try_cast s {Fail} = parse_usz s
+impl try_cast_string_usz: TryCast String Usz Fs with
+    try_cast s = parse_usz s
+
+/// Copy a null-terminated C string into a new string.
+from_c_string (cstr: C.String): String =
+    len = strlen cstr
+    buf = malloc len
+    memcpy buf cstr.ptr len
+    String.from_parts buf (U32 len)
+
+/// Returns the given string with each ASCII letter converted to lowercase.
+/// The original string is never mutated.
+// TODO: Return the original string if it was already lowercase
+to_ascii_lowercase (s: ref String): String =
+    len = Usz s.length
+    buf = malloc len
+    for i in 0 .. len do
+        array_insert buf i (to_ascii_lower s.data.[i])
+    String.from_parts buf s.length
+
+/// Returns the given string with each ASCII letter converted to uppercase.
+/// The original string is never mutated.
+// TODO: Return the original string if it was already uppercase
+to_ascii_uppercase (s: ref String): String =
+    len = Usz s.length
+    buf = malloc len
+    for i in 0 .. len do
+        array_insert buf i (to_ascii_upper s.data.[i])
+    String.from_parts buf s.length

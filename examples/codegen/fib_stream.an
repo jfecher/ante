@@ -1,6 +1,6 @@
 import Std.Stream.Emit, emit, iter, stream_fn, take
 
-fibonacci {Emit U64}: Unit =
+fibonacci (): Unit can Emit U64 =
     var current, next = 0, 1
     while true do
         emit current
@@ -11,6 +11,7 @@ fibonacci {Emit U64}: Unit =
 
 main () =
     // 0, 1, 1, 2, 3, 5, 8, ...
+    print_to_stdout do
     take fibonacci 10 |> iter println
 
 // args: --delete-binary --no-color
@@ -25,4 +26,3 @@ main () =
 // 13
 // 21
 // 34
-

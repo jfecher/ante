@@ -14,7 +14,7 @@
 //! Performs are left unchanged by this pass.
 use std::sync::Arc;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::iterator_extensions::{mapvec, opt_mapvec};
 use crate::lexer::token::IntegerKind;
@@ -24,10 +24,11 @@ use crate::mir::{
 };
 
 use super::effect_lowering::{
-    CaseShape, Emitter, case_shape_from_handler_type, resolve_body_function, run_handle_optimization_worklist,
+    CaseShape, Emitter, WorklistState, case_shape_from_handler_type, resolve_body_function,
+    run_handle_optimization_worklist,
 };
 use super::tail_resume_optimization::{
-    OriginalEnvLayout, clone_body_with_extended_env, neutralize_handler_caps_in_dead_body, resolve_handler,
+    OriginalEnvLayout, clone_body_with_extended_env, neutralize_handler_caps_in_dead_body,
     rewrite_handler_caps_in_body, substitute_value,
 };
 
@@ -40,12 +41,10 @@ impl Mir {
 
 /// Optimize every abort-only Handle in `definition_id`, returning the ids of any new definitions
 /// created so the caller can enqueue them for processing.
-fn optimize_in_definition(
-    mir: &mut Mir, definition_id: DefinitionId, dead_bodies: &mut FxHashSet<DefinitionId>,
-) -> Vec<DefinitionId> {
+fn optimize_in_definition(mir: &mut Mir, definition_id: DefinitionId, state: &mut WorklistState) -> Vec<DefinitionId> {
     collect_handle_sites(mir, definition_id)
         .into_iter()
-        .flat_map(|site| try_optimize_handle(mir, definition_id, site, dead_bodies))
+        .flat_map(|site| try_optimize_handle(mir, definition_id, site, state))
         .collect()
 }
 
@@ -95,7 +94,7 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
     opt_mapvec(&site.cases, |case| {
         let handler_type = definition.type_of_value(&case.handler, &mir.externals, &mir.definitions);
         let shape = case_shape_from_handler_type(&handler_type)?;
-        let (handler_def_id, handler_env, handler_bindings) = resolve_handler(case.handler, definition)?;
+        let (handler_def_id, handler_env, handler_bindings) = resolve_body_function(case.handler, definition)?;
         let handler_def = mir.definitions.get(&handler_def_id)?;
         if !case_is_abort_only(handler_def, &shape) {
             return None;
@@ -123,20 +122,12 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
 fn case_is_abort_only(handler_def: &Definition, shape: &CaseShape) -> bool {
     let resume_param = Value::Parameter(BlockId::ENTRY_BLOCK, shape.op_arg_types.len() as u32);
     let mut uses_resume = false;
-    let mut check = |v: &Value| uses_resume |= *v == resume_param;
-    for instr in handler_def.instructions.values() {
-        instr.for_each_value(&mut check);
-    }
-    for (_, block) in handler_def.blocks.iter() {
-        if let Some(t) = &block.terminator {
-            t.for_each_value(&mut check);
-        }
-    }
+    handler_def.for_each_used_value(|v| uses_resume |= *v == resume_param);
     !uses_resume
 }
 
 fn try_optimize_handle(
-    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, dead_bodies: &mut FxHashSet<DefinitionId>,
+    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, state: &mut WorklistState,
 ) -> Vec<DefinitionId> {
     let Some(decisions) = analyze_handle(mir, definition_id, &site) else { return Vec::new() };
     preserve_op_indices(&mut mir.preserved_op_indices, &site.cases);
@@ -144,7 +135,7 @@ fn try_optimize_handle(
     let wrapper_ids = mapvec(decisions.iter().enumerate(), |(i, d)| materialize_abort_wrapper(mir, d, i as u32));
     let cap_tuple_type = Type::Tuple(Arc::new(mapvec(&wrapper_ids, |id| mir.definitions[id].typ.clone())));
 
-    let (prepared, created_ids) = prepare_body_fn(mir, definition_id, site.body, &cap_tuple_type, dead_bodies);
+    let (prepared, created_ids) = prepare_body_fn(mir, definition_id, site.body, &cap_tuple_type, state);
     splice_in_handle_replacement(mir, definition_id, site, &wrapper_ids, decisions, prepared, &cap_tuple_type);
     created_ids
 }
@@ -165,25 +156,24 @@ struct PreparedBody {
 
 /// Returns the prepared body plus the ids of the body clones created here to be handled later
 fn prepare_body_fn(
-    mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_tuple_type: &Type,
-    dead_bodies: &mut FxHashSet<DefinitionId>,
+    mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_tuple_type: &Type, state: &mut WorklistState,
 ) -> (PreparedBody, Vec<DefinitionId>) {
-    let (orig_id, env_value, bindings) = resolve_body_function(body, &mir.definitions[&definition_id]);
-    let (fn_id, layout, created_ids) = clone_body_with_extended_env(mir, orig_id, cap_tuple_type);
+    let (orig_id, env_value, bindings) =
+        resolve_body_function(body, &mir.definitions[&definition_id]).expect("handle body is not a function");
+    let (fn_id, layout, created_ids) = clone_body_with_extended_env(mir, orig_id, cap_tuple_type, state.referrers());
     neutralize_handler_caps_in_dead_body(mir, orig_id);
     rewrite_handler_caps_in_body(mir, fn_id, &layout, cap_tuple_type);
 
     // The original body fn is now dead (only the outer definition's dead PackClosure references it).
-    // Don't re-process its Handles; the clone carries the live copies.
-    dead_bodies.insert(orig_id);
+    // Don't re-process its Handles, the clone carries the live copies.
+    state.dead_bodies.insert(orig_id);
 
     (PreparedBody { fn_id, env_value, bindings, layout }, created_ids)
 }
 
 /// Wrapper signature: `fn op_args.. [Pointer] -> op_return_type`. The Pointer points to a
-/// stack-allocated `(buf_ptr, result_slot_ptr, handler_env)` (`handler_env` is `Unit` when the
-/// handler isn't a closure). Each `Return v` in the inlined handler body becomes
-/// `Store(slot, v); longjmp(buf, 1); unreachable`.
+/// stack-allocated `(buf_ptr, result_slot_ptr, handler_env)`. Each `Return v` in the
+/// inlined handler body becomes `Store(slot, v); longjmp(buf, 1); unreachable`.
 fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index: u32) -> DefinitionId {
     let new_id = next_definition_id();
     let mut def =
@@ -191,12 +181,12 @@ fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index:
     let n = decision.shape.op_arg_types.len();
     let env_pointer = Value::Parameter(BlockId::ENTRY_BLOCK, n as u32);
     let old_env_param = Value::Parameter(BlockId::ENTRY_BLOCK, (n + 1) as u32);
-    let (buf_ptr, result_slot, handler_env) =
+    let (buf_ptr, result_slot, target_coro, handler_env) =
         emit_wrapper_prologue(&mut def, env_pointer, &decision.handler_env_type, decision.handler_is_closure);
     if let Some(replacement) = handler_env {
         substitute_value(&mut def, old_env_param, replacement);
     }
-    rewrite_returns_as_longjmp(&mut def, buf_ptr, result_slot);
+    rewrite_returns_as_longjmp(&mut def, buf_ptr, target_coro, result_slot);
     mir.definitions.insert(new_id, def);
     new_id
 }
@@ -216,25 +206,28 @@ fn clone_handler_for_wrapper(
     def
 }
 
-/// Emit `env = *env_pointer; (buf, slot, handler_env) = (env.0, env.1, env.2)` at the start
-/// of the wrapper's entry block, returning the three Values.
+/// Emit `env = *env_pointer; (buf, slot, target_coro, handler_env) = (env.0, env.1, env.2, env.3)`
+/// at the start of the wrapper's entry block, returning the four Values. `target_coro`
+/// is the coroutine (if any) running when this wrapper's `try`/setjmp site was installed.
 fn emit_wrapper_prologue(
     def: &mut Definition, env_pointer: Value, handler_env_type: &Type, handler_is_closure: bool,
-) -> (Value, Value, Option<Value>) {
-    let env_struct_type = Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, handler_env_type.clone()]));
+) -> (Value, Value, Value, Option<Value>) {
+    let env_struct_type =
+        Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, Type::POINTER, handler_env_type.clone()]));
     let mut prologue = Vec::new();
     let mut e = Emitter::pending(def, &mut prologue);
     let env_struct = e.push_instruction(Instruction::Deref(env_pointer), env_struct_type);
     let buf_ptr = e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 0 }, Type::POINTER);
     let result_slot = e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 1 }, Type::POINTER);
+    let target_coro = e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 2 }, Type::POINTER);
     let handler_env = handler_is_closure
-        .then(|| e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 2 }, handler_env_type.clone()));
+        .then(|| e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 3 }, handler_env_type.clone()));
     def.blocks[BlockId::ENTRY_BLOCK].instructions.splice(0..0, prologue);
-    (buf_ptr, result_slot, handler_env)
+    (buf_ptr, result_slot, target_coro, handler_env)
 }
 
-/// Replace each `Return v` terminator with `Store(slot, v); longjmp(buf, 1); unreachable`.
-fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, result_slot: Value) {
+/// Replace each `Return v` terminator with `Store(slot, v); longjmp(buf, target_coro, 1); unreachable`.
+fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, target_coro: Value, result_slot: Value) {
     let return_blocks: Vec<(BlockId, Value)> = def
         .blocks
         .iter()
@@ -247,7 +240,7 @@ fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, result_slot:
         return;
     }
     let longjmp_type = Type::Function(Arc::new(FunctionType {
-        parameters: vec![Type::POINTER, Type::int(IntegerKind::I32)],
+        parameters: vec![Type::POINTER, Type::POINTER, Type::int(IntegerKind::I32)],
         environment: Type::NO_CLOSURE_ENV,
         return_type: Type::UNIT,
     }));
@@ -257,7 +250,10 @@ fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, result_slot:
         let mut e = Emitter::in_block(def, block);
         e.push_instruction(Instruction::Store { pointer: result_slot, value: ret_val }, Type::UNIT);
         e.push_instruction(
-            Instruction::Call { function: longjmp, arguments: vec![buf_ptr, Value::Integer(IntConstant::I32(1))] },
+            Instruction::Call {
+                function: longjmp,
+                arguments: vec![buf_ptr, target_coro, Value::Integer(IntConstant::I32(1))],
+            },
             Type::UNIT,
         );
         def.blocks[block].terminator = Some(TerminatorInstruction::Unreachable);
@@ -325,11 +321,50 @@ fn build_setjmp_prologue(
     let mut e = Emitter::pending(definition, prologue);
     let buf_ptr = e.push_instruction(Instruction::StackAllocUninit(jmp_buf_type()), Type::POINTER);
     let result_slot_ptr = e.push_instruction(Instruction::StackAllocUninit(result_type.clone()), Type::POINTER);
-    let cap_value =
-        emit_cap_tuple(&mut e, decisions, wrapper_ids, wrapper_closure_types, buf_ptr, result_slot_ptr, cap_tuple_type);
+
+    // Captured before the body runs, so a nested coroutine abort knows where to unwind to
+    let target_coro = emit_mco_coro_running(&mut e);
+    let cap_value = emit_cap_tuple(
+        &mut e,
+        decisions,
+        wrapper_ids,
+        wrapper_closure_types,
+        buf_ptr,
+        result_slot_ptr,
+        target_coro,
+        cap_tuple_type,
+    );
+
     let body_closure = emit_body_closure(&mut e, body, body_fn_type, cap_value);
     let is_zero = emit_setjmp_test(&mut e, buf_ptr);
+
+    // Frees any coroutine an abort had to abandon mid-unwind.
+    // This is a no-op on the normal, non-longjmp path.
+    emit_reap_pending_abort(&mut e);
     SetjmpPrologue { result_slot_ptr, body_closure, is_zero }
+}
+
+/// Calls `mco_coro_running`, returning the coroutine currently executing, or NULL for the main stack.
+fn emit_mco_coro_running(e: &mut Emitter) -> Value {
+    let running_type = Type::Function(Arc::new(FunctionType {
+        parameters: vec![],
+        environment: Type::NO_CLOSURE_ENV,
+        return_type: Type::POINTER,
+    }));
+    let running = e.push_instruction(Instruction::Extern("mco_coro_running".to_string()), running_type);
+    e.push_instruction(Instruction::Call { function: running, arguments: vec![] }, Type::POINTER)
+}
+
+/// Calls `mco_reap_pending_abort`, freeing a coroutine `mco_abort_longjmp` couldn't free immediately.
+/// This is a no-op if none is pending.
+fn emit_reap_pending_abort(e: &mut Emitter) {
+    let reap_type = Type::Function(Arc::new(FunctionType {
+        parameters: vec![],
+        environment: Type::NO_CLOSURE_ENV,
+        return_type: Type::int(IntegerKind::U8),
+    }));
+    let reap = e.push_instruction(Instruction::Extern("mco_reap_pending_abort".to_string()), reap_type);
+    e.push_instruction(Instruction::Call { function: reap, arguments: vec![] }, Type::int(IntegerKind::U8));
 }
 
 /// 256 bytes should hopefully covers all common platforms. Windows seems to be the largest at 256B.
@@ -339,16 +374,18 @@ fn jmp_buf_type() -> Type {
     Type::Tuple(Arc::new(vec![Type::int(IntegerKind::U64); 32]))
 }
 
-/// For each case, build `(buf, slot, handler_env)`, stack-alloc it, and pack the wrapper
-/// closure with that pointer. Tuple all wrapper closures into the cap value.
+/// For each case, build `(buf, slot, target_coro, handler_env)`, stack-alloc it, and pack the
+/// wrapper closure with that pointer. Tuple all wrapper closures into the cap value.
+#[allow(clippy::too_many_arguments)]
 fn emit_cap_tuple(
     e: &mut Emitter, decisions: Vec<CaseDecision>, wrapper_ids: &[DefinitionId], wrapper_closure_types: Vec<Type>,
-    buf_ptr: Value, result_slot_ptr: Value, cap_tuple_type: &Type,
+    buf_ptr: Value, result_slot_ptr: Value, target_coro: Value, cap_tuple_type: &Type,
 ) -> Value {
     let cap_closures = mapvec(decisions.into_iter().zip(wrapper_ids).zip(wrapper_closure_types), |((d, &wid), wty)| {
-        let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, d.handler_env_type]));
+        let cap_state_type =
+            Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, Type::POINTER, d.handler_env_type]));
         let cap_state = e.push_instruction(
-            Instruction::MakeTuple(vec![buf_ptr, result_slot_ptr, d.handler_env.unwrap_or(Value::Unit)]),
+            Instruction::MakeTuple(vec![buf_ptr, result_slot_ptr, target_coro, d.handler_env.unwrap_or(Value::Unit)]),
             cap_state_type,
         );
         let cap_state_ptr = e.push_instruction(Instruction::StackAlloc(cap_state), Type::POINTER);

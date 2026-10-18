@@ -1,0 +1,24 @@
+two_candidates (a: ref I32) (_b: ref I32): ref I32 =
+    a
+
+// Currently fine to infer `ref 'a I32` but maybe we should error instead?
+no_candidates (x: I32): ref I32 =
+    transmute (ref x)
+
+// Should infer `ref 'a I32`
+named_candidate (a: ref 'a I32) (_b: I32): ref I32 =
+    a
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/ambiguous_elided_place.an:1:44
+//   | // error: Place annotation required here
+// 1 | two_candidates (a: ref I32) (_b: ref I32): ref I32 =
+//   |                                            ^^^^^^^
+// 2 |     a
+// 
+// Found 1 error and 0 warnings
+

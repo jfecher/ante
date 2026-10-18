@@ -1,0 +1,24 @@
+type Counter =
+    value: I32
+
+Counter.increment (counter: mut Counter): Unit can Mutate 'counter =
+    counter.value += 1
+
+main () =
+    print_to_stdout do
+    counter = Counter 0
+    counter.increment ()
+    println counter.value
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/regressions/262_method_call_on_immutable.an:10:5
+//  9 |     counter = Counter 0
+//    |     // error: Cannot take a mut reference to counter, declare it with var to make it mutable
+// 10 |     counter.increment ()
+//    |     ^^^^^^^
+// 11 |     println counter.value
+// 
+// Found 1 error and 0 warnings
+

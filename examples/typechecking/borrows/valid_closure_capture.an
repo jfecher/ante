@@ -1,0 +1,17 @@
+import Std.Vec.Vec
+
+same_scope () =
+    var y = 10
+    var v = Vec.empty ()
+    v.push do y
+
+inner_scope () =
+    if true then
+        var y = 10
+        var v = Vec.empty ()
+        v.push (do y)
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 0

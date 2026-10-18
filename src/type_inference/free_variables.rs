@@ -1,6 +1,6 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     name_resolution::Origin,
@@ -8,17 +8,16 @@ use crate::{
         cst,
         ids::{ExprId, NameId, PathId, PatternId},
     },
+    shared_arc::Shared,
     type_inference::{
         TypeChecker,
-        errors::{Locateable, TypeErrorKind},
+        errors::TypeErrorKind,
         types::{PrimitiveType, Type, TypeBindings},
     },
 };
 
-/// True if `typ` resolves to a pointer-shaped closure env: either the raw `Pointer` primitive or
-/// `Ptr T`. Lambdas filling such a slot capture their env onto the heap and store the pointer
-/// instead of trying to unify the captures' tuple type against the slot's `Ptr T`.
-pub(super) fn is_pointer_env(typ: &Type, bindings: &TypeBindings) -> bool {
+/// True if `typ` is a pointer type
+pub(super) fn is_pointer(typ: &Type, bindings: &TypeBindings) -> bool {
     match typ.follow(bindings) {
         Type::Primitive(PrimitiveType::Pointer) => true,
         Type::Application(constructor, _) => {
@@ -42,7 +41,7 @@ impl TypeChecker<'_, '_> {
         }
         context.find_free_variables(id, self);
 
-        if !is_pointer_env(expected_environment_type, &self.bindings) {
+        if !is_pointer(expected_environment_type, &self.bindings) {
             let env_type = make_env_type_with_names(&context.free_vars, self, is_move);
             self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
         }
@@ -52,24 +51,6 @@ impl TypeChecker<'_, '_> {
                 self.current_extended_context_mut().mark_move_closure(id);
             }
             self.current_extended_context_mut().insert_closure_environment(id, context.free_vars);
-        }
-    }
-
-    pub(super) fn record_move_captures(&mut self, id: ExprId, self_name: Option<NameId>) {
-        let mut context = FreeVars::default();
-        if let Some(name) = self_name {
-            context.defined_in_fn.insert(name);
-        }
-        context.find_free_variables(id, self);
-
-        let location = id.locate(self);
-        for name in &context.free_vars {
-            let typ = self.name_types[name].clone();
-            if !self.type_is_copy(&typ) {
-                // Capturing a binding moves the place it denotes, as a direct use would.
-                let move_path = self.binding_place(*name);
-                self.move_tracker.record_move(move_path, location.clone());
-            }
         }
     }
 
@@ -83,21 +64,24 @@ impl TypeChecker<'_, '_> {
 }
 
 #[derive(Default)]
-struct FreeVars {
+pub(super) struct FreeVars {
     /// The free variables found
-    free_vars: BTreeSet<NameId>,
+    pub(super) free_vars: BTreeSet<NameId>,
+
+    /// The first expression each free variable is used in
+    pub(super) use_sites: FxHashMap<NameId, ExprId>,
 
     // We don't care about different scopes within the function
-    defined_in_fn: FxHashSet<NameId>,
+    pub(super) defined_in_fn: FxHashSet<NameId>,
 }
 
 impl FreeVars {
-    fn find_free_variables(&mut self, expr: ExprId, checker: &TypeChecker) {
+    pub(super) fn find_free_variables(&mut self, expr: ExprId, checker: &TypeChecker) {
         match &checker.current_extended_context()[expr] {
             cst::Expr::Error => (),
             cst::Expr::Literal(_) => (),
             cst::Expr::Extern(_) => (),
-            cst::Expr::Variable(path) => self.find_free_variable(*path, checker),
+            cst::Expr::Variable(path) => self.find_free_variable(*path, expr, checker),
             cst::Expr::Sequence(items) => {
                 for item in items {
                     self.find_free_variables(item.expr, checker);
@@ -137,18 +121,14 @@ impl FreeVars {
             cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             cst::Expr::Handle(handle) => {
-                // The handler name is declared by the `handle` itself, not by any
-                // surrounding scope. Treat it as defined-in-fn so references to it
-                // inside the wrapped body lambda aren't reported as captures of the
-                // surrounding function.
+                // Declared by the `handle` itself so refs inside the body lambda aren't reported as captures.
                 self.defined_in_fn.insert(handle.handler_name);
                 self.find_free_variables(handle.expression, checker);
                 for (pattern, branch) in handle.cases.iter() {
                     for argument in pattern.args.iter() {
                         self.declare_pattern(*argument, checker);
                     }
-                    // The synthetic `resume` binding is introduced for each
-                    // branch; declare it so it isn't counted as a free variable.
+                    // Declare resume so it isn't counted as free.
                     self.defined_in_fn.insert(pattern.resume_name);
                     self.find_free_variables(*branch, checker);
                 }
@@ -205,6 +185,14 @@ impl FreeVars {
                     self.declare_pattern(*field, checker);
                 }
             },
+            cst::Pattern::ConstructorRest(_, args, name) => {
+                for arg in args {
+                    self.declare_pattern(*arg, checker);
+                }
+                if let Some(name) = name {
+                    self.defined_in_fn.insert(*name);
+                }
+            },
             cst::Pattern::TypeAnnotation(pattern, _) => self.declare_pattern(*pattern, checker),
             cst::Pattern::MethodName { type_name: _, item_name } => {
                 self.defined_in_fn.insert(*item_name);
@@ -222,16 +210,21 @@ impl FreeVars {
         }
     }
 
-    fn find_free_variable(&mut self, path: PathId, checker: &TypeChecker) {
-        if let Some(Origin::Local(name)) = checker.path_origin(path) {
-            self.check_name(name);
+    fn find_free_variable(&mut self, path: PathId, expr: ExprId, checker: &TypeChecker) {
+        if let Some(Origin::Local(name)) = checker.path_origin(path)
+            && self.check_name(name)
+        {
+            self.use_sites.entry(name).or_insert(expr);
         }
     }
 
-    fn check_name(&mut self, name: NameId) {
-        if !self.defined_in_fn.contains(&name) {
+    /// Returns true if `name` is free
+    fn check_name(&mut self, name: NameId) -> bool {
+        let free = !self.defined_in_fn.contains(&name);
+        if free {
             self.free_vars.insert(name);
         }
+        free
     }
 }
 
@@ -244,8 +237,8 @@ fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker,
         // - Capture immutable variables by value (FIXME)
         // - Capture everything by move if it is a `move` closure
         if !is_move && checker.mutable_definitions.contains(name) {
-            let lifetime = checker.next_type_variable();
-            Type::Application(Arc::new(Type::MUT), Arc::new(vec![lifetime, typ]))
+            let place = checker.open_place(checker.binding_place(*name));
+            Type::Application(Shared::new(Type::MUT), Shared::new(vec![place, typ]))
         } else {
             typ
         }
@@ -257,5 +250,5 @@ fn make_env_type(free_vars: impl ExactSizeIterator<Item = Type>) -> Type {
     if free_vars.len() == 0 {
         return Type::Primitive(PrimitiveType::NoClosureEnv);
     }
-    Type::Tuple(Arc::new(free_vars.collect()))
+    Type::Tuple(Shared::new(free_vars.collect()))
 }

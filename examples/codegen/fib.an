@@ -2,7 +2,9 @@ fib n =
     if n < 2 then n
     else fib (n - 2) + fib (n - 1)
 
-main () = println (fib 10)
+main () =
+    print_to_stdout do
+    println (fib 10)
 
 // args: --delete-binary --no-color
 // expected stdout: 55

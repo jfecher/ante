@@ -27,7 +27,7 @@ pub mod visible_implicits;
 /// This includes all top-level definitions within this file, as well as any imported ones.
 pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> Arc<VisibleDefinitionsResult> {
     incremental::enter_query();
-    incremental::println(format!("Collecting visible definitions in {:?}", context.0));
+    incremental::println(format_args!("Collecting visible definitions in {:?}", context.0));
 
     let mut visible = AllDefinitions(context.0).get(db).as_ref().clone();
 
@@ -159,7 +159,7 @@ fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsRe
 
 pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> Arc<TypeDefinitions> {
     incremental::enter_query();
-    incremental::println(format!("Collecting visible types in {:?}", context.0));
+    incremental::println(format_args!("Collecting visible types in {:?}", context.0));
 
     let all = AllTypes(context.0).get(db);
 
@@ -204,15 +204,16 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> Arc<TypeDefi
 
 pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     use std::num::NonZeroUsize;
+    let result = if definition.kind.is_effect() { Kind::Effect } else { Kind::Type };
     let n = definition.generics.len();
     if n == 0 {
-        Kind::Type
+        result
     } else if definition.generics.iter().all(|p| p.kind.is_none()) {
         // Common case: all generics default to Kind::Type, no allocation needed.
-        Kind::TypeConstructorSimple(NonZeroUsize::new(n).unwrap())
+        Kind::TypeConstructorSimple { arity: NonZeroUsize::new(n).unwrap(), result: Box::new(result) }
     } else {
         let kinds = definition.generics.iter().map(kind_of_generic_param).collect();
-        Kind::TypeConstructorComplex(kinds)
+        Kind::TypeConstructorComplex { params: kinds, result: Box::new(result) }
     }
 }
 
@@ -221,7 +222,8 @@ fn kind_of_generic_param(param: &crate::parser::cst::GenericParam) -> Kind {
     match param.kind {
         None | Some(KindAnnotation::Type) => Kind::Type,
         Some(KindAnnotation::U32) => Kind::U32,
-        Some(KindAnnotation::Lifetime) => Kind::Lifetime,
+        Some(KindAnnotation::Place) => Kind::Place,
+        Some(KindAnnotation::Effect) => Kind::Effect,
     }
 }
 
@@ -244,7 +246,7 @@ fn insert_unique_name(
 /// Collect all type definitions within a file (unfiltered by export list).
 pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions> {
     incremental::enter_query();
-    incremental::println(format!("Collecting all types in {:?}", context.0));
+    incremental::println(format_args!("Collecting all types in {:?}", context.0));
 
     let result = Parse(context.0).get(db);
     let mut definitions = TypeDefinitions::default();
@@ -253,11 +255,11 @@ pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions>
     for item in result.cst.top_level_items.iter() {
         let item_context = &result.top_level_data[&item.id];
 
-        // AbilityDefinitions are desugared into TypeDefinitions by `GetItem`, so treat them
+        // Trait/effect definitions are desugared into TypeDefinitions by `GetItem`, so treat them
         // as types here without needing the desugar step.
         let type_name = match &item.kind {
             TopLevelItemKind::TypeDefinition(definition) => definition.name,
-            TopLevelItemKind::AbilityDefinition(ability) => ability.name,
+            TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => def.name,
             _ => continue,
         };
 
@@ -268,10 +270,31 @@ pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions>
     Arc::new(definitions)
 }
 
+/// The names listed in a file's `export` clause.
+/// Any qualified names refer to methods or union variants.
+struct ExportSet<'a> {
+    names: HashSet<&'a Name>,
+    /// `(type name, method name)` pairs.
+    qualified: HashSet<(&'a Name, &'a Name)>,
+}
+
 /// Build the set of names listed in this file's `export` clause, or `None` if there's no
 /// clause (in which case the file exports everything).
-fn build_export_set(parse: &ParseResult) -> Option<HashSet<&Name>> {
-    parse.cst.exports.as_ref().map(|exports| exports.iter().map(|(n, _)| n).collect())
+fn build_export_set(parse: &ParseResult) -> Option<ExportSet> {
+    parse.cst.exports.as_ref().map(|exports| {
+        let mut set = ExportSet { names: HashSet::new(), qualified: HashSet::new() };
+        for entry in exports {
+            match &entry.qualifier {
+                Some((qualifier, _)) => {
+                    set.qualified.insert((qualifier, &entry.name));
+                },
+                None => {
+                    set.names.insert(&entry.name);
+                },
+            }
+        }
+        set
+    })
 }
 
 /// Collect exported type definitions, filtered by the file's export list.
@@ -287,7 +310,7 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Arc<TypeDe
         None => types,
         Some(export_set) => {
             let mut filtered = (*types).clone();
-            filtered.retain(|name, _| export_set.contains(name));
+            filtered.retain(|name, _| export_set.names.contains(name));
             Arc::new(filtered)
         },
     };
@@ -299,7 +322,7 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Arc<TypeDe
 /// Collect all definitions within a file (unfiltered by export list).
 pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<VisibleDefinitionsResult> {
     incremental::enter_query();
-    incremental::println(format!("Collecting all definitions in {:?}", context.0));
+    incremental::println(format_args!("Collecting all definitions in {:?}", context.0));
 
     let result = Parse(context.0).get(db);
     let mut declarer = Declarer::new(db);
@@ -324,13 +347,13 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
         // differentiate them.
         match &item.kind {
             TopLevelItemKind::TypeDefinition(type_definition) => {
-                if let TypeDefinitionBody::Enum(variants) = &type_definition.body {
+                if let TypeDefinitionBody::Enum(variants, _) = &type_definition.body {
                     for (name, _) in variants {
                         declare_method(type_definition.name, *name);
                     }
                 }
             },
-            TopLevelItemKind::AbilityDefinition(ability) => {
+            TopLevelItemKind::TraitDefinition(ability) | TopLevelItemKind::EffectDefinition(ability) => {
                 for declaration in &ability.body {
                     declare_method(ability.name, declaration.name);
                 }
@@ -340,7 +363,7 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
 
         // Ability methods are callable as free identifiers without qualifying by the ability name,
         // so also expose them in the regular definitions namespace.
-        if let TopLevelItemKind::AbilityDefinition(ability) = &item.kind {
+        if let TopLevelItemKind::TraitDefinition(ability) | TopLevelItemKind::EffectDefinition(ability) = &item.kind {
             let ctx = &result.top_level_data[&item.id];
             for declaration in &ability.body {
                 declarer.declare_single(declaration.name, item.id, ctx);
@@ -368,14 +391,30 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
         return all;
     };
 
-    let in_exports = |(name, _): &(&Name, &TopLevelName)| export_set.contains(name);
-    let collect_functions = |items: &BTreeMap<Name, TopLevelName>| {
-        items.iter().filter(in_exports).map(|(k, v)| (k.clone(), *v)).collect::<BTreeMap<_, _>>()
-    };
+    let definitions = all
+        .definitions
+        .iter()
+        .filter(|(name, _)| export_set.names.contains(name))
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
 
-    let definitions = collect_functions(&all.definitions);
+    let qualified: HashSet<(TopLevelId, &Name)> = export_set
+        .qualified
+        .iter()
+        .filter_map(|(type_name, method)| {
+            let type_id = all.definitions.get(*type_name)?;
+            Some((type_id.top_level_item, *method))
+        })
+        .collect();
 
-    let methods = all.methods.iter().map(|(type_id, methods)| (*type_id, collect_functions(methods)));
+    let methods = all.methods.iter().map(|(type_id, methods)| {
+        let filtered = methods
+            .iter()
+            .filter(|(name, _)| qualified.contains(&(*type_id, *name)))
+            .map(|(k, v)| (k.clone(), *v))
+            .collect::<BTreeMap<_, _>>();
+        (*type_id, filtered)
+    });
     let methods = methods.filter(|(_, methods)| !methods.is_empty()).collect();
 
     incremental::exit_query();
@@ -386,6 +425,7 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
 /// here, issuing `ExportedItemNotFound` diagnostics if not.
 pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
     incremental::enter_query();
+    incremental::println(format_args!("Validating exports of {:?}", context.0));
     let parse = Parse(context.0).get(db);
 
     if let Some(exports) = &parse.cst.exports {
@@ -394,21 +434,58 @@ pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
         let import_names: HashSet<&Name> =
             parse.cst.imports.iter().flat_map(|i| i.items.iter().map(|(n, _)| n)).collect();
 
-        for (name, location) in exports {
-            let exists = defs.definitions.contains_key(name)
-                || types.contains_key(name)
-                || defs.methods.values().any(|m| m.contains_key(name))
-                || import_names.contains(name);
+        for entry in exports {
+            match &entry.qualifier {
+                Some((qualifier, qualifier_location)) => match defs.definitions.get(qualifier) {
+                    Some(type_id) => {
+                        let has_method =
+                            defs.methods.get(&type_id.top_level_item).is_some_and(|m| m.contains_key(&entry.name));
+                        if !has_method {
+                            let name = entry.name.clone();
+                            let location = entry.location.clone();
+                            db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
+                        }
+                    },
+                    None => {
+                        let name = qualifier.clone();
+                        let location = qualifier_location.clone();
+                        db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
+                    },
+                },
+                None => {
+                    let exists = defs.definitions.contains_key(&entry.name)
+                        || types.contains_key(&entry.name)
+                        || import_names.contains(&entry.name);
+                    if exists {
+                        continue;
+                    }
 
-            if !exists {
-                let name = name.clone();
-                let location = location.clone();
-                db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
+                    let owner = defs.methods.iter().find(|(_, m)| m.contains_key(&entry.name));
+                    let name = entry.name.clone();
+                    let location = entry.location.clone();
+                    match owner.and_then(|(type_id, _)| type_name_of(&parse, *type_id)) {
+                        Some(type_name) => {
+                            db.accumulate(Diagnostic::MethodExportRequiresType { name, type_name, location });
+                        },
+                        None => db.accumulate(Diagnostic::ExportedItemNotFound { name, location }),
+                    }
+                },
             }
         }
     }
 
     incremental::exit_query();
+}
+
+/// The declared name of a type, trait, or effect item.
+fn type_name_of(parse: &ParseResult, type_id: TopLevelId) -> Option<Name> {
+    let item = parse.cst.top_level_items.iter().find(|item| item.id == type_id)?;
+    let name_id = match &item.kind {
+        TopLevelItemKind::TypeDefinition(definition) => definition.name,
+        TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => def.name,
+        _ => return None,
+    };
+    Some(parse.top_level_data[&type_id].names[name_id].clone())
 }
 
 struct Declarer<'local, 'db> {
@@ -422,6 +499,8 @@ impl<'local, 'db> Declarer<'local, 'db> {
         Self { definitions: Default::default(), methods: Default::default(), db }
     }
 
+    /// This is only called in top-level patterns since that is all definition
+    /// collection is concerned with.
     fn declare_names_in_pattern(&mut self, pattern: PatternId, id: TopLevelId, context: &TopLevelContext) {
         match &context.patterns[pattern] {
             Pattern::Error => (),
@@ -437,6 +516,14 @@ impl<'local, 'db> Declarer<'local, 'db> {
                     self.declare_names_in_pattern(*arg, id, context);
                 }
             },
+            Pattern::ConstructorRest(_, args, name) => {
+                for arg in args {
+                    self.declare_names_in_pattern(*arg, id, context);
+                }
+                if let Some(name) = name {
+                    self.declare_single(*name, id, context);
+                }
+            },
             Pattern::TypeAnnotation(pattern, _) => {
                 self.declare_names_in_pattern(*pattern, id, context);
             },
@@ -446,7 +533,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
             // `declare_names_in_pattern` is only for top-level patterns, which must be irrefutable
             Pattern::Or(_) => {
                 let location = context.pattern_locations[pattern].clone();
-                self.db.accumulate(Diagnostic::InvalidPattern { location });
+                self.db.accumulate(Diagnostic::OrInIrrefutablePattern { location });
             },
             Pattern::Alias(name, pattern) => {
                 self.declare_single(*name, id, context);
@@ -488,7 +575,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
 /// Collects the file names of all imports within this file.
 pub fn get_imports_impl(context: &GetImports, db: &DbHandle) -> Vec<(Arc<PathBuf>, Location)> {
     incremental::enter_query();
-    incremental::println(format!("Collecting imports of {:?}", context.0));
+    incremental::println(format_args!("Collecting imports of {:?}", context.0));
 
     // Ignore parse errors for now, we can report them later
     let result = Parse(context.0).get(db);

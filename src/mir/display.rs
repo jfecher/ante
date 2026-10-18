@@ -27,8 +27,7 @@ impl Display for mir::Mir {
 }
 
 impl Definition {
-    /// Create a wrapper that can display this [Definition]. The optional [mir::Mir], if provided, allows
-    /// definition names to be printed instead of just their ids.
+    /// If [mir::Mir] is provided, definition names are printed instead of just their ids.
     pub(crate) fn display<'a>(&'a self, mir: Option<&'a mir::Mir>) -> DefinitionDisplay<'a> {
         DefinitionDisplay(self, mir)
     }
@@ -43,8 +42,7 @@ impl Display for DefinitionDisplay<'_> {
 }
 
 impl InstructionId {
-    /// Create a wrapper that can display this instruction. The optional [mir::Mir], if provided, allows
-    /// definition names to be printed instead of just their ids.
+    /// If [mir::Mir] is provided, definition names are printed instead of just their ids.
     pub(crate) fn display<'a>(self, definition: &'a Definition, mir: Option<&'a mir::Mir>) -> InstructionDisplay<'a> {
         InstructionDisplay(self, definition, mir)
     }
@@ -125,6 +123,19 @@ impl Display for Type {
             },
             Type::Function(function_type) => write!(f, "{function_type}"),
             Type::Generic(id) => write!(f, "'{}", id.0),
+            Type::Evidence(entries) => {
+                write!(f, "evidence[")?;
+                for (i, entry) in entries.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    match entry {
+                        mir::EvidenceEntry::Capability { key, capability } => write!(f, "{key}: {capability}")?,
+                        mir::EvidenceEntry::Rest(generic) => write!(f, "'{}", generic.0)?,
+                    }
+                }
+                write!(f, "]")
+            },
             Type::Union(variants) => {
                 write!(f, "{{")?;
                 for (i, variant) in variants.iter().enumerate() {
@@ -324,6 +335,19 @@ fn fmt_instruction(
             }
         },
         mir::Instruction::Capability => write!(f, "handler_cap")?,
+        mir::Instruction::LookupEvidence { evidence, key } => write!(f, "lookup {} {key}", v(evidence))?,
+        mir::Instruction::MakeEvidence { capabilities, rest } => {
+            write!(f, "evidence(")?;
+            let mut separator = "";
+            for (key, value) in capabilities {
+                write!(f, "{separator}{key}: {}", v(value))?;
+                separator = ", ";
+            }
+            if let Some(rest) = rest {
+                write!(f, "{separator}..{}", v(rest))?;
+            }
+            write!(f, ")")?;
+        },
         mir::Instruction::PackClosure { function, environment } => {
             write!(f, "pack-closure {}, {}", function, environment)?;
         },
@@ -366,7 +390,7 @@ fn fmt_instruction(
         mir::Instruction::EqInt(a, b) => write!(f, "eq_int {}, {}", v(a), v(b))?,
         mir::Instruction::EqFloat(a, b) => write!(f, "eq_float {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseAnd(a, b) => write!(f, "bitwise_and {}, {}", v(a), v(b))?,
-        mir::Instruction::BitwiseOr(a, b) => write!(f, "bitwise_or{}, {}", v(a), v(b))?,
+        mir::Instruction::BitwiseOr(a, b) => write!(f, "bitwise_or {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseXor(a, b) => write!(f, "bitwise_xor {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseNot(x) => write!(f, "bitwise_not {}", v(x))?,
         mir::Instruction::SignExtend(x) => write!(f, "sign_extend {}", v(x))?,
@@ -382,12 +406,18 @@ fn fmt_instruction(
         mir::Instruction::SizeOf(x) => write!(f, "size_of {x}")?,
         mir::Instruction::ArrayLen(x) => write!(f, "array_len {x}")?,
         mir::Instruction::StackAllocUninit(x) => write!(f, "stack_alloc_uninit {x}")?,
+        mir::Instruction::StackAllocBytes(size) => write!(f, "stack_alloc_bytes {}", v(size))?,
+        mir::Instruction::GlobalAddress(id) => write!(f, "global_address {id}")?,
+        mir::Instruction::MemCopy { destination, source, size } => {
+            write!(f, "mem_copy {}, {}, {}", v(destination), v(source), v(size))?
+        },
+        mir::Instruction::PointerOffset { pointer, offset } => {
+            write!(f, "pointer_offset {}, {}", v(pointer), v(offset))?
+        },
         mir::Instruction::AllocShared(value) => write!(f, "alloc_shared {}", v(value))?,
         mir::Instruction::Extern(name) => write!(f, "extern \"{name}\"")?,
         mir::Instruction::AtomicLoad { pointer, .. } => write!(f, "atomic_load {}", v(pointer))?,
-        mir::Instruction::AtomicStore { pointer, value, .. } => {
-            write!(f, "atomic_store {}, {}", v(pointer), v(value))?
-        },
+        mir::Instruction::AtomicStore { pointer, value, .. } => write!(f, "atomic_store {}, {}", v(pointer), v(value))?,
         mir::Instruction::AtomicRmw { op, pointer, value, .. } => {
             write!(f, "atomic_rmw {op:?} {}, {}", v(pointer), v(value))?
         },
@@ -442,5 +472,15 @@ impl Display for Value {
             Value::Parameter(block_id, i) => write!(f, "b{}_{}", block_id.0, i),
             Value::Definition(id) => write!(f, "{id}"),
         }
+    }
+}
+
+impl Display for mir::EffectKey {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "effect{}", self.effect)?;
+        for arg in &self.args {
+            write!(f, " {arg}")?;
+        }
+        Ok(())
     }
 }

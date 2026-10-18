@@ -1,0 +1,20 @@
+first_of_explicit (array: ref 'a Array n t): ref 'a t =
+    array_get_unchecked array 0
+
+pick (other: ref I32): ref I32 =
+    other
+
+main () =
+    a = 1
+    b = 2
+    z = if true then ref a else ref b
+    arr = [1, 2, 3]
+    w = first_of_explicit (ref arr)
+    v = pick (ref a)
+    _ = z
+    _ = w
+    _ = v
+    ()
+
+// args: --check --no-color
+// expected exit status: 0

@@ -8,38 +8,20 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use inc_complete::DbGet;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 
 mod select_largest_variant;
 
 use crate::{
-    incremental::{GetCrateGraph, GetItem, GetItemRaw, Parse, TargetPointerSize, TypeCheck},
+    cli::GenericsStrategy,
+    incremental::{GetCrateGraph, GetItem, GetItemRaw, GetTypeBody, Parse, TargetPointerSize, TypeCheck},
     mir::{
-        self, Definition, DefinitionId, FunctionType, GenericBindings, Instruction, Mir, Type, Value,
-        builder::build_initial_mir_with_shared_map, next_definition_id,
+        self, Block, BlockId, Definition, DefinitionId, EffectKey, FunctionType, GenericBindings, Instruction,
+        InstructionId, Mir, Type, Value, build_effect_lowered_mir, next_definition_id,
     },
-    parser::ids::TopLevelId,
+    vecmap::VecMap,
 };
-
-/// Collect all items in the program.
-/// This is discouraged since it limits parallelism but required for certain passes like
-/// monomorphization which need access to the entire program.
-fn collect_all_items<Db>(compiler: &Db) -> Vec<TopLevelId>
-where
-    Db: DbGet<GetCrateGraph> + DbGet<Parse>,
-{
-    let mut items = Vec::new();
-
-    for crate_ in GetCrateGraph.get(compiler).values() {
-        for file in crate_.source_files.values() {
-            let parse = Parse(*file).get(compiler);
-            for item in parse.cst.top_level_items.iter() {
-                items.push(item.id);
-            }
-        }
-    }
-    items
-}
 
 /// Monomorphize the whole program, returning a MIR function if the item refers to a function.
 /// If the item does not refer to a function (e.g. it is a type definition), `None` is returned.
@@ -52,22 +34,13 @@ where
     Db: DbGet<TypeCheck>
         + DbGet<GetItem>
         + DbGet<GetItemRaw>
+        + DbGet<GetTypeBody>
         + DbGet<GetCrateGraph>
         + DbGet<Parse>
         + DbGet<TargetPointerSize>
         + Sync,
 {
-    let initial_mir = collect_all_items(compiler)
-        //.into_par_iter()
-        .into_iter()
-        .flat_map(|item| build_initial_mir_with_shared_map(compiler, item))
-        .fold(Mir::default(), Mir::extend)
-        //.reduce(Mir::default, Mir::extend)
-        .remove_internal_externs()
-        .remove_unreachable_functions()
-        .optimize_tail_resume()
-        .optimize_abort_handlers()
-        .lower_effects();
+    let initial_mir = build_effect_lowered_mir(compiler, GenericsStrategy::Mono);
 
     let shared = SharedDefinitions::default();
 
@@ -84,16 +57,14 @@ where
         })
         .collect::<Vec<_>>();
 
-    // TODO: More concrete perf testing, but this is fine for smaller programs.
     let mir = monomorphic_definitions
-        //.into_par_iter()
-        .into_iter()
-        .fold(Mir::default(), |acc, definition| {
-            let monomorphized = monomorphize_non_generic_definition(definition, &shared, &initial_mir)
-                .select_largest_variants(compiler);
-            acc.extend(monomorphized)
+        .into_par_iter()
+        .fold(Mir::default, |acc, definition| {
+            acc.extend(monomorphize_non_generic_definition(definition, &shared, &initial_mir))
         })
-        //.reduce(Mir::default, Mir::extend)
+        .reduce(Mir::default, Mir::extend)
+        .lower_evidence()
+        .select_largest_variants(compiler)
         .lower_closures();
 
     #[cfg(debug_assertions)]
@@ -189,7 +160,7 @@ impl<'local> FunctionContext<'local> {
 
         // We can skip the blocks and go right to the instructions themselves. There shouldn't be
         // any that aren't used in a block.
-        for instruction in definition.instructions.values_mut() {
+        for (instruction_id, instruction) in definition.instructions.iter_mut() {
             if let Instruction::Instantiate(id, bindings) = instruction {
                 assert!(!bindings.is_empty());
                 if !self.generic_mapping.is_empty() {
@@ -202,18 +173,69 @@ impl<'local> FunctionContext<'local> {
                     new_id
                 });
 
+                // This instruction's result type was predicted structurally at its call site,
+                // before the callee's body existed -- it has no notion of the evidence-adapter
+                // wrapping a call inside the callee's own body may have introduced into a
+                // return-position closure's environment (see `reconcile_return_type_environment`
+                // in the MIR builder). Re-derive it from the callee's own declared type instead,
+                // mirroring what pre-monomorphization `Instantiate` validation already does
+                // (`validation.rs`), so a definition whose declared return type was corrected to
+                // match its actual body doesn't drift out of sync with its own call sites.
+                if let Some(target) = self.initial_mir.get(*id) {
+                    let target_type = target.typ.substitute(&*bindings);
+                    definition.instruction_result_types[instruction_id] = target_type;
+                }
+
                 *instruction = Instruction::Id(Value::Definition(new_id));
-            } else if !self.generic_mapping.is_empty() {
-                // When a generic function directly calls another definition (e.g. a recursive
-                // self-call) without going through `Instantiate`, the `Value::Definition` ID must
-                // still be remapped to the monomorphized version.  We only do this when the
-                // mapping already exists in `self.definitions`; if it is absent the reference is
-                // already monomorphic and needs no update.
-                self.remap_definition_values_in_instruction(instruction);
+            } else {
+                if !self.generic_mapping.is_empty() {
+                    // When a generic function directly calls another definition (e.g. a recursive
+                    // self-call) without going through `Instantiate`, the `Value::Definition` ID must
+                    // still be remapped to the monomorphized version.  We only do this when the
+                    // mapping already exists in `self.definitions`; if it is absent the reference is
+                    // already monomorphic and needs no update.
+                    self.remap_definition_values_in_instruction(instruction);
+                }
+
+                // A Call/CallClosure's result type is exactly its callee's function type's return
+                // type. Like an `Instantiate` reference (above), the type recorded here was
+                // predicted structurally at build time and can go stale relative to the callee's
+                // actual (possibly widened, see `reconcile_return_type_environment`) return type.
+                // Re-derive it from the callee value's current type instead of trusting the stale
+                // prediction. This relies on callees being visited before their call sites, which
+                // holds here since instructions are numbered in the order they were originally
+                // built (def-before-use).
+                let function = match &*instruction {
+                    Instruction::Call { function, .. } => Some(function),
+                    Instruction::CallClosure { closure, .. } => Some(closure),
+                    _ => None,
+                };
+                if let Some(function) = function
+                    && let Some(Type::Function(function_type)) =
+                        self.value_type_in(&definition.instruction_result_types, &definition.blocks, function)
+                {
+                    definition.instruction_result_types[instruction_id] = function_type.return_type.clone();
+                }
             }
         }
 
         self.finished_definitions.insert(definition.id, definition);
+    }
+
+    /// Looks up the type of `value` as currently known within `definition`'s own instructions and
+    /// block parameters, or from `self.initial_mir` for a direct top-level reference. Used to
+    /// re-derive a `Call`/`CallClosure` instruction's result type from its (possibly just-
+    /// corrected) callee, rather than trusting a structurally-predicted type recorded before the
+    /// callee's body existed.
+    fn value_type_in(
+        &self, instruction_result_types: &VecMap<InstructionId, Type>, blocks: &VecMap<BlockId, Block>, value: &Value,
+    ) -> Option<Type> {
+        match value {
+            Value::InstructionResult(id) => instruction_result_types.get(*id).cloned(),
+            Value::Parameter(block, index) => blocks.get(*block)?.parameter_types.get(*index as usize).cloned(),
+            Value::Definition(id) => self.initial_mir.get(*id).map(|d| d.typ.clone()),
+            _ => None,
+        }
     }
 
     fn update_value_types(&self, definition: &mut Definition) {
@@ -256,113 +278,19 @@ impl<'local> FunctionContext<'local> {
     /// This handles direct references to generic functions (e.g. recursive self-calls or
     /// mutual recursion partners in the same SCC) that bypass the `Instantiate` instruction path.
     fn remap_definition_values_in_instruction(&mut self, instruction: &mut Instruction) {
+        instruction.for_each_value_mut(|value| self.remap_value(value));
         match instruction {
-            Instruction::Call { function, arguments } => {
-                self.remap_value(function);
-                for arg in arguments.iter_mut() {
-                    self.remap_value(arg);
-                }
+            Instruction::LookupEvidence { key, .. } => self.specialize_key(key),
+            Instruction::MakeEvidence { capabilities, .. } => {
+                capabilities.iter_mut().for_each(|(key, _)| self.specialize_key(key))
             },
-            Instruction::CallClosure { closure: function, arguments } => {
-                self.remap_value(function);
-                for arg in arguments.iter_mut() {
-                    self.remap_value(arg);
-                }
-            },
-            Instruction::Perform { effect_op: _, arguments } => {
-                for arg in arguments.iter_mut() {
-                    self.remap_value(arg);
-                }
-            },
-            Instruction::Handle { body, cases } => {
-                self.remap_value(body);
-                for case in cases.iter_mut() {
-                    self.remap_value(&mut case.handler);
-                }
-            },
-            Instruction::PackClosure { function, environment } => {
-                self.remap_value(function);
-                self.remap_value(environment);
-            },
-            Instruction::IndexTuple { tuple, .. } => self.remap_value(tuple),
-            Instruction::MakeTuple(elements) | Instruction::MakeArray(elements) => {
-                for e in elements.iter_mut() {
-                    self.remap_value(e);
-                }
-            },
-            Instruction::StackAlloc(v)
-            | Instruction::AllocShared(v)
-            | Instruction::Transmute(v)
-            | Instruction::Id(v) => self.remap_value(v),
-            Instruction::StackAllocUninit(typ) => {
+            Instruction::StackAllocUninit(typ) | Instruction::GetFieldPtr { struct_type: typ, .. } => {
                 if !self.generic_mapping.is_empty() {
                     self.specialize_type(typ);
                 }
             },
-            Instruction::Store { pointer, value } => {
-                self.remap_value(pointer);
-                self.remap_value(value);
-            },
-            Instruction::AddInt(a, b)
-            | Instruction::OverflowingAddInt(a, b)
-            | Instruction::AddFloat(a, b)
-            | Instruction::SubInt(a, b)
-            | Instruction::OverflowingSubInt(a, b)
-            | Instruction::SubFloat(a, b)
-            | Instruction::MulInt(a, b)
-            | Instruction::OverflowingMulInt(a, b)
-            | Instruction::MulFloat(a, b)
-            | Instruction::DivSigned(a, b)
-            | Instruction::DivUnsigned(a, b)
-            | Instruction::DivFloat(a, b)
-            | Instruction::ModSigned(a, b)
-            | Instruction::ModUnsigned(a, b)
-            | Instruction::ModFloat(a, b)
-            | Instruction::LessSigned(a, b)
-            | Instruction::LessUnsigned(a, b)
-            | Instruction::LessFloat(a, b)
-            | Instruction::EqInt(a, b)
-            | Instruction::EqFloat(a, b)
-            | Instruction::BitwiseAnd(a, b)
-            | Instruction::BitwiseOr(a, b)
-            | Instruction::BitwiseXor(a, b) => {
-                self.remap_value(a);
-                self.remap_value(b);
-            },
-            Instruction::BitwiseNot(v)
-            | Instruction::SignExtend(v)
-            | Instruction::ZeroExtend(v)
-            | Instruction::SignedToFloat(v)
-            | Instruction::UnsignedToFloat(v)
-            | Instruction::FloatToSigned(v)
-            | Instruction::FloatToUnsigned(v)
-            | Instruction::FloatPromote(v)
-            | Instruction::FloatDemote(v)
-            | Instruction::Truncate(v)
-            | Instruction::Deref(v) => self.remap_value(v),
             Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => self.specialize_type(typ),
-            Instruction::MakeBytes(_) | Instruction::Instantiate(..) | Instruction::Extern(_) => {},
-            Instruction::Capability => {},
-            Instruction::GetFieldPtr { struct_ptr, struct_type, .. } => {
-                self.remap_value(struct_ptr);
-                if !self.generic_mapping.is_empty() {
-                    self.specialize_type(struct_type);
-                }
-            },
-            Instruction::AtomicLoad { pointer, .. } => self.remap_value(pointer),
-            Instruction::AtomicStore { pointer, value, .. } => {
-                self.remap_value(pointer);
-                self.remap_value(value);
-            },
-            Instruction::AtomicRmw { pointer, value, .. } => {
-                self.remap_value(pointer);
-                self.remap_value(value);
-            },
-            Instruction::AtomicCmpxchg { pointer, expected, desired, .. } => {
-                self.remap_value(pointer);
-                self.remap_value(expected);
-                self.remap_value(desired);
-            },
+            _ => (),
         }
     }
 
@@ -381,6 +309,12 @@ impl<'local> FunctionContext<'local> {
         }
     }
 
+    fn specialize_key(&self, key: &mut EffectKey) {
+        if !self.generic_mapping.is_empty() {
+            key.args.iter_mut().for_each(|arg| self.specialize_type(arg));
+        }
+    }
+
     /// Returns `Some(new_type)` when a generic was specialized somewhere within `typ`, and `None`
     /// when the subtree contains no generic so that the caller can reuse the original `Arc`s.
     fn specialize_type_opt(&self, typ: &Type) -> Option<Type> {
@@ -394,6 +328,7 @@ impl<'local> FunctionContext<'local> {
             },
             Type::Tuple(fields) => self.specialize_each(fields).map(|v| Type::Tuple(Arc::new(v))),
             Type::Union(variants) => self.specialize_each(variants).map(|v| Type::Union(Arc::new(v))),
+            Type::Evidence(entries) => Type::substitute_evidence(entries, |typ| self.specialize_type_opt(typ)),
             Type::Function(function) => {
                 let parameters = self.specialize_each(&function.parameters);
                 let environment = self.specialize_type_opt(&function.environment);

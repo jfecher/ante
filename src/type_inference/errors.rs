@@ -32,8 +32,10 @@ pub enum TypeErrorKind {
     /// The return type of a function call (actual) does not match the
     /// type expected by the surrounding context (expected)
     CallReturn,
-    /// `main` function defined with a type other than `fn Unit -> Unit pure`
+    /// `main` defined with a type other than `fn Unit -> Unit`
     MainFn,
+    /// Effects other than those in `IO` were used in `main`
+    MainEffects,
     /// A name is bound (actual) with a type conflicting with a previous binding (expected)
     NameAlreadyBound,
     /// A pattern's type (actual) does not match the type of the value being matched (expected)
@@ -62,6 +64,8 @@ pub enum TypeErrorKind {
     LoopRange,
     /// An array literal element (actual) does not match the array's element type (expected)
     ArrayElement,
+    /// A call performs an effect (actual) not permitted by the enclosing function's effects clause (expected)
+    Effects,
 }
 
 impl TypeErrorKind {
@@ -108,6 +112,9 @@ impl TypeErrorKind {
             TypeErrorKind::MainFn => {
                 format!("{} here has type {actual} but it should always have type {expected}", "main".purple())
             },
+            TypeErrorKind::MainEffects => {
+                format!("{} here uses {actual} but it should only use {expected}", "main".purple())
+            },
             TypeErrorKind::NameAlreadyBound => {
                 format!("This is bound to type {actual} here but was previously bound to type {expected}")
             },
@@ -131,6 +138,15 @@ impl TypeErrorKind {
             },
             TypeErrorKind::EffectPattern => {
                 format!("This handler pattern has type {expected} but the effect operation has type {actual}")
+            },
+            TypeErrorKind::Effects => {
+                if expected_type.is_empty() {
+                    format!("This can perform {actual} but no effects are allowed here")
+                } else if actual_type.is_empty() {
+                    format!("This performs no effects here, but {expected} is required")
+                } else {
+                    format!("This can perform {actual} but only {expected} is allowed here")
+                }
             },
             TypeErrorKind::CompoundOperator => {
                 format!("This operator has type {actual} but its operands require it to have type {expected}")

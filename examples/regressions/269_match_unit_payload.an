@@ -1,0 +1,10 @@
+main () =
+    print_to_stdout do
+    result: Result Unit String = Ok ()
+
+    match result
+    | Ok () -> println "ok"
+    | Error error -> println error
+
+// args: --delete-binary --no-color
+// expected stdout: ok

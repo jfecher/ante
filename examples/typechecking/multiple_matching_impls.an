@@ -1,7 +1,7 @@
 
 type Thing = nothing: Unit
 
-ability Foo a =
+trait Foo a =
     foo: fn a -> Unit
 
 main () =

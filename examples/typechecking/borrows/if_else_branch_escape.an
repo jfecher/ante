@@ -1,0 +1,32 @@
+main () =
+    r =
+        if true then
+            x = 1
+            ref x
+        else
+            y = 2
+            ref y
+    _ = r
+    ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/if_else_branch_escape.an:5:13
+// 3 |         if true then
+// 4 |             x = 1	// note: x is only valid until the end of this scope
+//   |             -
+// 5 |             ref x	// error: This reference to x outlives its scope
+//   |             ^^^^^
+// 6 |         else
+// 
+// examples/typechecking/borrows/if_else_branch_escape.an:8:13
+//  6 |         else
+//  7 |             y = 2	// note: y is only valid until the end of this scope
+//    |             -
+//  8 |             ref y	// error: This reference to y outlives its scope
+//    |             ^^^^^
+//  9 |     _ = r
+// 
+// Found 2 errors and 0 warnings
+

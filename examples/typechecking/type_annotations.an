@@ -23,19 +23,19 @@ main () =
 // import Std.C.puts, exit
 // import Std.C
 // 
-// (foo: fn I32 String -> Char) ((_: I32)) ((_: String)) : Char = 'a'
+// (foo: fn I32 String -> Char is pure) (_: I32) (_: String): Char is pure = 'a'
 // 
-// (bar: fn a a -> I32) =
+// (bar: fn a a -> I32 is pure) =
 //     fn (_: a) (b: a) -> (b: a)
 // 
-// (baz: fn Usz -> Ptr a) ((a: Usz)) : Ptr a =
-//     (transmute: fn Usz -> Ptr a) (a: Usz)
+// (baz: fn Usz -> Ptr a is pure) (a: Usz): Ptr a is pure =
+//     (transmute: fn Usz -> Ptr a is pure) (a: Usz)
 // 
-// (main: fn Unit -> Unit) () =
-//     (exit2: fn I32 -> Unit) = (exit: fn I32 -> Unit)
-//     (puts2: fn String -> I32) = (puts: fn String -> I32)
-//     (exit2: fn I32 -> Unit) "test"
-//     (puts2: fn String -> I32)
+// (main: fn Unit -> Unit is pure) () =
+//     (exit2: fn I32 -> Never is pure) = (exit: fn I32 -> Never is pure)
+//     (puts2: fn String -> I32 can Fs) = (puts: fn String -> I32 can Fs)
+//     (exit2: fn I32 -> Never is pure) "test"
+//     (puts2: fn String -> I32 can Fs)
 //     ()
 
 // expected stderr:
@@ -51,3 +51,4 @@ main () =
 // 17 |     puts2
 // 
 // Found 2 errors and 0 warnings
+

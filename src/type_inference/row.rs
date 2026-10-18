@@ -1,0 +1,283 @@
+//! Row polymorphism helpers shared by effect rows and places rows: sets of entries with an
+//! open tail, compared by subtyping or unification.
+use crate::shared_arc::Shared;
+
+use crate::type_inference::{
+    TypeChecker, Variance,
+    types::{Type, TypeBindings},
+};
+
+pub type Row<T> = Option<Shared<Vec<T>>>;
+
+/// Whether an effect row being compared sits in a covariant or invariant position
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RowMode {
+    /// A position where the mir builder can adapt a wider effect set so subtyping is possible
+    Coercible,
+    /// Both rows must unify exactly
+    Exact,
+}
+
+/// Which kind of row a list of entries belongs to
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RowKind {
+    Effects,
+    Places,
+}
+
+impl RowKind {
+    /// The sort-grouping key for an already-followed leaf type, if concrete (else `None`)
+    fn head(self, typ: &Type) -> Option<Type> {
+        match self {
+            RowKind::Effects => {
+                let no_bindings = TypeBindings::default();
+                typ.effect_head(&no_bindings, &no_bindings).map(Type::UserDefined)
+            },
+            RowKind::Places => {
+                if let Type::Place(_) = typ {
+                    Some(typ.clone())
+                } else {
+                    None
+                }
+            },
+        }
+    }
+
+    /// If `typ` is this kind's row type, return its raw entries, `Some(None)` is a closed row
+    fn as_row(self, typ: &Type) -> Option<Row<Type>> {
+        match (self, typ) {
+            (RowKind::Effects, Type::Effects(row)) | (RowKind::Places, Type::Places(row)) => Some(row.clone()),
+            _ => None,
+        }
+    }
+
+    /// Build a row type from an already-canonical (flattened/followed/sorted/deduped) list
+    pub(super) fn row_from_canonical(self, list: Vec<Type>) -> Type {
+        let row = (!list.is_empty()).then(|| Shared::new(list));
+        match self {
+            RowKind::Effects => Type::Effects(row),
+            RowKind::Places => Type::Places(row),
+        }
+    }
+}
+
+/// The result of matching one row's concrete entries against another's (effects or places).
+pub(super) struct RowMatch {
+    pub(super) a_open: Vec<Type>,
+    pub(super) b_open: Vec<Type>,
+    /// `a`'s concrete entries with no match in `b`
+    pub(super) a_leftover: Vec<Type>,
+    /// `b`'s concrete entries with no match in `a`
+    pub(super) b_leftover: Vec<Type>,
+}
+
+/// True if this entry is an unbound type variable acting as the row's open tail.
+/// Entries must already be zonked.
+pub(super) fn is_open(typ: &Type) -> bool {
+    matches!(typ, Type::Variable(_))
+}
+
+/// Remove any open tails both rows share
+fn cancel_shared_open(mut a_open: Vec<Type>, b_open: Vec<Type>) -> (Vec<Type>, Vec<Type>) {
+    let b_open = b_open
+        .into_iter()
+        .filter(|b| match a_open.iter().position(|a| a == b) {
+            Some(i) => {
+                a_open.remove(i);
+                false
+            },
+            None => true,
+        })
+        .collect();
+    (a_open, b_open)
+}
+
+/// Flatten every entry reachable from `entries` into `found`
+pub(super) fn flatten_row_into(
+    kind: RowKind, entries: &[Type], found: &mut Vec<Type>, bindings: &TypeBindings, more_bindings: &TypeBindings,
+) {
+    for entry in entries {
+        let followed = entry.follow_two(bindings, more_bindings);
+        // Push the segments into whatever the base is bound to
+        if let Type::PlaceProjection(base, segments) = &followed {
+            match Type::project_place(base, segments, bindings, more_bindings) {
+                projection @ Type::PlaceProjection(..) => found.push(projection),
+                projected => flatten_row_into(kind, &[projected], found, bindings, more_bindings),
+            }
+            continue;
+        }
+        match kind.as_row(&followed) {
+            Some(Some(row)) => flatten_row_into(kind, &row, found, bindings, more_bindings),
+            Some(None) => (),
+            None => found.push(followed),
+        }
+    }
+}
+
+/// Zonk each entry in place
+pub(super) fn follow_row(entries: &mut [Type], bindings: &TypeBindings, more_bindings: &TypeBindings) {
+    for entry in entries.iter_mut() {
+        if let Some(typ) = entry.follow_all_opt(bindings, more_bindings) {
+            *entry = typ;
+        }
+    }
+}
+
+/// Sort and deduplicate the given row. Entries must already be zonked.
+pub(super) fn sort_and_dedup_row(kind: RowKind, entries: &mut Vec<Type>) {
+    let sort_key = |entry: &Type| {
+        let head = kind.head(entry);
+        (is_open(entry), head.is_none(), head)
+    };
+    entries.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)).then_with(|| a.cmp(b)));
+    entries.dedup();
+}
+
+/// Flatten, follow, sort, and deduplicate `entries` (dedup is by exact equality, not unification)
+pub(super) fn canonicalize_row(
+    kind: RowKind, entries: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
+) -> Vec<Type> {
+    let mut list = Vec::with_capacity(entries.len());
+    flatten_row_into(kind, entries, &mut list, bindings, more_bindings);
+    follow_row(&mut list, bindings, more_bindings);
+    sort_and_dedup_row(kind, &mut list);
+    list
+}
+
+/// Construct a canonicalized row by flattening, following & deduplicating entries.
+pub(super) fn construct_row(
+    kind: RowKind, list: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
+) -> Type {
+    kind.row_from_canonical(canonicalize_row(kind, list, bindings, more_bindings))
+}
+
+impl<'local, 'inner> TypeChecker<'local, 'inner> {
+    /// Partition `a_list`/`b_list` into open vs. concrete entries, then pair up
+    /// concrete entries between the two sides using `try_match`. Entries must already
+    /// be flattened, zonked, and deduplicated.
+    pub(super) fn match_row_entries(
+        a_list: Vec<Type>, b_list: Vec<Type>, mut try_match: impl FnMut(&Type, &Type) -> bool,
+    ) -> RowMatch {
+        let (a_open, a_concrete): (Vec<Type>, Vec<Type>) = a_list.into_iter().partition(is_open);
+        let (b_open, b_concrete): (Vec<Type>, Vec<Type>) = b_list.into_iter().partition(is_open);
+
+        let mut b_matched = vec![false; b_concrete.len()];
+        let mut a_leftover = Vec::new();
+        for a_item in a_concrete {
+            let matched =
+                b_concrete.iter().enumerate().find(|(i, b_item)| !b_matched[*i] && try_match(&a_item, b_item));
+            match matched {
+                Some((i, _)) => b_matched[i] = true,
+                None => a_leftover.push(a_item),
+            }
+        }
+
+        let b_leftover =
+            b_concrete.into_iter().zip(b_matched).filter_map(|(item, matched)| (!matched).then_some(item)).collect();
+        RowMatch { a_open, b_open, a_leftover, b_leftover }
+    }
+
+    /// Flattens two effect rows and matches `a`'s concrete effects against `b`'s.
+    /// Returns `None` if either row contains an error type
+    fn match_rows(&self, a: &Type, b: &Type, variance: Variance, new_bindings: &mut TypeBindings) -> Option<RowMatch> {
+        let a_list = self.collect_and_merge_effects(a, new_bindings);
+        let b_list = self.collect_and_merge_effects(b, new_bindings);
+
+        if a_list.iter().chain(b_list.iter()).any(|effect| effect.is_error()) {
+            return None;
+        }
+
+        Some(Self::match_row_entries(a_list, b_list, |a_effect, b_effect| {
+            self.subtype_matching_effect(std::slice::from_ref(b_effect), |_| false, a_effect, variance, new_bindings)
+                .is_some()
+        }))
+    }
+
+    /// Row-subtype two rows, adding `a`'s open ends to `b` rather than binding them to `b`'s other entries
+    pub(super) fn row_subtype_generic(
+        &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let RowMatch { mut a_open, b_open, mut a_leftover, b_leftover } = m;
+        a_open.retain(|a_end| !b_open.contains(a_end));
+
+        // `b` grows through its newest open end, even one `a` shares, rather than another row within it
+        match b_open.last() {
+            Some(_) if a_leftover.is_empty() && a_open.is_empty() => Ok(()),
+            Some(b_end) => {
+                a_leftover.extend(a_open);
+                a_leftover.push(self.next_type_variable());
+                self.bind_row_end(kind, b_end, &a_leftover, new_bindings)
+            },
+            None if !a_leftover.is_empty() => Err(()),
+            None => a_open.iter().try_for_each(|a_end| self.bind_row_end(kind, a_end, &b_leftover, new_bindings)),
+        }
+    }
+
+    /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
+    pub(super) fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let Some(m) = self.match_rows(a, b, Variance::Contravariant, new_bindings) else { return Ok(()) };
+        self.row_subtype_generic(RowKind::Effects, m, new_bindings)
+    }
+
+    /// Unify two rows, both must end up with the same set of entries.
+    pub(super) fn row_unify_generic(
+        &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
+        let (mut a_open, mut b_open) = cancel_shared_open(a_open, b_open);
+
+        // Against a closed row, every open end is bound to that row's remaining entries
+        match (a_open.is_empty(), b_open.is_empty()) {
+            (false, true) if a_leftover.is_empty() => {
+                return a_open.iter().try_for_each(|end| self.bind_row_end(kind, end, &b_leftover, new_bindings));
+            },
+            (true, false) if b_leftover.is_empty() => {
+                return b_open.iter().try_for_each(|end| self.bind_row_end(kind, end, &a_leftover, new_bindings));
+            },
+            _ => (),
+        }
+
+        // Tails past the first must be absorbed by the other side like any other entry
+        let (a_end, b_end) = (a_open.pop(), b_open.pop());
+        a_leftover.extend(a_open);
+        b_leftover.extend(b_open);
+
+        let both_closed = |a_leftover: &[Type], b_leftover: &[Type]| {
+            (a_leftover.is_empty() && b_leftover.is_empty()).then_some(()).ok_or(())
+        };
+        match (a_end.as_ref(), b_end.as_ref()) {
+            (None, None) => both_closed(&a_leftover, &b_leftover),
+            (Some(_), None) | (None, Some(_)) => Err(()),
+            (Some(a_end), Some(b_end)) if self.identical_entries(a_end, b_end, new_bindings) => {
+                both_closed(&a_leftover, &b_leftover)
+            },
+            (Some(a_end), Some(b_end)) => {
+                // Each end absorbs what the other side has that it lacks, sharing a fresh end
+                let fresh = self.next_type_variable();
+                a_leftover.push(fresh.clone());
+                b_leftover.push(fresh);
+                self.bind_row_end(kind, a_end, &b_leftover, new_bindings)?;
+                self.bind_row_end(kind, b_end, &a_leftover, new_bindings)
+            },
+        }
+    }
+
+    /// Unify two effect rows
+    pub(super) fn row_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let Some(m) = self.match_rows(a, b, Variance::Invariant, new_bindings) else { return Ok(()) };
+        self.row_unify_generic(RowKind::Effects, m, new_bindings)
+    }
+
+    /// Bind a row's open end to the row of `entries`
+    pub(super) fn bind_row_end(
+        &self, kind: RowKind, end: &Type, entries: &[Type], new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let binding = construct_row(kind, entries, &self.bindings, new_bindings);
+        self.subtype(end, &binding, Variance::Invariant, RowMode::Exact, new_bindings)
+    }
+
+    /// True if both entries are exactly equal after following type variables
+    fn identical_entries(&self, a: &Type, b: &Type, new_bindings: &TypeBindings) -> bool {
+        a.follow_two(&self.bindings, new_bindings) == b.follow_two(&self.bindings, new_bindings)
+    }
+}

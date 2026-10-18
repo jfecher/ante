@@ -1,0 +1,23 @@
+main () =
+    var a = ref 5
+    if true then
+        m = mut a
+        y = 10
+        // m: mut 'a (ref '_ I32)
+        // y can't live as long as the local a refers to
+        m := ref y
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/write_through_alias.an:8:14
+//  4 |         m = mut a
+//  5 |         y = 10	// note: y is only valid until the end of this scope
+//    |         -
+//  6 |         // m: mut 'a (ref '_ I32)
+//  7 |         // y can't live as long as the local a refers to
+//  8 |         m := ref y	// error: This reference to y outlives its scope
+//    |              ^^^^^
+// 
+// Found 1 error and 0 warnings
+

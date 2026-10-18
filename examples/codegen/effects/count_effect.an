@@ -1,20 +1,20 @@
-ability Count =
-    count: resume fn Unit -> Unit
+effect Count =
+    count: fn Unit -> Unit
 
-foo {Count} =
+foo (): Unit can Count =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count (f: fn {Count} -> Unit) =
-    handler h for count () ->
-        1 + resume ()
-    in
-        f {h}
+handle_count (f: fn Unit => Unit can Count) =
+    handle
+        f ()
         0
+    | count () ->
+        1 + resume ()
 
 main () =
+    print_to_stdout do
     handle_count foo |> println
 
 // args: --delete-binary --no-color
 // expected stdout: 11
-

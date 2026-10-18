@@ -1,0 +1,24 @@
+// Effects are only subtyped in positions where ante can coerce a widened function
+// taking an additional argument per extra effect (functions and trait values). Effects
+// in other positions are invariant.
+import Std.Fail.Fail
+
+type Boxed (e: effect) = f: fn Unit -> Unit can e
+
+needs_fail (_: Boxed Fail): Unit = ()
+
+main () =
+    pure_box: Boxed pure = Boxed (do ())
+    needs_fail pure_box
+
+// args: --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/nested_row_invariant.an:12:16
+// 11 |     pure_box: Boxed pure = Boxed (do ())
+//    |     // error: Argument 1 has type Boxed pure but Boxed Fail was expected
+// 12 |     needs_fail pure_box
+//    |                ^^^^^^^^
+// 
+// Found 1 error and 0 warnings
+

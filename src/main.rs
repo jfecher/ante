@@ -26,6 +26,8 @@
 //!   - Closure Lowering `src/mir/lower_closures.an`
 //!   - Remove Unreachable `src/mir/remove_unreachable.an`
 //!   - Monomorphization `src/mir/monomorphization/mod.rs`
+//!   - Existentialization `src/mir/existentialization/mod.rs`, used instead of monomorphization in
+//!     unoptimized builds
 //!   - Select Largest Variant `src/mir/select_largest_variant.rs`
 //! - Backend Codegen - choose your backend:
 //!   - LLVM `src/codegen/llvm/mod.rs`
@@ -38,14 +40,16 @@
 #![allow(mismatched_lifetime_syntaxes)]
 
 use clap::{CommandFactory, Parser};
-use cli::{Cli, Commands, Completions};
+use cli::{Cli, Commands, CompileArgs, Completions, FileArgs};
 use colored::Colorize;
 use diagnostics::Diagnostic;
 use incremental::{AllDefinitions, Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId};
 use parser::ids::TopLevelName;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::BTreeSet,
+    ffi::OsString,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -53,21 +57,23 @@ use std::{
 #[cfg(feature = "llvm")]
 use crate::codegen::llvm::codegen_llvm;
 use crate::{
-    cli::{EmitTarget, OptLevel},
+    cli::{CommandError, EmitTarget, GenericsStrategy, OptLevel},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
     files::{make_compiler, write_metadata},
     incremental::{TargetPointerSize, TypeCheck, ValidateExports},
+    mir::collect_all_items,
     paths::binary_name,
 };
 
 mod codegen;
-mod dependencies;
 mod definition_collection;
+mod dependencies;
 mod find_files;
 mod lexer;
 mod mir;
 mod name_resolution;
 mod parser;
+mod project;
 mod type_inference;
 
 mod cli;
@@ -77,6 +83,7 @@ mod incremental;
 mod iterator_extensions;
 mod manifest;
 mod paths;
+mod shared_arc;
 mod timings;
 mod vecmap;
 
@@ -85,91 +92,165 @@ use crate::timings::{print_total_time_of_phases, time_phase};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+struct CompileRequest {
+    options: CompileArgs,
+    files: Vec<PathBuf>,
+    is_project: bool,
+    run: bool,
+    delete_binary: bool,
+    check: bool,
+    emit: Option<EmitTarget>,
+    emit_all: bool,
+    program_args: Vec<OsString>,
+}
+
+impl CompileRequest {
+    fn files(args: FileArgs) -> Self {
+        CompileRequest {
+            options: args.compile,
+            files: args.files,
+            is_project: false,
+            run: !args.build,
+            delete_binary: args.delete_binary,
+            check: args.check,
+            emit: args.emit,
+            emit_all: args.emit_all,
+            program_args: Vec::new(),
+        }
+    }
+
+    fn project(options: CompileArgs, run: bool, delete_binary: bool, program_args: Vec<OsString>) -> Self {
+        CompileRequest {
+            options,
+            files: crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default(),
+            is_project: true,
+            run,
+            delete_binary,
+            check: false,
+            emit: None,
+            emit_all: false,
+            program_args,
+        }
+    }
+}
+
 fn main() {
+    if let Err(error) = run() {
+        eprintln!("{}: {error}", "error".red());
+        std::process::exit(1)
+    }
+}
+
+fn run() -> Result<(), CommandError> {
     if let Ok(Completions { shell_completion }) = Completions::try_parse() {
         let mut cmd = Cli::command();
         let name = cmd.get_name().to_string();
         clap_complete::generate(shell_completion, &mut cmd, name, &mut std::io::stdout());
     } else {
-        let args = Cli::parse();
-        if let Some(Commands::Add { dep_url }) = &args.command {
-            dependencies::add_git_dependency(dep_url);
-        } else {
-            compile(args)
+        let Cli { command, file } = Cli::parse().validate().unwrap_or_else(|error| error.exit());
+        match command {
+            Some(Commands::Build(args)) => compile(CompileRequest::project(args.compile, false, false, Vec::new())),
+            Some(Commands::Run(args)) => {
+                compile(CompileRequest::project(args.compile, true, args.delete_binary, args.program_args))
+            },
+            Some(Commands::Add(args)) => dependencies::add_dependency(&args.dep_url)?,
+            Some(Commands::Init(args)) => project::init_project(&args.path)?,
+            None => compile(CompileRequest::files(file)),
         }
     }
+
+    Ok(())
 }
 
-fn compile(args: Cli) {
-    let (run, files, is_project) = match &args.command {
-        Some(cmd @ (Commands::Build | Commands::Run)) => (
-            matches!(cmd, Commands::Run),
-            crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default(),
-            true,
-        ),
-        Some(Commands::Add { .. }) => unreachable!("add commands are handled before compiling"),
-        None => (!args.build, args.files.clone(), false),
-    };
-    let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
+fn compile(request: CompileRequest) {
+    let options = &request.options;
+    incremental::set_trace_enabled(options.show_queries);
 
-    let program_name =
-        if is_project { project_program_name(&mut compiler) } else { files_to_program_name(&args.files) };
+    if let Some(threads) = options.threads {
+        rayon::ThreadPoolBuilder::new().num_threads(threads).build_global().expect("Failed to create thread pool");
+    }
+
+    let checks_whole_program = request.check
+        || matches!(request.emit, None | Some(EmitTarget::Ir | EmitTarget::MirMono | EmitTarget::MirExist));
+
+    let stdlib_cache = options.stdlib_cache.as_deref().filter(|_| checks_whole_program);
+    let (mut compiler, metadata_file) = make_compiler(&request.files, options.incremental, stdlib_cache);
+
+    let program_name = get_program_name(&mut compiler, &request);
 
     // TODO: Pointer size should be configurable depending on the target machine
-    TargetPointerSize.set(&mut compiler, 8);
+    TargetPointerSize.set(&mut compiler, std::mem::size_of::<usize>() as u32);
 
-    if args.show_time {
+    if options.show_time {
         eprintln!("Phase timings:");
         print_phase_timings(&mut compiler);
     }
 
-    let opt_level = optimization_level(&args);
+    let opt_level = optimization_level(options);
+    let generics = generics_strategy(options, opt_level);
 
-    let diagnostics = match args.emit {
-        _ if args.check => time_phase("Diagnostics", args.show_time, || collect_all_diagnostics(&mut compiler)),
+    let diagnostics = match request.emit {
+        _ if request.check => time_phase("Diagnostics", options.show_time, || collect_all_diagnostics(&mut compiler)),
         Some(EmitTarget::Tokens) => {
             display_tokens(&compiler);
             BTreeSet::new()
         },
-        Some(EmitTarget::Ast) => display_parse_tree(&mut compiler, args.emit_all),
-        Some(EmitTarget::AstR) => display_name_resolution(&mut compiler, args.emit_all),
-        Some(EmitTarget::AstT) => display_type_checking(&mut compiler, true, args.emit_all),
-        Some(EmitTarget::Mir) => display_mir(&mut compiler, args.emit_all, false),
-        Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
-        Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
-        Some(EmitTarget::Ir) => display_ir(&mut compiler, resolve_backend(args.backend), args.show_time, opt_level),
+        Some(EmitTarget::Ast) => display_parse_tree(&mut compiler, request.emit_all),
+        Some(EmitTarget::AstR) => display_name_resolution(&mut compiler, request.emit_all),
+        Some(EmitTarget::AstT) => display_type_checking(&mut compiler, true, request.emit_all),
+        Some(EmitTarget::Mir) => display_mir(&mut compiler, request.emit_all, false),
+        Some(EmitTarget::MirTail) => display_mir(&mut compiler, request.emit_all, true),
+        Some(EmitTarget::MirMono) => display_lowered_mir(&mut compiler, GenericsStrategy::Mono),
+        Some(EmitTarget::MirExist) => display_lowered_mir(&mut compiler, GenericsStrategy::Existential),
+        Some(EmitTarget::Ir) => {
+            display_ir(&mut compiler, resolve_backend(options.backend), options.show_time, opt_level, generics)
+        },
         None => {
-            let link_options = build_link_options(&mut compiler, &args);
+            let link_options = build_link_options(&mut compiler, options);
             codegen_all(
                 &mut compiler,
-                resolve_backend(args.backend),
+                resolve_backend(options.backend),
                 &program_name,
-                run,
-                args.delete_binary,
-                args.show_time,
+                request.run,
+                request.delete_binary,
+                options.show_time,
                 opt_level,
-                args.bin.as_deref(),
+                generics,
+                options.bin.as_deref(),
                 &link_options,
+                &request.program_args,
             )
         },
     };
 
-    let error_count = display_diagnostics(&diagnostics, &compiler, args.no_color);
+    let error_count = display_diagnostics(&diagnostics, &compiler, options.no_color);
 
     if let Some(metadata_file) = metadata_file {
-        let result = time_phase("Write metadata", args.show_time, || write_metadata(&compiler, &metadata_file));
+        let result = time_phase("Write metadata", options.show_time, || write_metadata(&compiler, &metadata_file));
         if let Err(error) = result {
             eprintln!("\n{error}");
         }
     }
 
-    if args.show_time {
+    if options.show_time {
         print_total_time_of_phases();
     }
+
+    // Cheat a bit to exit faster. It's the OS's problem now
+    std::mem::forget(compiler);
 
     if error_count != 0 {
         std::process::exit(1);
     }
+}
+
+/// Return the name of the program which will be used for the name of the output executable
+fn get_program_name(compiler: &mut Db, request: &CompileRequest) -> String {
+    let name = if request.is_project { project_program_name(compiler) } else { files_to_program_name(&request.files) };
+
+    // If --delete-binary is set the name doesn't matter anyway so append a per-process id
+    // to prevent races when running tests on the same files over multiple backends.
+    if request.delete_binary { format!("{name}_{}", std::process::id()) } else { name }
 }
 
 /// Resolve the effective backend from the user's `--backend` choice, exiting with an error
@@ -200,38 +281,29 @@ fn resolve_backend(requested: Option<cli::Backend>) -> cli::Backend {
 /// order so each has its own `--show-time` line. inc-complete caches the results, so
 /// the downstream compile mode reuses them.
 fn print_phase_timings(compiler: &mut Db) {
-    let item_ids = time_phase("Parsing", true, || {
-        let crates = GetCrateGraph.get(compiler);
-        let mut item_ids = Vec::new();
-        for crate_ in crates.values() {
-            for file in crate_.source_files.values() {
-                let parse = Parse(*file).get(compiler);
-                for item in parse.cst.top_level_items.iter() {
-                    item_ids.push(item.id);
-                }
-            }
-        }
-        item_ids
-    });
+    let item_ids = time_phase("Parsing", true, || collect_all_items(compiler));
 
     // Per-item: rolls up dependent definition-collection queries into this bucket.
     time_phase("Name resolution", true, || {
-        for id in &item_ids {
-            Resolve(*id).get(&*compiler);
-        }
+        let compiler = &*compiler;
+        item_ids.par_iter().for_each(|id| {
+            Resolve(*id).get(compiler);
+        });
     });
 
     // Per-item: rolls up the type-check dependency graph and SCC partitioning.
     time_phase("Type inference", true, || {
-        for id in &item_ids {
-            incremental::TypeCheck(*id).get(&*compiler);
-        }
+        let compiler = &*compiler;
+        incremental::TypeCheckDependencyGraph.get(compiler);
+        item_ids.par_iter().for_each(|id| {
+            incremental::TypeCheck(*id).get(compiler);
+        });
     });
 }
 
 /// Translate the CLI optimization flags into a single [`OptLevel`]. Explicit `-O` wins when
 /// the user provided a non-default value; otherwise `--release` implies O2.
-fn optimization_level(args: &Cli) -> OptLevel {
+fn optimization_level(args: &CompileArgs) -> OptLevel {
     match args.opt_level {
         '1' => OptLevel::O1,
         '2' => OptLevel::O2,
@@ -240,6 +312,15 @@ fn optimization_level(args: &Cli) -> OptLevel {
         'z' => OptLevel::Oz,
         _ if args.release => OptLevel::O2,
         _ => OptLevel::O0,
+    }
+}
+
+/// Existentialization is the default for unoptimized builds and monomorphization otherwise
+fn generics_strategy(args: &CompileArgs, opt_level: OptLevel) -> GenericsStrategy {
+    match args.generics {
+        Some(strategy) => strategy,
+        None if opt_level == OptLevel::O0 => GenericsStrategy::Existential,
+        None => GenericsStrategy::Mono,
     }
 }
 
@@ -357,7 +438,7 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
 
             if let Some(mut mir) = mir::builder::build_initial_mir_with_shared_map(compiler, item.id) {
                 if optimize_tail_calls {
-                    mir = mir.optimize_tail_resume().optimize_abort_handlers().lower_effects();
+                    mir = mir.optimize_tail_resume().optimize_abort_handlers().lower_effects(false);
                 }
                 print!("{mir}");
             }
@@ -366,29 +447,31 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
     })
 }
 
-fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
+fn display_lowered_mir(compiler: &mut Db, generics: GenericsStrategy) -> BTreeSet<Diagnostic> {
     let diagnostics = collect_all_diagnostics(compiler);
     let (errors, _) = classify_diagnostics(&diagnostics);
     if errors == 0 {
-        let mir = mir::monomorphization::monomorphize(compiler);
+        let mir = mir::lower_generics(compiler, generics);
         println!("{mir}");
     }
     diagnostics
 }
 
 /// Emit the backend IR to stdout: Either llvm-ir or C depending on the backend.
-fn display_ir(compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
+fn display_ir(
+    compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_level: OptLevel, generics: GenericsStrategy,
+) -> BTreeSet<Diagnostic> {
     let diagnostics = time_phase("Diagnostics", show_time, || collect_all_diagnostics(compiler));
     if classify_diagnostics(&diagnostics).0 == 0 {
         match backend {
             #[cfg(feature = "llvm")]
             cli::Backend::Llvm => {
-                codegen_llvm(compiler, show_time, opt_level, true, None);
+                codegen_llvm(compiler, show_time, opt_level, generics, true, None);
             },
             cli::Backend::C => {
                 let _ = opt_level;
-                let mir = mir::monomorphization::monomorphize(compiler);
-                print!("{}", codegen::c::build_c_file(&mir, None));
+                let mir = mir::lower_generics(compiler, generics);
+                print!("{}", codegen::c::build_c_file(&mir, TargetPointerSize.get(compiler), None));
             },
             _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         }
@@ -398,7 +481,7 @@ fn display_ir(compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_lev
 
 /// Collect the native libraries and search paths to link against from every crate's `ante.toml`
 /// and the CLI flags, preserving order.
-fn build_link_options(compiler: &mut Db, args: &Cli) -> codegen::LinkOptions {
+fn build_link_options(compiler: &mut Db, args: &CompileArgs) -> codegen::LinkOptions {
     let mut options = codegen::LinkOptions::default();
 
     let crates = GetCrateGraph.get(compiler);
@@ -417,7 +500,8 @@ fn build_link_options(compiler: &mut Db, args: &Cli) -> codegen::LinkOptions {
 #[allow(clippy::too_many_arguments)]
 fn codegen_all(
     compiler: &mut Db, backend: cli::Backend, program_name: &str, run: bool, delete_binary: bool, show_time: bool,
-    opt_level: OptLevel, bin: Option<&str>, link_options: &codegen::LinkOptions,
+    opt_level: OptLevel, generics: GenericsStrategy, bin: Option<&str>, link_options: &codegen::LinkOptions,
+    program_args: &[OsString],
 ) -> BTreeSet<Diagnostic> {
     let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
         Ok(ok) => ok,
@@ -427,23 +511,24 @@ fn codegen_all(
     let ready = match backend {
         #[cfg(feature = "llvm")]
         cli::Backend::Llvm => {
-            // Each module is currently the whole program (monomorphization isn't yet incremental).
-            let modules = match codegen_llvm(compiler, show_time, opt_level, false, Some(selected_main)) {
-                Some(result) => vec![result.object],
+            let modules = match codegen_llvm(compiler, show_time, opt_level, generics, false, Some(selected_main)) {
+                Some(result) => result.objects,
                 None => Vec::new(),
             };
             codegen::llvm::link(modules, program_name, show_time, opt_level, link_options)
         },
         cli::Backend::C => {
-            let mir = mir::monomorphization::monomorphize(compiler);
-            codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main), link_options);
+            let mir = time_phase("Lowering generics", show_time, || mir::lower_generics(compiler, generics));
+            let ptr_size = TargetPointerSize.get(compiler);
+            let main = Some(selected_main);
+            codegen::c::codegen_c_for_mir(&mir, ptr_size, program_name, opt_level, main, link_options, show_time);
             true
         },
         _ => unreachable!("resolve_backend only returns backends this compiler can run"),
     };
 
     if ready && run {
-        run_binary(program_name, delete_binary);
+        run_binary(program_name, delete_binary, program_args);
     }
     diagnostics
 }
@@ -461,16 +546,17 @@ fn check_and_select_main(
 }
 
 /// Run the binary then optionally delete it.
-fn run_binary(program_name: &str, delete_binary: bool) {
+fn run_binary(program_name: &str, delete_binary: bool, program_args: &[OsString]) {
     let binary_path = binary_name(program_name);
-    let run_path = if binary_path.components().count() == 1 {
-        Path::new(".").join(&binary_path)
-    } else {
-        binary_path.clone()
-    };
-    Command::new(&run_path).spawn().unwrap().wait().unwrap();
+    let run_path =
+        if binary_path.components().count() == 1 { Path::new(".").join(&binary_path) } else { binary_path.clone() };
+    let status = Command::new(&run_path).args(program_args).spawn().unwrap().wait().unwrap();
     if delete_binary {
-        std::fs::remove_file(binary_path).unwrap();
+        std::fs::remove_file(&binary_path).unwrap();
+    }
+    // A crash loses whatever the program had buffered, so it would otherwise look like a clean exit
+    if status.code().is_none() {
+        eprintln!("{} exited with {status}", binary_path.display());
     }
 }
 
@@ -484,11 +570,7 @@ fn files_to_program_name(files: &[PathBuf]) -> String {
 fn project_program_name(compiler: &mut Db) -> String {
     let crates = GetCrateGraph.get(compiler);
     let name = &crates[&CrateId::LOCAL].name;
-    if name == crate::find_files::DEFAULT_LOCAL_CRATE_NAME {
-        "a".to_string()
-    } else {
-        name.clone()
-    }
+    if name == crate::find_files::DEFAULT_LOCAL_CRATE_NAME { "a".to_string() } else { name.clone() }
 }
 
 /// Choose which `main` function to compile into the binary's entry point.

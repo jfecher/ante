@@ -1,0 +1,103 @@
+type Shape = | Circle (radius: U32) | Square (length: U32)
+
+area_by_field (shape: Shape): U32 =
+    match shape
+    | Circle radius -> 3 * radius * radius
+    | Square length -> length * length
+
+// `..c` extracts the whole matched variant as its own struct type instead.
+area_by_rest (shape: Shape): U32 =
+    match shape
+    | Circle ..c -> 3 * c.radius * c.radius
+    | Square ..s -> s.length * s.length
+
+is_circle (shape: Shape): Bool =
+    match shape
+    | Circle .. -> true
+    | Square .. -> false
+
+type Pair = | Two (a: U32) (b: U32)
+
+first (p: Pair): U32 =
+    match p
+    | Two a .. -> a
+
+first_and_whole (p: Pair): U32 =
+    match p
+    | Two a ..w -> a + w.b
+
+// `location` should be added to the Expr.Var and Expr.Pair2 variant types as well
+type Expr =
+    | Var String
+    | Pair2 I64 I64
+    with location: I32
+
+loc (e: Expr): I32 = e.location
+loc_ref (e: ref Expr): ref I32 = e.location
+
+match_loc (e: Expr): I32 =
+    match e
+    | Var _s l -> l
+    | Pair2 _a _b l -> l
+
+rest_loc (e: Expr): I32 =
+    match e
+    | Var ..c -> c.location
+    | Pair2 ..c -> c.location
+
+set_loc (e: mut Expr) =
+    e.location := 99
+
+main () =
+    print_to_stdout do
+    print (area_by_field (Circle 2))
+    print ", "
+    println (area_by_field (Square 4))
+    print (area_by_rest (Circle 2))
+    print ", "
+    println (area_by_rest (Square 4))
+
+    // Shape.Circle is a struct type, constructable like any other
+    c = Shape.Circle with radius = 5
+    println c.radius
+
+    // Going from Shape.Circle back to Shape currently requires an explicit reconstruction
+    println (area_by_field (Circle c.radius))
+
+    println (is_circle (Circle 2))
+    println (is_circle (Square 4))
+    println (first (Two 3 4))
+    println (first_and_whole (Two 3 4))
+
+    println (loc (Var "x" 10))
+    println (loc (Pair2 1 2 20))
+    println (loc_ref (ref (Var "x" 10)))  // TODO: Can't use type-based resolution and ref coercion together
+    println (loc_ref (ref (Pair2 1 2 20)))
+    println (match_loc (Var "x" 10))
+    println (match_loc (Pair2 1 2 20))
+    println (rest_loc (Var "x" 10))
+    println (rest_loc (Pair2 1 2 20))
+    var e = Expr.Var "y" 5
+    set_loc (mut e)
+    println (loc e)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 12, 16
+// 12, 16
+// 5
+// 75
+// true
+// false
+// 3
+// 7
+// 10
+// 20
+// 10
+// 20
+// 10
+// 20
+// 10
+// 20
+// 99
+

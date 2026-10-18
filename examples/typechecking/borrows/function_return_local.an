@@ -1,0 +1,21 @@
+bad (): ref I32 =
+    x = 5
+    ref x
+
+main () =
+    r = bad ()
+    _ = r
+    ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/function_return_local.an:3:5
+// 1 | bad (): ref I32 =
+// 2 |     x = 5	// note: x is only valid until the end of this scope
+//   |     -
+// 3 |     ref x	// error: This reference to x outlives its scope
+//   |     ^^^^^
+// 
+// Found 1 error and 0 warnings
+

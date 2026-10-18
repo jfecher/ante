@@ -45,6 +45,7 @@ all_in_one_case (w: Wrapper): I32 =
     | One a | Two a _ | Three a -> a
 
 main () =
+    print_to_stdout do
     println (classify Point)
     println (classify (Circle 7))
     println (classify (Rect 3 4))

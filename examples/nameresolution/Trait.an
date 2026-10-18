@@ -1,4 +1,4 @@
-ability Foo a b =
+trait Foo a b =
     foo: fn a -> b
     bar: a
 

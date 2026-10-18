@@ -1,0 +1,17 @@
+main () =
+    r = mut (ref 0)
+    for i in 0 .. 10 do
+        r := ref i
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/loop_assign_dangling.an:4:14
+// 2 |     r = mut (ref 0)
+// 3 |     for i in 0 .. 10 do	// note: i is only valid until the end of this scope
+//   |         -
+// 4 |         r := ref i	// error: This reference to i outlives its scope
+//   |              ^^^^^
+// 
+// Found 1 error and 0 warnings
+

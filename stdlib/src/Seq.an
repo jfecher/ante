@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
-import Std.Stream.Stream, foldl
+import Std.Stream.Stream, foldl, emit
 
-export Seq, empty, of, with_capacity, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
+export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -84,7 +84,7 @@ Seq.empty (): Seq t =
     Seq 0 (null ())
 
 /// Create a Seq holding each item from the given stream
-Seq.of (s: s) {Stream s t} {Drop t}: Seq t =
+Seq.of (s: s) {Stream s t e} {Drop t e}: Seq t can e =
     seq = Seq.empty ()
     foldl s seq Seq.push
 
@@ -106,7 +106,7 @@ Seq.with_capacity (capacity: Usz): Seq t =
         Seq 0 buffer
 
 /// Push an element to this sequence, returning a new sequence.
-Seq.push (seq: Seq t) (elem: t) {Drop t}: Seq t =
+Seq.push (seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
         ptr_store data_ptr (Data 1 0 1 1 0 (null ()) elem)
@@ -203,7 +203,7 @@ Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) => Unit): Unit =
         f (ptr_to_mut elem)
 
 // Paper cut #2: Copy t
-impl print_seq {p: Print t} {Copy t}: Print (Seq t) with
+impl print_seq {p: Display t e} {Copy t}: Display (Seq t) e with
     print (seq: ref Seq t): Unit =
         print "["
         for i in 0 .. seq.len do
@@ -221,7 +221,7 @@ implicit clone_seq: Clone (Seq t) =
             rc += 1
         deref seq
 
-impl drop_seq {Drop t}: Drop (Seq t) with
+impl drop_seq {Drop t e}: Drop (Seq t) e with
     drop (seq: mut Seq t) =
         if seq.data != null () then
             data = ptr_to_mut seq.data
@@ -232,10 +232,10 @@ impl drop_seq {Drop t}: Drop (Seq t) with
                 if data.fork_rc == 0 then
                     drop_data seq.data
 
-// Free ancestors that only this child keeps alive. When an ancestor has
-// direct_rc == 0 and fork_rc == 1, this child is its sole referent so
-// we remove the parent from the chain and place the child in its place.
-collapse_parents (child: Ptr (Data t)) {Drop t}: Unit =
+/// Free ancestors that only this child keeps alive. When an ancestor has
+/// direct_rc == 0 and fork_rc == 1, this child is its sole referent so
+/// we remove the parent from the chain and place the child in its place.
+collapse_parents (child: Ptr (Data t)) {Drop t e}: Unit can e =
     child = ptr_to_mut child
     var parent_ptr = child.parent
     while parent_ptr != null () do
@@ -253,9 +253,9 @@ collapse_parents (child: Ptr (Data t)) {Drop t}: Unit =
             free parent_ptr
             parent_ptr := child.parent
 
-// Walk up the parent chain, dropping each ancestor's private data and
-// freeing its allocation when both its rcs reach zero.
-drop_data (var data: Ptr (Data t)) {Drop t}: Unit =
+/// Walk up the parent chain, dropping each ancestor's private data and
+/// freeing its allocation when both its rcs reach zero.
+drop_data (var data: Ptr (Data t)) {Drop t e}: Unit can e =
     while data != null () do
         cur = ptr_to_mut data
         for i in cur.fork_point .. cur.len do
@@ -272,8 +272,8 @@ drop_data (var data: Ptr (Data t)) {Drop t}: Unit =
             if parent_ref.direct_rc != 0 or parent_ref.fork_rc != 0 then
                 data := null ()
 
-implicit stream_seq: Stream (Seq a) (ref a) =
-    Stream fn seq e ->
+implicit stream_seq: Stream (Seq a) (ref a) pure =
+    Stream fn seq ->
         for i in 0 .. seq.len do
             elem = offset seq.data.elements (Usz i)
-            e.emit (ptr_to_mut elem)
+            emit (ptr_to_mut elem)

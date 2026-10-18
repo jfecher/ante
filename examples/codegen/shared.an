@@ -53,6 +53,7 @@ tree_of_size size =
 
 main () =
     // Build a tree containing 0..100
+    print_to_stdout do
     t = tree_of_size 100
     println (count t)         // 100
     println (depth t)         // 9

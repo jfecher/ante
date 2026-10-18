@@ -20,6 +20,7 @@ main () = ()
 // // id = c1m664_1944
 // main_c1m664_1944_0 () = ()
 
+
 // expected stderr:
 // examples/nameresolution/export_unknown.an:4:13
 // 3 | // Re-exports like `push` are allowed

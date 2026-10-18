@@ -3,6 +3,7 @@ increment (var n: I32): I32 =
     n
 
 main () =
+    print_to_stdout do
     println (increment 10)
 
     var x = 1

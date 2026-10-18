@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     print (true and true or false and false)
 
 // args: --delete-binary --no-color

@@ -1,11 +1,9 @@
 use std::{
     collections::BTreeMap,
     fmt::{Display, Formatter},
-    sync::Arc,
 };
 
 use crate::{
-    diagnostics::Location,
     incremental::{Db, GetItem, Resolve, TypeCheck},
     lexer::token::INDEX_OPERATOR_FUNCTION_NAME,
     name_resolution::{Origin, namespace::SourceFileId},
@@ -13,6 +11,7 @@ use crate::{
         cst::{Argument, Constructor, For, Loop, LoopParameter, ReferenceKind, TopLevelItemKind, While},
         ids::{IdStore, NameId, PathId},
     },
+    shared_arc::Shared,
     type_inference::{
         patterns::DecisionTree,
         types::{self, NO_CLOSURE_ENV_STRING},
@@ -22,17 +21,17 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        self, AbilityDefinition, AbilityImpl, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr,
-        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match,
-        MemberAccess, Name, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, Type,
-        TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
+        self, Attribute, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, ExportEntry, Expr, Extern,
+        FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
+        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitImpl, TraitOrEffectDefinition,
+        Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };
 
 pub struct CstDisplayContext<'a> {
     cst: &'a Cst,
-    context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>,
+    context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>,
     config: CstDisplayConfig<'a>,
 }
 
@@ -48,17 +47,20 @@ pub struct CstDisplayConfig<'db> {
 
     /// Show types for each name. Requires `db` to bet set.
     pub show_types: bool,
+
+    /// Omit comments, attributes, and definition bodies
+    pub signature_only: bool,
 }
 
 impl Cst {
-    pub fn display<'a>(&'a self, context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>) -> CstDisplayContext<'a> {
+    pub fn display<'a>(&'a self, context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>) -> CstDisplayContext<'a> {
         CstDisplayContext { cst: self, context, config: CstDisplayConfig::default() }
     }
 
     /// Display this Cst, annotating each name with a number pointing to its
     /// resolved definition
     pub fn display_resolved<'a>(
-        &'a self, context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>, compiler: &'a Db,
+        &'a self, context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>, compiler: &'a Db,
     ) -> CstDisplayContext<'a> {
         let config = CstDisplayConfig { show_resolved: true, db: Some(compiler), ..Default::default() };
         CstDisplayContext { cst: self, context, config }
@@ -66,10 +68,55 @@ impl Cst {
 
     /// Display this Cst, annotating each name with its type
     pub fn display_typed<'a>(
-        &'a self, context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>, compiler: &'a Db,
+        &'a self, context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>, compiler: &'a Db,
     ) -> CstDisplayContext<'a> {
         let config = CstDisplayConfig { show_types: true, db: Some(compiler), ..Default::default() };
         CstDisplayContext { cst: self, context, config }
+    }
+}
+
+pub struct SignatureDisplayContext<'a, C> {
+    item: &'a TopLevelItem,
+    context: &'a C,
+    config: CstDisplayConfig<'a>,
+}
+
+impl TopLevelItem {
+    /// Display this item's signature only
+    pub fn display_signature<'a>(
+        &'a self, context: &'a TopLevelContext,
+    ) -> SignatureDisplayContext<'a, TopLevelContext> {
+        let config = CstDisplayConfig { signature_only: true, ..Default::default() };
+        SignatureDisplayContext { item: self, context, config }
+    }
+
+    /// Display a signature with inferred types
+    pub fn display_typed_signature<'a, C: IdStore>(
+        &'a self, context: &'a C, compiler: &'a Db,
+    ) -> SignatureDisplayContext<'a, C> {
+        let config =
+            CstDisplayConfig { signature_only: true, show_types: true, db: Some(compiler), ..Default::default() };
+        SignatureDisplayContext { item: self, context, config }
+    }
+}
+
+impl<'a, C: IdStore> Display for SignatureDisplayContext<'a, C> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let empty = BTreeMap::new();
+        let mut printer = CstDisplay::new(&empty, self.config);
+        printer.current_item_id = Some(self.item.id);
+        let context = self.context;
+
+        match &self.item.kind {
+            TopLevelItemKind::TypeDefinition(type_definition) => {
+                printer.fmt_type_definition(type_definition, context, f)
+            },
+            TopLevelItemKind::Definition(definition) => printer.fmt_definition(definition, context, f),
+            TopLevelItemKind::TraitDefinition(def) => printer.fmt_trait_or_effect("trait", def, context, f),
+            TopLevelItemKind::EffectDefinition(def) => printer.fmt_trait_or_effect("effect", def, context, f),
+            TopLevelItemKind::TraitImpl(trait_impl) => printer.fmt_trait_impl(trait_impl, context, f),
+            TopLevelItemKind::Comptime(comptime) => printer.fmt_comptime(comptime, context, f),
+        }
     }
 }
 
@@ -143,7 +190,7 @@ impl<'a> Display for TypeDisplayContext<'a> {
 struct CstDisplay<'a> {
     indent_level: u32,
     current_item_id: Option<TopLevelId>,
-    context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>,
+    context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>,
     config: CstDisplayConfig<'a>,
 }
 
@@ -154,7 +201,7 @@ impl<'a> Display for CstDisplayContext<'a> {
 }
 
 impl<'a> CstDisplay<'a> {
-    fn new(context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>, config: CstDisplayConfig<'a>) -> Self {
+    fn new(context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>, config: CstDisplayConfig<'a>) -> Self {
         Self { context, current_item_id: None, indent_level: 0, config }
     }
 
@@ -207,14 +254,17 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_export(&mut self, exports: Option<&[(Name, Location)]>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_export(&mut self, exports: Option<&[ExportEntry]>, f: &mut Formatter) -> std::fmt::Result {
         if let Some(exports) = exports {
             write!(f, "export ")?;
-            for (i, (item, _location)) in exports.iter().enumerate() {
+            for (i, entry) in exports.iter().enumerate() {
                 if i != 0 {
                     write!(f, ", ")?;
                 }
-                write!(f, "{item}")?;
+                if let Some((qualifier, _)) = &entry.qualifier {
+                    write!(f, "{qualifier}.")?;
+                }
+                write!(f, "{}", entry.name)?;
             }
             writeln!(f, "\n")?;
         }
@@ -227,6 +277,7 @@ impl<'a> CstDisplay<'a> {
         self.current_item_id = Some(item.id);
 
         self.fmt_comments(&item.comments, f)?;
+        self.fmt_attributes(&item.attributes, context, f)?;
 
         if self.config.show_resolved {
             writeln!(f, "// id = {}", item.id)?;
@@ -236,8 +287,9 @@ impl<'a> CstDisplay<'a> {
         match &item.kind {
             TopLevelItemKind::TypeDefinition(type_definition) => self.fmt_type_definition(type_definition, context, f),
             TopLevelItemKind::Definition(definition) => self.fmt_definition(definition, context, f),
-            TopLevelItemKind::AbilityDefinition(ability) => self.fmt_ability(ability, context, f),
-            TopLevelItemKind::AbilityImpl(ability_impl) => self.fmt_ability_impl(ability_impl, context, f),
+            TopLevelItemKind::TraitDefinition(def) => self.fmt_trait_or_effect("trait", def, context, f),
+            TopLevelItemKind::EffectDefinition(def) => self.fmt_trait_or_effect("effect", def, context, f),
+            TopLevelItemKind::TraitImpl(trait_impl) => self.fmt_trait_impl(trait_impl, context, f),
             TopLevelItemKind::Comptime(comptime) => self.fmt_comptime(comptime, context, f),
         }?;
         writeln!(f)
@@ -249,6 +301,21 @@ impl<'a> CstDisplay<'a> {
                 writeln!(f, "{comment}")?;
                 self.indent(f)?;
             }
+        }
+        Ok(())
+    }
+
+    fn fmt_attributes(
+        &mut self, attributes: &[Attribute], context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        for attribute in attributes {
+            write!(f, "#{}", attribute.name)?;
+            for arg in &attribute.args {
+                write!(f, " ")?;
+                self.fmt_expr(*arg, context, f)?;
+            }
+            writeln!(f)?;
+            self.indent(f)?;
         }
         Ok(())
     }
@@ -269,6 +336,15 @@ impl<'a> CstDisplay<'a> {
         }
 
         self.fmt_pattern(definition.pattern, context, f)?;
+
+        if self.config.signature_only {
+            // Keep `extern "f": fn a -> b` style annotations, which live on the rhs
+            if let Expr::TypeAnnotation(annotation) = context.get_expr(definition.rhs) {
+                write!(f, ": ")?;
+                self.fmt_type(&annotation.rhs, context, f)?;
+            }
+            return Ok(());
+        }
 
         write!(f, " =")?;
         if !self.is_block(definition.rhs, context) {
@@ -301,22 +377,30 @@ impl<'a> CstDisplay<'a> {
     fn fmt_generic_param(
         &self, param: &cst::GenericParam, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
-        match param.kind {
-            Some(cst::KindAnnotation::Lifetime) => {
+        match (param.kind, &param.default) {
+            (Some(cst::KindAnnotation::Place), _) => {
                 write!(f, "'")?;
                 self.fmt_type_name(param.name, context, f)
             },
-            Some(kind) => {
-                let kind_str = match kind {
-                    cst::KindAnnotation::Type => "type",
-                    cst::KindAnnotation::U32 => "U32",
-                    cst::KindAnnotation::Lifetime => unreachable!(),
-                };
+            (None, None) => self.fmt_type_name(param.name, context, f),
+            (kind, default) => {
                 write!(f, "(")?;
                 self.fmt_type_name(param.name, context, f)?;
-                write!(f, ": {kind_str})")
+                if let Some(kind) = kind {
+                    let kind_str = match kind {
+                        cst::KindAnnotation::Type => "type",
+                        cst::KindAnnotation::U32 => "U32",
+                        cst::KindAnnotation::Effect => "effect",
+                        cst::KindAnnotation::Place => unreachable!(),
+                    };
+                    write!(f, ": {kind_str}")?;
+                }
+                if let Some(default) = default {
+                    write!(f, " = ")?;
+                    self.fmt_type(default, context, f)?;
+                }
+                write!(f, ")")
             },
-            None => self.fmt_type_name(param.name, context, f),
         }
     }
 
@@ -337,15 +421,20 @@ impl<'a> CstDisplay<'a> {
             write!(f, "_{id}")?;
         }
 
-        if let Some(db) = self.db_type_check()
-            && show_type
-        {
-            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-            let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
-            write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
+        if self.config.show_types && show_type {
+            self.fmt_name_type(name, context, f)?;
+            write!(f, ")")?;
         }
 
         Ok(())
+    }
+
+    /// Write `: T` where `T` is `name`'s inferred type
+    fn fmt_name_type(&self, name: NameId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        let db = self.db_type_check().expect("fmt_name_type requires show_types");
+        let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+        let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
+        write!(f, ": {}", typ.to_string(&check.bindings, context, db))
     }
 
     fn fmt_path(&self, path: PathId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
@@ -414,8 +503,16 @@ impl<'a> CstDisplay<'a> {
         }
 
         if let Some(typ) = &lambda.return_type {
-            write!(f, " : ")?;
+            write!(f, ": ")?;
             self.fmt_type(typ, context, f)?;
+        }
+
+        if lambda.effects.is_some() {
+            self.fmt_effects_clause(&lambda.effects, context, f)?;
+        }
+
+        if self.config.signature_only {
+            return Ok(());
         }
 
         write!(f, " {}", if write_arrow { "->" } else { "=" })?;
@@ -426,17 +523,45 @@ impl<'a> CstDisplay<'a> {
     }
 
     /// Formats type arguments with a leading space in front of each (including the first)
-    fn fmt_type_args(&self, args: &[Type], context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type_args<'b>(
+        &self, args: impl IntoIterator<Item = &'b Type>, context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
 
         for arg in args {
-            if requires_parens(arg) {
-                write!(f, " (")?;
-                self.fmt_type(arg, context, f)?;
+            write!(f, " ")?;
+            self.parenthesize_type(arg, requires_parens(arg), context, f)?;
+        }
+        Ok(())
+    }
+
+    fn parenthesize_type<'b>(
+        &self, typ: &Type, should_parenthesize: bool, context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        if should_parenthesize {
+            write!(f, "(")?;
+            self.fmt_type(typ, context, f)?;
+            write!(f, ")")
+        } else {
+            self.fmt_type(typ, context, f)
+        }
+    }
+
+    fn fmt_variant_fields(
+        &self, fields: &[(Option<NameId>, Type)], context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
+
+        for (name, typ) in fields {
+            write!(f, " ")?;
+            if let Some(name) = name {
+                write!(f, "(")?;
+                self.fmt_name(*name, context, f)?;
+                write!(f, ": ")?;
+                self.fmt_type(typ, context, f)?;
                 write!(f, ")")?;
             } else {
-                write!(f, " ")?;
-                self.fmt_type(arg, context, f)?;
+                self.parenthesize_type(typ, requires_parens(typ), context, f)?;
             }
         }
         Ok(())
@@ -464,7 +589,8 @@ impl<'a> CstDisplay<'a> {
             write!(f, "mut ")?;
         }
 
-        write!(f, "type ")?;
+        let keyword = if type_definition.kind.is_effect() { "effect" } else { "type" };
+        write!(f, "{keyword} ")?;
         self.fmt_type_name(type_definition.name, context, f)?;
 
         for generic in &type_definition.generics {
@@ -488,19 +614,42 @@ impl<'a> CstDisplay<'a> {
                 }
                 self.indent_level -= 1;
             },
-            TypeDefinitionBody::Enum(variants) => {
+            TypeDefinitionBody::Enum(variants, common_fields) => {
                 self.indent_level += 1;
+                let common_field_count = common_fields.len();
                 for (name, params) in variants {
                     self.newline(f)?;
                     write!(f, "| ")?;
                     self.fmt_type_name(*name, context, f)?;
-                    self.fmt_type_args(params, context, f)?;
+                    // Avoid repeating the with-clause fields in each variant
+                    self.fmt_variant_fields(&params[..params.len() - common_field_count], context, f)?;
+                }
+                if common_field_count > 0 {
+                    self.newline(f)?;
+                    write!(f, "with ")?;
+                    for (i, (name, typ)) in common_fields.iter().enumerate() {
+                        if i != 0 {
+                            write!(f, ", ")?;
+                        }
+                        self.fmt_name(*name, context, f)?;
+                        write!(f, ": ")?;
+                        self.fmt_type(typ, context, f)?;
+                    }
                 }
                 self.indent_level -= 1;
             },
             TypeDefinitionBody::Alias(typ) => {
                 write!(f, " ")?;
                 self.fmt_type(typ, context, f)?;
+            },
+            TypeDefinitionBody::EffectAlias(effects) => {
+                write!(f, " ")?;
+                for (i, effect) in effects.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_type(effect, context, f)?;
+                }
             },
         }
         Ok(())
@@ -511,9 +660,19 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Error => write!(f, "(error)"),
             TypeKind::Named(path) => self.fmt_type_path(*path, context, f),
             TypeKind::Variable(name) => self.fmt_type_name(*name, context, f),
-            TypeKind::Lifetime(name) => {
+            TypeKind::Place(paths) => {
                 write!(f, "'")?;
-                self.fmt_type_name(*name, context, f)
+                if let [path] = paths.as_slice() {
+                    return self.fmt_place_path(path, context, f);
+                }
+                write!(f, "(")?;
+                for (i, path) in paths.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_place_path(path, context, f)?;
+                }
+                write!(f, ")")
             },
             TypeKind::Unit => write!(f, "Unit"),
             TypeKind::Integer(kind) => write!(f, "{kind}"),
@@ -525,8 +684,18 @@ impl<'a> CstDisplay<'a> {
             TypeKind::NoClosureEnv => write!(f, "{}", NO_CLOSURE_ENV_STRING),
             TypeKind::Pointer => write!(f, "Ptr"),
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
+            TypeKind::EffectUnion(operands) => {
+                for (i, operand) in operands.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " & ")?;
+                    }
+                    self.fmt_type(operand, context, f)?;
+                }
+                Ok(())
+            },
             TypeKind::Hole => write!(f, "_"),
-            TypeKind::ImplicitLifetime => write!(f, "'_"),
+            TypeKind::ImplicitPlace => write!(f, "'_"),
+            TypeKind::Pure => write!(f, "pure"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
             TypeKind::Forall(generics, body) => {
                 write!(f, "forall")?;
@@ -538,6 +707,11 @@ impl<'a> CstDisplay<'a> {
                 self.fmt_type(body, context, f)
             },
         }
+    }
+
+    fn fmt_place_path(&self, path: &cst::PlacePath, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        self.fmt_type_name(path.root, context, f)?;
+        write!(f, "{}", cst::Segments(&path.segments))
     }
 
     fn fmt_reference_type(&self, kind: ReferenceKind, f: &mut Formatter) -> std::fmt::Result {
@@ -571,11 +745,13 @@ impl<'a> CstDisplay<'a> {
             && args.len() == 2
         {
             self.fmt_reference_type(*kind, f)?;
-            if !matches!(args[0].kind, TypeKind::ImplicitLifetime) {
+            if !matches!(args[0].kind, TypeKind::ImplicitPlace) {
                 write!(f, " ")?;
                 self.fmt_type(&args[0], context, f)?;
             }
-            return self.fmt_type_args(&args[1..], context, f);
+            write!(f, " ")?;
+            let is_function = matches!(args[1].kind, TypeKind::Function(_));
+            return self.parenthesize_type(&args[1], is_function, context, f);
         }
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
@@ -621,8 +797,16 @@ impl<'a> CstDisplay<'a> {
     fn fmt_function_type(
         &self, function_type: &FunctionType, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
-        if function_type.has_resume {
-            write!(f, "resume ")?;
+        if Self::is_thunk_shorthand(function_type) {
+            let return_type = &function_type.return_type;
+            if matches!(return_type.kind, TypeKind::Function(_) | TypeKind::Forall(..)) {
+                write!(f, "(")?;
+                self.fmt_type(return_type, context, f)?;
+                write!(f, ")")?;
+            } else {
+                self.fmt_type(return_type, context, f)?;
+            }
+            return self.fmt_effects_clause(&function_type.effects, context, f);
         }
 
         write!(f, "fn")?;
@@ -650,7 +834,37 @@ impl<'a> CstDisplay<'a> {
         }
 
         write!(f, " -> ")?;
-        self.fmt_type(&function_type.return_type, context, f)
+        self.fmt_type(&function_type.return_type, context, f)?;
+        self.fmt_effects_clause(&function_type.effects, context, f)
+    }
+
+    /// Can this be written as `a can e`
+    fn is_thunk_shorthand(function_type: &FunctionType) -> bool {
+        let [parameter] = function_type.parameters.as_slice() else { return false };
+        let unit_parameter = !parameter.is_implicit && matches!(parameter.typ.kind, TypeKind::Unit);
+        let hole_environment =
+            matches!(function_type.environment.as_deref(), Some(env) if matches!(env.kind, TypeKind::Hole));
+        let has_effects = function_type.effects.as_ref().is_some_and(|effects| !effects.is_empty());
+        unit_parameter && hole_environment && has_effects
+    }
+
+    fn fmt_effects_clause(
+        &self, effects: &Option<Vec<Type>>, context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        match effects {
+            None => Ok(()),
+            Some(effects) if effects.is_empty() => write!(f, " is pure"),
+            Some(effects) => {
+                write!(f, " can ")?;
+                for (i, effect) in effects.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_type(effect, context, f)?;
+                }
+                Ok(())
+            },
+        }
     }
 
     fn fmt_expr(&mut self, id: ExprId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
@@ -682,7 +896,8 @@ impl<'a> CstDisplay<'a> {
                 self.fmt_expr(return_.expression, context, f)
             },
             Expr::Assignment(assignment) => {
-                self.fmt_expr(assignment.lhs, context, f)?;
+                let lhs_parens = self.is_infix_operator_or_assignment(assignment.lhs, context);
+                self.parenthesize(assignment.lhs, lhs_parens, context, f)?;
                 match &assignment.op {
                     Some((CompoundAssignOp::Add, _)) => write!(f, " += ")?,
                     Some((CompoundAssignOp::Sub, _)) => write!(f, " -= ")?,
@@ -691,7 +906,8 @@ impl<'a> CstDisplay<'a> {
                     Some((CompoundAssignOp::Mod, _)) => write!(f, " %= ")?,
                     None => write!(f, " := ")?,
                 }
-                self.fmt_expr(assignment.rhs, context, f)
+                let rhs_parens = self.is_infix_operator_or_assignment(assignment.rhs, context);
+                self.parenthesize(assignment.rhs, rhs_parens, context, f)
             },
             Expr::Extern(extern_) => self.fmt_extern(extern_, f),
             Expr::InterpolatedString(interpolated) => self.fmt_interpolated_string(interpolated, context, f),
@@ -818,6 +1034,17 @@ impl<'a> CstDisplay<'a> {
         }
     }
 
+    fn is_infix_operator_or_assignment(&self, expr: ExprId, context: &impl IdStore) -> bool {
+        match context.get_expr(expr) {
+            Expr::Call(call) => {
+                call.arguments.len() == 2
+                    && matches!(self.classify_operator(call.function, context), FmtOperatorKind::Infix)
+            },
+            Expr::Assignment(_) => true,
+            _ => false,
+        }
+    }
+
     fn classify_operator(&self, function: ExprId, context: &impl IdStore) -> FmtOperatorKind {
         let Expr::Variable(path) = context.get_expr(function) else {
             return FmtOperatorKind::NotAnOperator;
@@ -829,7 +1056,7 @@ impl<'a> CstDisplay<'a> {
         }
 
         let name = &path.components[0].0;
-        if name == INDEX_OPERATOR_FUNCTION_NAME {
+        if name.as_str() == INDEX_OPERATOR_FUNCTION_NAME {
             FmtOperatorKind::Index
         } else if !name.chars().next().unwrap().is_alphanumeric() {
             FmtOperatorKind::Infix
@@ -876,20 +1103,20 @@ impl<'a> CstDisplay<'a> {
         self.fmt_type(&declaration.typ, context, f)
     }
 
-    fn fmt_ability(
-        &mut self, ability: &AbilityDefinition, context: &impl IdStore, f: &mut Formatter,
+    fn fmt_trait_or_effect(
+        &mut self, keyword: &str, def: &TraitOrEffectDefinition, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
-        write!(f, "ability ")?;
-        self.fmt_type_name(ability.name, context, f)?;
+        write!(f, "{keyword} ")?;
+        self.fmt_type_name(def.name, context, f)?;
 
-        for generic in &ability.generics {
+        for generic in &def.generics {
             write!(f, " ")?;
             self.fmt_generic_param(generic, context, f)?;
         }
 
         write!(f, " =")?;
         self.indent_level += 1;
-        for declaration in &ability.body {
+        for declaration in &def.body {
             self.newline(f)?;
             self.fmt_declaration(declaration, context, f)?;
         }
@@ -897,20 +1124,24 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_ability_impl(
-        &mut self, ability_impl: &AbilityImpl, context: &impl IdStore, f: &mut Formatter,
+    fn fmt_trait_impl(
+        &mut self, trait_impl: &TraitImpl, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "impl ")?;
-        self.fmt_name(ability_impl.name, context, f)?;
-        self.fmt_parameters(&ability_impl.parameters, context, f)?;
+        self.fmt_name(trait_impl.name, context, f)?;
+        self.fmt_parameters(&trait_impl.parameters, context, f)?;
 
         write!(f, ": ")?;
-        self.fmt_path(ability_impl.ability_path, context, f)?;
-        self.fmt_type_args(&ability_impl.ability_arguments, context, f)?;
+        self.fmt_path(trait_impl.trait_path, context, f)?;
+        self.fmt_type_args(&trait_impl.trait_arguments, context, f)?;
+
+        if self.config.signature_only {
+            return Ok(());
+        }
 
         write!(f, " with")?;
         self.indent_level += 1;
-        for (name, expr) in &ability_impl.body {
+        for (name, expr) in &trait_impl.body {
             self.newline(f)?;
             self.fmt_name(*name, context, f)?;
 
@@ -1023,9 +1254,8 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_handle(&mut self, handle_: &Handle, context: &impl IdStore, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "handler ")?;
-        self.fmt_name(handle_.handler_name, context, f)?;
-        write!(f, " for")?;
+        write!(f, "handle ")?;
+        self.fmt_expr(handle_.expression, context, f)?;
 
         for (pattern, branch) in &handle_.cases {
             self.newline(f)?;
@@ -1035,10 +1265,6 @@ impl<'a> CstDisplay<'a> {
             self.fmt_expr(*branch, context, f)?;
         }
 
-        self.newline(f)?;
-        write!(f, "in ")?;
-        self.fmt_expr(handle_.expression, context, f)?;
-
         Ok(())
     }
 
@@ -1047,6 +1273,17 @@ impl<'a> CstDisplay<'a> {
     ) -> std::fmt::Result {
         self.fmt_path(pattern.function, context, f)?;
         for arg in pattern.args.iter() {
+            write!(f, " ")?;
+            self.fmt_pattern_atom(*arg, context, f)?;
+        }
+        Ok(())
+    }
+
+    fn fmt_constructor_path_and_args(
+        &mut self, path: PathId, args: &[PatternId], context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        self.fmt_path(path, context, f)?;
+        for arg in args {
             write!(f, " ")?;
             self.fmt_pattern_atom(*arg, context, f)?;
         }
@@ -1067,11 +1304,12 @@ impl<'a> CstDisplay<'a> {
         match context.get_pattern(id) {
             Pattern::Variable(name) => self.fmt_name(*name, context, f),
             Pattern::Literal(literal) => self.fmt_literal(literal, f),
-            Pattern::Constructor(path, args) => {
-                self.fmt_path(*path, context, f)?;
-                for arg in args {
-                    write!(f, " ")?;
-                    self.fmt_pattern_atom(*arg, context, f)?;
+            Pattern::Constructor(path, args) => self.fmt_constructor_path_and_args(*path, args, context, f),
+            Pattern::ConstructorRest(path, args, name) => {
+                self.fmt_constructor_path_and_args(*path, args, context, f)?;
+                write!(f, " ..")?;
+                if let Some(name) = name {
+                    self.fmt_name(*name, context, f)?;
                 }
                 Ok(())
             },
@@ -1087,9 +1325,17 @@ impl<'a> CstDisplay<'a> {
                 Ok(())
             },
             Pattern::MethodName { type_name, item_name } => {
+                if self.config.show_types {
+                    write!(f, "(")?;
+                }
                 self.fmt_type_name(*type_name, context, f)?;
                 write!(f, ".")?;
-                self.fmt_name(*item_name, context, f)
+                self.fmt_name_helper(*item_name, context, f, false)?;
+                if self.config.show_types {
+                    self.fmt_name_type(*item_name, context, f)?;
+                    write!(f, ")")?;
+                }
+                Ok(())
             },
             Pattern::Or(alts) => {
                 let mut first = true;
@@ -1182,7 +1428,8 @@ impl<'a> CstDisplay<'a> {
         match context.get_pattern(pattern) {
             Error | Variable(_) | Literal(_) | MethodName { .. } => true,
             Constructor(_, args) => args.is_empty(),
-            TypeAnnotation(_, _) => false,
+            ConstructorRest(_, _, _) => false,
+            TypeAnnotation(inner, _) => self.config.show_types && matches!(context.get_pattern(*inner), Variable(_)),
             Or(_) => false,
             Alias(_, _) => false,
         }
@@ -1280,7 +1527,15 @@ impl<'a> CstDisplay<'a> {
         for parameter in &loop_.parameters {
             write!(f, " ")?;
             match parameter {
-                LoopParameter::Variable(name) => self.fmt_name(*name, context, f)?,
+                LoopParameter::Pattern(pattern) => {
+                    if matches!(context.get_pattern(*pattern), Pattern::Variable(_)) {
+                        self.fmt_pattern(*pattern, context, f)?;
+                    } else {
+                        write!(f, "(")?;
+                        self.fmt_pattern(*pattern, context, f)?;
+                        write!(f, ")")?;
+                    }
+                },
                 LoopParameter::PatternAndExpr(pattern, expr) => {
                     write!(f, "(")?;
                     self.fmt_pattern(*pattern, context, f)?;
@@ -1324,7 +1579,9 @@ enum FmtOperatorKind {
 impl Display for Origin {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
-            Origin::TopLevelDefinition(top_level_id) => write!(f, "{top_level_id}"),
+            Origin::TopLevelDefinition(top_level_id)
+            | Origin::TraitMember(crate::name_resolution::TraitMember { name: top_level_id, .. })
+            | Origin::EffectOperation { name: top_level_id, .. } => write!(f, "{top_level_id}"),
             Origin::Local(name_id) => write!(f, "{name_id}"),
             Origin::TypeResolution => write!(f, "td"), // type-directed
             Origin::Builtin(builtin) => write!(f, "b{builtin}"),

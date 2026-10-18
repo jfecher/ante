@@ -5,7 +5,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Index,
-    sync::Arc,
 };
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -19,6 +18,7 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId},
     },
+    shared_arc::Shared,
     type_inference::{TypeChecker, patterns::DecisionTree, types::Type},
 };
 
@@ -26,7 +26,7 @@ use crate::{
 /// from the [TypeChecker] after performing type-checking and match compilation.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtendedTopLevelContext {
-    original: Arc<DesugarContext>,
+    original: Shared<DesugarContext>,
 
     /// The TypeChecker may insert new variables into the code, most commonly
     /// during match compilation where each step is broken into a new variable.
@@ -81,9 +81,12 @@ pub struct ExtendedTopLevelContext {
     /// set of variables it captures. Free functions are excluded from the map entirely.
     closure_environments: FxHashMap<ExprId, BTreeSet<NameId>>,
 
-    /// Closures declared with the `move` keyword. These capture by value/move instead of
-    /// by reference. Used by the MIR builder to determine capture semantics.
+    /// Closures declared with `move`, which capture by value instead of by reference.
     move_closures: FxHashSet<ExprId>,
+
+    /// Function values coerced to a wider effect row, mapped to the function type they were
+    /// coerced to. The MIR builder wraps each in a closure of that type capturing the original.
+    function_coercions: FxHashMap<ExprId, Type>,
 }
 
 impl<'local, 'innter> TypeChecker<'local, 'innter> {
@@ -109,7 +112,7 @@ impl<'local, 'innter> TypeChecker<'local, 'innter> {
 }
 
 impl ExtendedTopLevelContext {
-    pub(crate) fn new(original: Arc<DesugarContext>) -> Self {
+    pub(crate) fn new(original: Shared<DesugarContext>) -> Self {
         Self {
             original,
             name_origins: Default::default(),
@@ -128,6 +131,7 @@ impl ExtendedTopLevelContext {
             instantiations: Default::default(),
             closure_environments: Default::default(),
             move_closures: Default::default(),
+            function_coercions: Default::default(),
         }
     }
 
@@ -221,7 +225,7 @@ impl ExtendedTopLevelContext {
     }
 
     /// Retrieve the location of the corresponding [Name] of the given [NameId]
-    pub(crate) fn name_location(&self, name: NameId) -> Location {
+    pub fn name_location(&self, name: NameId) -> Location {
         match self.more_name_locations.get(&name) {
             Some(location) => location.clone(),
             None => self.original.name_location(name).clone(),
@@ -248,12 +252,20 @@ impl ExtendedTopLevelContext {
         self.name_origins.insert(name_id, origin);
     }
 
-    pub(crate) fn path_origin(&self, path_id: PathId) -> Option<Origin> {
+    pub fn path_origin(&self, path_id: PathId) -> Option<Origin> {
         self.path_origins.get(&path_id).copied()
     }
 
     pub fn name_origin(&self, name_id: NameId) -> Option<Origin> {
         self.name_origins.get(&name_id).copied()
+    }
+
+    pub fn path_origins(&self) -> impl ExactSizeIterator<Item = (PathId, Origin)> {
+        self.path_origins.iter().map(|(id, origin)| (*id, *origin))
+    }
+
+    pub fn name_origins(&self) -> impl ExactSizeIterator<Item = (NameId, Origin)> {
+        self.name_origins.iter().map(|(id, origin)| (*id, *origin))
     }
 
     /// Insert a decision tree, replacing the expression at the given id
@@ -312,6 +324,14 @@ impl ExtendedTopLevelContext {
         self.closure_environments.get(&expr)
     }
 
+    pub(crate) fn insert_function_coercion(&mut self, expr: ExprId, expected: Type) {
+        self.function_coercions.insert(expr, expected);
+    }
+
+    pub(crate) fn get_function_coercion(&self, expr: ExprId) -> Option<&Type> {
+        self.function_coercions.get(&expr)
+    }
+
     pub(crate) fn mark_move_closure(&mut self, expr: ExprId) {
         self.move_closures.insert(expr);
     }
@@ -332,6 +352,9 @@ impl ExtendedTopLevelContext {
         }
         if self.move_closures.contains(&from) {
             self.move_closures.insert(to);
+        }
+        if let Some(coercion) = self.function_coercions.get(&from).cloned() {
+            self.function_coercions.insert(to, coercion);
         }
     }
 

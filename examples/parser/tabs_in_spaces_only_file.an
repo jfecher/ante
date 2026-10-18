@@ -15,6 +15,7 @@ bar x =
 // bar x =
 //     x
 
+
 // expected stderr:
 // examples/parser/tabs_in_spaces_only_file.an:6:1
 // 5 | bar x =

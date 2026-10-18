@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     for i in 0..5 do
         if i == 3 then break
         if i == 1 then continue

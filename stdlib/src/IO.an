@@ -1,35 +1,50 @@
-import Std.C.fclose, fopen, fputs, fgetc, ungetc, feof, malloc, realloc, getchar, copy_file
+import Std.C.fclose, fopen, fwrite, fgetc, ungetc, feof, malloc, realloc, getchar, copy_file
 import Std.C
+import Std.Fail.Fail, fail, fail_if
+import Std.String.split
+import Std.Stream.iter, stream_fn, foldl
 
-export File, open, close, drop_file, eof, write, next_char, next_line,
-    iterator_file, read_line
+export File, File.open, File.close, drop_file, File.eof, File.write, File.next_char, File.next_line,
+    iterator_file, read_line, print_to_file, create_dir, create_dir_all
 
 type File = c_file: C.File
 
-File.open (path: String) (mode: String): File =
-    // TODO: Add null byte here
-    File <| fopen (C.String path.data) (C.String mode.data)
+/// Open the file at `path` with the given `fopen` mode.
+/// Fails if it cannot be opened.
+///
+/// This function is temporary, mode will eventually become a union, and `path` a proper path type.
+File.open (path: String) (mode: String): File can Fs, Fail =
+    c_file = fopen (C.String.new path) (C.String.new mode)
+    fail_if (c_file.f == null ())
+    File c_file
 
-File.close (file: File): Unit =
+File.close (file: File): Unit can Fs =
     fclose file.c_file
 
-impl drop_file: Drop File with
+impl drop_file: Drop File Fs with
     drop f =
         fclose f.c_file
 
-//Convenience function for using feof with better types
-File.eof (f: ref File): Bool =
+/// Convenience function for using feof with better types
+File.eof (f: ref File): Bool can Fs =
     feof f.c_file != 0
 
-File.write (f: mut File) (text: String): Unit =
-    // TODO: Add null byte here
-    fputs (C.String text.data) f.c_file
+File.write (f: mut File) (text: String): Unit can Fs =
+    fwrite (transmute text.data) 1 (Usz text.length) f.c_file
     ()
 
-File.next_char (f: ref File): Char =
-    Char (fgetc f.c_file)
+/// Handles `Print` by writing everything printed to `file`
+print_to_file (file: ref File) (f: a can Print, e): a can Fs, e =
+    print_to_sink (fn data len -> ignore (fwrite (transmute data) 1 len file.c_file)) f
 
-File.next_line (f: mut File): String =
+/// Read the next character.
+/// Fails if at the end of the file or on a read error.
+File.next_char (f: ref File): Char can Fs, Fail =
+    c = fgetc f.c_file
+    fail_if (c < 0)
+    Char c
+
+File.next_line (f: mut File): String can Fs =
     if f.eof () then return ""
 
     len, cstr = loop (len = 0) (capacity = 32) (cstr = malloc 32) ->
@@ -54,14 +69,14 @@ File.next_line (f: mut File): String =
     array_insert cstr len '\0'
     String.from_parts cstr (U32 len)
 
-// Iterating through a File iterates through each line
-impl iterator_file: Iterator (mut File) String with
+/// Iterating through a File iterates through each line
+impl iterator_file: Iterator (mut File) String Fs with
     next file =
         if file.eof () then None
         else Some (file, file.next_line ())
 
-// Read a line from stdin, ending with (and not including) a terminating '\n'
-read_line (): String =
+/// Read a line from stdin, ending with (and not including) a terminating '\n'
+read_line (): String can Fs =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
         c_char = Char c
@@ -78,3 +93,23 @@ read_line (): String =
 
     array_insert buffer len '\0'
     String.from_parts buffer (U32 len)
+
+create_dir_: fn C.String -> I32 can Fs = extern "ante_create_dir"
+
+/// Create the directory at `path`.
+/// Fails if it cannot be created, unless a directory already exists there.
+create_dir (path: String): Unit can Fs, Fail =
+    fail_if <| create_dir_ (C.String.new path) != 0
+
+/// Create each directory in `path` along with any missing parent directories.
+/// Fails if any of them cannot be created.
+create_dir_all (path: String): Unit can Fs, Fail =
+    split path '/' |> foldl "" fn prefix component ->
+        if component.length == 0 then
+            // An empty first component means the path is absolute.
+            if prefix.length == 0 then "/" else prefix
+        else
+            prefix = prefix ++ component ++ "/"
+            create_dir (clone prefix)
+            prefix
+    ()

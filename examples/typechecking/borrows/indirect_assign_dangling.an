@@ -1,0 +1,23 @@
+global: mut (ref I32) = mut (ref 0)
+
+get_global (): mut (ref I32) = global
+
+main () =
+    for i in 0 .. 10 do
+        x = i
+        get_global () := ref x
+    ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/indirect_assign_dangling.an:8:26
+//  6 |     for i in 0 .. 10 do
+//  7 |         x = i	// note: x is only valid until the end of this scope
+//    |         -
+//  8 |         get_global () := ref x	// error: This reference to x outlives its scope
+//    |                          ^^^^^
+//  9 |     ()
+// 
+// Found 1 error and 0 warnings
+

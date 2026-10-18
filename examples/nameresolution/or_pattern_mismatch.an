@@ -4,6 +4,7 @@ bad (m: Maybe I32): I32 =
     | Some a | None -> a
 
 main () =
+    print_to_stdout do
     println (bad (Maybe.Some 7))
 
 // args: --delete-binary --no-color

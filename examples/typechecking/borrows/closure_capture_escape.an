@@ -1,0 +1,36 @@
+bad_mutable_capture () =
+    var v = 5
+    // Closures hold refs to variables by default unless they're move closures
+    fn () -> v
+
+bad_returns_ref () =
+    x = 5
+    fn () -> ref x
+
+// FIXME: Immutable locals get copied currently instead of referenced as they should
+copy_capture () =
+    v = 5
+    fn () -> v
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/closure_capture_escape.an:4:5
+// 1 | bad_mutable_capture () =
+// 2 |     var v = 5	// note: v is only valid until the end of this scope
+//   |         -
+// 3 |     // Closures hold refs to variables by default unless they're move closures
+// 4 |     fn () -> v	// error: This reference to v outlives its scope
+//   |     ^^^^^^^^^^
+// 
+// examples/typechecking/borrows/closure_capture_escape.an:8:5
+//  6 | bad_returns_ref () =
+//  7 |     x = 5	// note: x is only valid until the end of this scope
+//    |     -
+//  8 |     fn () -> ref x	// error: This reference to x outlives its scope
+//    |     ^^^^^^^^^^^^^^
+// 
+// Found 2 errors and 0 warnings
+

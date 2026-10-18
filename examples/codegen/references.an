@@ -46,6 +46,7 @@ field_ref_mutate () =
     println p.y
 
 main () =
+    print_to_stdout do
     assign_mutable_local ()
     assign_reference ()
     struct_field_assign ()

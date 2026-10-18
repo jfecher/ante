@@ -1,0 +1,13 @@
+import Std.Stream.Emit, emit
+
+main () =
+    print_to_stdout do
+    var k = fn () -> emit 10
+    handle k ()
+    | emit x ->
+        println x
+        resume ()
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 10

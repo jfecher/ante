@@ -1,4 +1,12 @@
-use std::{cell::Cell, collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    cell::Cell,
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use inc_complete::{
     DebugWithDb, Storage,
@@ -27,6 +35,7 @@ use crate::{
         get_item,
         ids::{TopLevelId, TopLevelName},
     },
+    shared_arc::Shared,
     type_inference::{
         self, TypeCheckSCCResult,
         dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult},
@@ -56,6 +65,7 @@ pub type DbHandle<'db> = inc_complete::DbHandle<'db, DbStorage>;
 #[derive(Default, Serialize, Deserialize, Storage)]
 pub struct DbStorage {
     files: HashMapStorage<SourceFileId>,
+    submodules: HashMapStorage<Submodules>,
     crate_graph: SingletonStorage<GetCrateGraph>,
     ptr_size: SingletonStorage<TargetPointerSize>,
 
@@ -79,6 +89,10 @@ pub struct DbStorage {
     get_type_check_sccs: HashMapStorage<GetTypeCheckSCC>,
     all_diagnostics: SingletonStorage<CheckAll>,
 
+    // Skipped to save space in the .inc file
+    #[serde(skip)]
+    get_type_bodies: HashMapStorage<GetTypeBody>,
+
     #[inc_complete(accumulate)]
     diagnostics: Accumulator<Diagnostic>,
     diagnostics_storage: HashMapStorage<Accumulated<Diagnostic>>,
@@ -89,7 +103,15 @@ std::thread_local! {
     static QUERY_NESTING: Cell<usize> = const { Cell::new(0) };
 }
 
+/// Set once [enter_query] has been called
+static QUERY_RAN: AtomicBool = AtomicBool::new(false);
+
+pub fn query_ran() -> bool {
+    QUERY_RAN.load(Ordering::Relaxed)
+}
+
 pub fn enter_query() {
+    QUERY_RAN.store(true, Ordering::Relaxed);
     QUERY_NESTING.with(|cell| {
         cell.set(cell.get() + 1);
     });
@@ -101,14 +123,30 @@ pub fn exit_query() {
     });
 }
 
-/// Currently disabled until a Cli argument is added to opt into these traces
-pub fn println(_msg: String) {
-    // let level = QUERY_NESTING.with(|cell| cell.get());
-    // let spaces = "  ".repeat(level);
+/// Controlled by the `--show-queries` Cli argument.
+///
+/// Normally a global that is separate from the query system and may change values between
+/// runs would break the query system, but in this case that is what we want since we don't
+/// want this value to change what is cached, and this shouldn't affect the resulting compiled code.
+static TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable the query execution trace printed by `println` below.
+/// This should be called once at startup, before any incremental computations run.
+pub fn set_trace_enabled(enabled: bool) {
+    TRACE_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+pub fn println(msg: std::fmt::Arguments) {
+    if !TRACE_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
+
+    let level = QUERY_NESTING.with(|cell| cell.get());
+    let spaces = "  ".repeat(level);
 
     // Thread ids are usually in the form `ThreadId(X)` or `ThreadId(XX)`.
     // Add some padding to keep output aligned for both cases.
-    // println!("{:02?}: {spaces}- {msg}", std::thread::current().id());
+    println!("{:02?}: {spaces}- {msg}", std::thread::current().id());
 }
 
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -128,6 +166,17 @@ impl SourceFile {
 // SourceFileIds map to a FileData which contains, among other things, the full
 // source text of the file.
 define_input!(100, SourceFileId -> Arc<SourceFile>, DbStorage);
+
+/// The submodules of a given file module
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Submodules(pub SourceFileId);
+define_intermediate!(150, Submodules -> Arc<BTreeMap<String, SourceFileId>>, DbStorage, |context, db| {
+    enter_query();
+    println(format_args!("Getting submodules of {:?}", context.0));
+    let submodules = Arc::new(context.0.get(db).submodules.clone());
+    exit_query();
+    submodules
+});
 
 /// The size of a pointer for the target machine in bytes.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -303,15 +352,23 @@ define_intermediate!(1100, Resolve -> Arc<ResolutionResult>, DbStorage, name_res
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GetItemRaw(pub TopLevelId);
 
+/// A top-level item and its context, sharing both with the [Parse] result when serialized
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RawItem(pub Shared<TopLevelItem>, pub Shared<TopLevelContext>);
+
 // This one is quick and simple, let's just define it here.
-define_intermediate!(1200, GetItemRaw -> (Arc<TopLevelItem>, Arc<TopLevelContext>), DbStorage, |context, db| {
+define_intermediate!(1200, GetItemRaw -> RawItem, DbStorage, |context, db| {
+    enter_query();
+    println(format_args!("Getting raw item {:?} out of its parse tree", context.0));
+
     let target_id = &context.0;
     let ast = Parse(context.0.source_file).get(db);
 
     for item in ast.cst.top_level_items.iter() {
         if item.id == *target_id {
             let ctx = ast.top_level_data[target_id].clone();
-            return (item.clone(), ctx);
+            exit_query();
+            return RawItem(item.clone(), ctx);
         }
     }
 
@@ -324,7 +381,7 @@ define_intermediate!(1200, GetItemRaw -> (Arc<TopLevelItem>, Arc<TopLevelContext
 /// from parsing.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GetItem(pub TopLevelId);
-define_intermediate!(1300, GetItem -> (Arc<TopLevelItem>, Arc<DesugarContext>), DbStorage, get_item::get_item_impl);
+define_intermediate!(1300, GetItem -> (Shared<TopLevelItem>, Shared<DesugarContext>), DbStorage, get_item::get_item_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Retrieves the type of a top-level item. Like `Resolve`, this is done per-item.
@@ -339,7 +396,7 @@ define_intermediate!(1400, GetType -> type_inference::types::Type, DbStorage, ty
 
 impl DebugWithDb<DbStorage> for GetType {
     fn fmt_with_db(&self, db: &inc_complete::Db<DbStorage>, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let (_, ctx) = GetItemRaw(self.0.top_level_item).get(db);
+        let RawItem(_, ctx) = GetItemRaw(self.0.top_level_item).get(db);
         write!(f, "GetType(`{}`)", ctx.names[self.0.local_name_id])
     }
 }
@@ -364,7 +421,7 @@ impl DebugWithDb<DbStorage> for TypeCheckSCC {
             if i != 0 {
                 write!(f, ", ")?;
             }
-            let (item, ctx) = GetItemRaw(*item).get(db);
+            let RawItem(item, ctx) = GetItemRaw(*item).get(db);
             write!(f, "`{}`", item.kind.name().to_string(ctx.as_ref()))?;
         }
         write!(f, ")")
@@ -380,7 +437,7 @@ define_intermediate!(1600, assume_changed TypeCheck -> Arc<TypeCheckResult>, DbS
 
 impl DebugWithDb<DbStorage> for TypeCheck {
     fn fmt_with_db(&self, db: &inc_complete::Db<DbStorage>, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let (item, ctx) = GetItemRaw(self.0).get(db);
+        let RawItem(item, ctx) = GetItemRaw(self.0).get(db);
         write!(f, "TypeCheck(`{}`)", item.kind.name().to_string(ctx.as_ref()))
     }
 }
@@ -407,3 +464,11 @@ define_intermediate!(1800, GetTypeCheckSCC -> SCC, DbStorage, type_inference::de
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckAll;
 define_intermediate!(1900, CheckAll -> (), DbStorage, check_all);
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+/// The body of a type once its generics are substituted with the given types
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct GetTypeBody(pub TopLevelName, pub Option<Vec<type_inference::types::Type>>);
+define_intermediate!(2000, GetTypeBody -> Arc<type_inference::TypeBody>, DbStorage, |context, db| {
+    Arc::new(context.0.type_body(context.1.as_deref(), db))
+});

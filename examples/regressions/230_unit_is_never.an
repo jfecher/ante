@@ -4,17 +4,27 @@ unit_neverizer {Throw Never} =
     throw ()
 
 main () =
-    handler h for throw _ -> println "threw!"
-    unit_neverizer h
-    println "through!"
+    print_to_stdout do
+    handle
+        unit_neverizer ()
+        println "through!"
+    | throw _ -> println "threw!"
 
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/regressions/230_unit_is_never.an:4:11
+// examples/regressions/230_unit_is_never.an:3:17
+//   | // error: This is an effect and cannot be used as an ordinary type
 // 3 | unit_neverizer {Throw Never} =
-// 4 |     throw ()	// error: Argument 1 has type Unit but Never was expected
-//   |           ^^
+//   |                 ^^^^^^^^^^^
+// 4 |     throw ()
 // 
-// Found 1 error and 0 warnings
+// examples/regressions/230_unit_is_never.an:9:9
+//  8 |     handle
+//    |         // error: No implicit found for type Throw Never required by unit_neverizer
+//  9 |         unit_neverizer ()
+//    |         ^^^^^^^^^^^^^^
+// 10 |         println "through!"
+// 
+// Found 2 errors and 0 warnings
 

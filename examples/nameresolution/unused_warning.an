@@ -12,6 +12,7 @@ id x = error
 // // id = c1m576_973
 // id_c1m576_1637_0 x_1 = error_?
 
+
 // expected stderr:
 // examples/nameresolution/unused_warning.an:4:1
 // 4 | id x = error	// warning: `id` was already defined

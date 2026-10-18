@@ -1,0 +1,18 @@
+pick2 (x: ref 'a I32) (_y: ref 'a I32): ref 'a I32 = x
+
+main () =
+    a = 1
+    // r: ref 'a I32
+    // An old type inference issue with row polymorphism used to give it the type `ref '(a, y) I32`
+    r = ref a
+    if true then
+        y = 2
+        _z = pick2 r y
+
+    f = fn (x: ref I32) -> x.*
+    for i in 0 .. 3 do
+        v = i
+        _ = f (ref v)
+
+// args: --check --no-color
+// expected exit status: 0

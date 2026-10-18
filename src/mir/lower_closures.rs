@@ -208,6 +208,7 @@ fn remove_no_closure_env_parameter_references(definition: &mut Definition) {
 fn rewrite_value_type(typ: &Type) -> Type {
     match typ {
         Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => typ.clone(),
+        Type::Evidence(_) => unreachable!("evidence is lowered before closures"),
         Type::Tuple(fields) => Type::Tuple(Arc::new(fields.iter().map(rewrite_value_type).collect())),
         Type::Union(fields) => Type::Union(Arc::new(fields.iter().map(rewrite_value_type).collect())),
         Type::Array { length, element } => {
@@ -254,31 +255,7 @@ fn rewrite_types_in_definition(definition: &mut Definition) {
         rewrite_definition_signature(&definition.typ)
     };
 
-    for (_, block) in definition.blocks.iter_mut() {
-        for typ in &mut block.parameter_types {
-            *typ = rewrite_value_type(typ);
-        }
-    }
-
-    for (_, typ) in definition.instruction_result_types.iter_mut() {
-        *typ = rewrite_value_type(typ);
-    }
-
-    for (_, instr) in definition.instructions.iter_mut() {
-        match instr {
-            Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => {
-                *typ = rewrite_value_type(typ);
-            },
-            Instruction::StackAllocUninit(typ) => {
-                *typ = rewrite_value_type(typ);
-            },
-            Instruction::GetFieldPtr { struct_type, .. } => {
-                *struct_type = rewrite_value_type(struct_type);
-            },
-            _ => {},
-        }
-    }
-
+    definition.for_each_type_mut(|typ| *typ = rewrite_value_type(typ));
     fix_fn_ptr_id_chains(definition);
 }
 
@@ -387,6 +364,7 @@ fn lower_one_call_closure(
 fn assert_no_closure_in_type(typ: &Type, where_: &str) {
     match typ {
         Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => {},
+        Type::Evidence(_) => unreachable!("evidence is lowered before closures"),
         Type::Tuple(fields) | Type::Union(fields) => {
             for f in fields.iter() {
                 assert_no_closure_in_type(f, where_);

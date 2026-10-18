@@ -1,3 +1,5 @@
+import Std.String.from_c_string, to_ascii_lowercase, to_ascii_uppercase
+import Std.C
 import Std.String.bytes, chars, substr, string_of, join, split, reverse
 import Std.String.parse_i8, parse_i16, parse_i32, parse_i64, parse_isz
 import Std.String.parse_u8, parse_u16, parse_u32, parse_u64, parse_usz
@@ -8,6 +10,8 @@ import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
 import Std.Fail.try
 
 main () =
+    print_to_stdout do
+    abort_on_panic do
     // bytes & chars:
     iter (bytes "AB") println
     iter (chars "AB") println
@@ -28,26 +32,34 @@ main () =
     split "foo bar  baz " ' ' |> iter println
     println "end of split"
 
-    // join over an interspersed stream → single String "a, b, c"
+    // intersperse:
     println (intersperse abc_stream ", " |> join)
     test_predicates ()
     test_parse ()
 
-abc_stream {Emit String}: Unit =
+    // C strings:
+    println (from_c_string (C.String.new "round trip"))
+    println (C.strlen (C.String.new "abc"))
+
+    // case conversion:
+    println (to_ascii_lowercase "Std.HashMap 123")
+    println (to_ascii_uppercase "Std.HashMap 123")
+
+abc_stream (): Unit can Emit String =
     emit "a"
     emit "b"
     emit "c"
 
 test_predicates () =
-    println (starts_with (ref "hello world") (ref "hello"))
-    println (starts_with (ref "hello world") (ref "world"))
-    println (starts_with (ref "hi") (ref "hello"))
-    println (ends_with (ref "hello world") (ref "world"))
-    println (ends_with (ref "hello world") (ref "hello"))
-    println (contains (ref "hello world") (ref "lo wo"))
-    println (contains (ref "hello world") (ref "xyz"))
-    println (contains (ref "abc") (ref ""))
-    // Brackets so trailing whitespace is visible (and matches goldentest).
+    println (starts_with "hello world" "hello")
+    println (starts_with "hello world" "world")
+    println (starts_with "hi" "hello")
+    println (ends_with "hello world" "world")
+    println (ends_with "hello world" "hello")
+    println (contains "hello world" "lo wo")
+    println (contains "hello world" "xyz")
+    println (contains "abc" "")
+    // Brackets so trailing whitespace is more visible
     println ("[" ++ trim "  hi  " ++ "]")
     println ("[" ++ trim_start "  hi  " ++ "]")
     println ("[" ++ trim_end "  hi  " ++ "]")
@@ -83,8 +95,8 @@ test_parse () =
     println (try do parse_i32 "-2147483648")
     println (try do parse_i32 "-2147483649")
     println (try do parse_i32 "-999999999999999999999999999")
-    parsed: Maybe I32 = try do try_cast "321"
-    println parsed
+
+    println (try do try_cast "321" : I32)
     println (try do parse_i8 "127")
     println (try do parse_i8 "128")
     println (try do parse_i8 "-128")
@@ -114,44 +126,27 @@ test_parse () =
     println (try do parse_u64 "+18446744073709551615")
     println (try do parse_usz "12345")
     println (try do parse_usz "+12345")
-    from_i8: Maybe I8 = try do try_cast "-5"
-    println from_i8
-    from_i8_overflow: Maybe I8 = try do try_cast "128"
-    println from_i8_overflow
-    from_i16: Maybe I16 = try do try_cast "-123"
-    println from_i16
-    from_i16_overflow: Maybe I16 = try do try_cast "32768"
-    println from_i16_overflow
-    from_i32: Maybe I32 = try do try_cast "-123456"
-    println from_i32
-    from_i32_overflow: Maybe I32 = try do try_cast "2147483648"
-    println from_i32_overflow
-    from_i64: Maybe I64 = try do try_cast "123456789"
-    println from_i64
-    from_i64_overflow: Maybe I64 = try do try_cast "9223372036854775808"
-    println from_i64_overflow
-    from_isz: Maybe Isz = try do try_cast "-12345"
-    println from_isz
-    from_u8: Maybe U8 = try do try_cast "42"
-    println from_u8
-    from_u8_negative: Maybe U8 = try do try_cast "-1"
-    println from_u8_negative
-    from_u8_overflow: Maybe U8 = try do try_cast "256"
-    println from_u8_overflow
-    from_u16: Maybe U16 = try do try_cast "65535"
-    println from_u16
-    from_u16_overflow: Maybe U16 = try do try_cast "65536"
-    println from_u16_overflow
-    from_u32: Maybe U32 = try do try_cast "4294967295"
-    println from_u32
-    from_u32_overflow: Maybe U32 = try do try_cast "4294967296"
-    println from_u32_overflow
-    from_u64: Maybe U64 = try do try_cast "42"
-    println from_u64
-    from_u64_overflow: Maybe U64 = try do try_cast "18446744073709551616"
-    println from_u64_overflow
-    from_usz: Maybe Usz = try do try_cast "12345"
-    println from_usz
+
+    println (try do try_cast "-5" : I8)
+    println (try do try_cast "128" : I8)
+    println (try do try_cast "-123" : I16)
+    println (try do try_cast "32768" : I16)
+    println (try do try_cast "-123456" : I32)
+    println (try do try_cast "2147483648" : I32)
+    println (try do try_cast "123456789" : I64)
+    println (try do try_cast "9223372036854775808" : I64)
+    println (try do try_cast "-12345" : Isz)
+
+    println (try do try_cast "42" : U8)
+    println (try do try_cast "-1" : U8)
+    println (try do try_cast "256" : U8)
+    println (try do try_cast "65535" : U16)
+    println (try do try_cast "65536" : U16)
+    println (try do try_cast "4294967295" : U32)
+    println (try do try_cast "4294967296" : U32)
+    println (try do try_cast "42" : U64)
+    println (try do try_cast "18446744073709551616" : U64)
+    println (try do try_cast "12345" : Usz)
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -209,7 +204,7 @@ test_parse () =
 // None
 // None
 // Some -2147483647
-// Some -2_147_483_648
+// Some -2147483648
 // None
 // None
 // Some 321
@@ -219,10 +214,10 @@ test_parse () =
 // None
 // Some 32767
 // None
-// Some -32_768
+// Some -32768
 // None
 // Some 123456789012345
-// Some -9_223_372_036_854_775_808
+// Some -9223372036854775808
 // None
 // None
 // Some 12345
@@ -261,3 +256,8 @@ test_parse () =
 // Some 42
 // None
 // Some 12345
+// round trip
+// 3
+// std.hashmap 123
+// STD.HASHMAP 123
+

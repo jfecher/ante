@@ -133,6 +133,10 @@ impl DirtyDocs {
     fn drain(&self) -> Vec<Url> {
         self.docs.lock().unwrap().drain().collect()
     }
+
+    pub fn for_each_url(&self, f: impl FnMut(&Url)) {
+        self.docs.lock().unwrap().iter().for_each(f)
+    }
 }
 
 /// Single-flight diagnostics worker. All compiler content updates and `CheckAll` runs
