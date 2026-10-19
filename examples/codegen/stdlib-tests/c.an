@@ -3,11 +3,14 @@ import Std.C.puts, putchar, strlen, system, memcmp, memcpy, malloc, free,
     fopen, fclose, fputs, fputc, fwrite, fseek, ftell, ferror, calloc, realloc,
     copy_file
 import Std.String.from_c_string
+import Std.Fail.Fail, panic_on_fail
 
 mkdtemp = extern "mkdtemp": fn C.String -> C.String can Fs
 
 /// A fresh directory, so files left by other users or concurrent runs can't collide
 make_temp_dir (): String can Fs, Panic =
+    panic_on_fail do
+
     template = "/tmp/ante_c_test_XXXXXX" ++ "\0"
     dir = mkdtemp (C.String template.data)
     if dir.ptr == null () then panic "mkdtemp failed to create a temporary directory"
@@ -17,6 +20,7 @@ main () =
     // puts writes a line and appends a newline
     print_to_stdout do
     abort_on_panic do
+
     _ = puts (C.String "hello\0".data)
 
     // putchar
@@ -100,4 +104,3 @@ main () =
 // 3
 // 0
 // done
-

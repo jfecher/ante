@@ -7,9 +7,67 @@ import Std.Char.is_whitespace, to_digit, to_ascii_lower, to_ascii_upper
 import Std.Math.CheckedNum, checked_add, checked_sub, checked_mul
 import Std.Math.checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i64, checked_num_isz
 import Std.Math.checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz
-import Std.Fail.Fail, fail, fail_if
+import Std.Fail.Fail, fail, fail_if, assert
 
 // TODO: All functions in this file should be a method on String, but String isn't defined in this file
+
+utf8_accept = 0usz
+utf8_reject = 1usz
+
+// First 256 entries (byte classification)
+utf8d = [ 0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 00..1f
+  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 20..3f
+  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 40..5f
+  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 60..7f
+  1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8, // 80..9f
+  7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8, // a0..bf
+  8u8,8u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8, // c0..df
+  0xa,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x4,0x3,0x3, // e0..ef
+  0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
+  0u8,1u8,2u8,3u8,5u8,8u8,7u8,1u8,1u8,1u8,4u8,6u8,1u8,1u8,1u8,1u8, // s0..s0
+  1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,0u8,1u8,1u8,1u8,1u8,1u8,0u8,1u8,0u8,1u8,1u8,1u8,1u8,1u8,1u8, // s1..s2
+  1u8,2u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8, // s3..s4
+  1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,3,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8, // s5..s6
+  1u8,3,1u8,1u8,1u8,1u8,1u8,3,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8 ] // s7..s8
+
+/// A UTF-8 checker for the bytes of a string.
+///
+/// This is based on the https://bjoern.hoehrmann.de/utf-8/decoder/dfa algorithm
+is_valid_utf8_bytes (data: Ptr U8) (len: Usz): Bool =
+    var state = utf8_accept
+
+    for i in 0 .. len do
+        b = deref_ptr (offset_bytes data i)
+
+        // SAFETY: `utf8d` has 400 entries: 256 byte-class entries followed by
+        // 9 states * 16 classes = 144 transition entries. The unchecked reads
+        // below can never go out of bounds because:
+        //  - `b` is a U8, so `utf8d[b]` indexes at most 255 (< 400).
+        //  - Every byte-class entry is <= 0xb, so `utf8_type` < 16.
+        //  - Every transition entry is in 0..=8, and `state` starts at
+        //    utf8_accept (0), so by induction `state` is always in 0..=8.
+        //    (utf8_reject = 1 returns immediately and is never used as an index.)
+        //  - The largest index is therefore 256 + 8 * 16 + 11 = 395 < 400.
+        //
+        // Therefore, the manual bound check removal (to improve the performance of the algorithm) is safe.
+        // This also makes Panic an impossibility which means dependencies of this function don't need to 
+        // state that they have a useless Panic effect.
+        
+        utf8_type = Usz (array_get_unchecked utf8d (Usz b) |> deref)
+        state := Usz (array_get_unchecked utf8d (256 + state * 16 + utf8_type) |> deref)
+
+        if state == utf8_reject then
+            return false
+
+    state == utf8_accept
+
+/// A UTF-8 checker for a string.
+///
+/// This is based on the https://bjoern.hoehrmann.de/utf-8/decoder/dfa algorithm
+is_valid_utf8 (s: String): Bool =
+    is_valid_utf8_bytes
+        (transmute s.data : Ptr U8)
+        (Usz s.length)
 
 impl eq_string: Eq String pure with
     (==) l r =
@@ -69,15 +127,20 @@ substr (var s: String) (begin: Usz) (end: Usz): String =
     String buf s.refcount len (s.offset + U32 begin)
 
 /// Collect each character from the given stream into a String
-string_of (s: s) {Stream s Char e}: String can Panic, e =
+///
+/// This fails if all bytes are not valid UTF-8
+string_of (s: s) {Stream s Char e}: String can Panic, Fail, e =
     var chars = Vec.of s
+    assert <| is_valid_utf8_bytes (transmute chars.data) (Usz chars.len)
+
     result = String.from_parts (chars.data) (U32 chars.len)
-    // Leak the Vec, it has been transferred to the String
+
+    // Leak the Vec, it has been transferred to the String.
     chars.data := null ()
     result
 
 /// Join each string from the stream into one string.
-/// 
+///
 /// If a separator is desired between each string, use this
 /// in combination with `intersperse`, e.g. `join <| intersperse my_stream (fn () -> "")`
 join (s: s) {Stream s String e}: String can e =
@@ -92,8 +155,6 @@ bytes (s: String) = fn () can Emit U8 ->
         emit c
 
 /// Emits each character in this string
-///
-/// TODO: No utf-8 checking is done and this currently just emits each byte
 chars (s: String) =
     bytes s |> map (fn b -> Char b)
 
@@ -269,8 +330,12 @@ impl try_cast_string_usz: TryCast String Usz Fs with
     try_cast s = parse_usz s
 
 /// Copy a null-terminated C string into a new string.
-from_c_string (cstr: C.String): String =
+///
+/// Fails if the C string contains invalid UTF-8.
+from_c_string (cstr: C.String): String can Fail =
     len = strlen cstr
+    assert <| is_valid_utf8_bytes (transmute cstr.ptr) len
+
     buf = malloc len
     memcpy buf cstr.ptr len
     String.from_parts buf (U32 len)
