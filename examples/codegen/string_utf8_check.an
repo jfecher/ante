@@ -3,9 +3,13 @@ import Std.C.malloc
 import Std.String.is_valid_utf8
 
 main () =
+    abort_on_panic do
+    print_to_stdout do
+
     println (is_valid_utf8 "你好")
     println (is_valid_utf8 "Hello")
     println (is_valid_utf8 "🙂")
+    println (is_valid_utf8 "السلام عليكم يا بشر وهلا يا أيها الزرع الجميل")
     println (is_valid_utf8 "")
 
     data = malloc 4 : Ptr U8
@@ -20,6 +24,7 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout:
+// true
 // true
 // true
 // true

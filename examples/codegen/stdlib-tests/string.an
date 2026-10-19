@@ -7,21 +7,29 @@ import Std.String.try_cast_string_i8, try_cast_string_i16, try_cast_string_i32, 
 import Std.String.try_cast_string_u8, try_cast_string_u16, try_cast_string_u32, try_cast_string_u64, try_cast_string_usz
 import Std.Stream.iter, intersperse, stream_fn, Emit, emit
 import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
-import Std.Fail.try
+import Std.Fail.try, panic_on_fail
 
 main () =
     print_to_stdout do
     abort_on_panic do
+    panic_on_fail do
+
     // bytes & chars:
     iter (bytes "AB") println
     iter (chars "AB") println
 
     // substr:
-    println (substr "abcdef" 1 4)
-    println (substr "abc" 0 99) // prints an empty string, should update to fail
+    println "before substr 1"
+    println (substr "abcdef" 1 4) // prints an empty string, should update to fail
+
+    println "before substr 2"
+    println (substr "abc" 0 99)
 
     // string_of:
+    println "before string_of"
     println (string_of (chars "hi"))
+
+    println "after string_of"
 
     // reverse:
     println (reverse "hello")
@@ -154,9 +162,13 @@ test_parse () =
 // 66
 // A
 // B
+// before substr 1
 // bcd
+// before substr 2
 // 
+// before string_of
 // hi
+// after string_of
 // olleh
 // dlrow
 // foo
@@ -260,4 +272,3 @@ test_parse () =
 // 3
 // std.hashmap 123
 // STD.HASHMAP 123
-
