@@ -9,57 +9,74 @@ import Std.Math.checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i6
 import Std.Math.checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz
 import Std.Fail.Fail, fail, fail_if, assert
 
+export is_valid_utf8, eq_string, reverse, split, substr, string_of,
+    join, bytes, chars, starts_with, ends_with, contains, trim_start, trim_end, trim,
+    parse_i8, parse_i16, parse_i32, parse_i64, parse_isz, parse_u8, parse_u16, parse_u32, parse_u64, parse_usz,
+    parse_signed_int, parse_unsigned_int,
+    try_cast_string_i8, try_cast_string_i16, try_cast_string_i32, try_cast_string_i64, try_cast_string_isz, try_cast_string_u8, try_cast_string_u16, try_cast_string_u32, try_cast_string_u64, try_cast_string_usz,
+    from_c_string, to_ascii_lowercase, to_ascii_uppercase
+
 // TODO: All functions in this file should be a method on String, but String isn't defined in this file
 
-utf8_accept = 0usz
-utf8_reject = 1usz
-
 // First 256 entries (byte classification)
-utf8d = [ 0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 00..1f
-  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 20..3f
-  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 40..5f
-  0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8,0u8, // 60..7f
-  1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8,9u8, // 80..9f
-  7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8,7u8, // a0..bf
-  8u8,8u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8,2u8, // c0..df
-  0xa,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x4,0x3,0x3, // e0..ef
-  0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
-  0u8,1u8,2u8,3u8,5u8,8u8,7u8,1u8,1u8,1u8,4u8,6u8,1u8,1u8,1u8,1u8, // s0..s0
-  1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,0u8,1u8,1u8,1u8,1u8,1u8,0u8,1u8,0u8,1u8,1u8,1u8,1u8,1u8,1u8, // s1..s2
-  1u8,2u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8, // s3..s4
-  1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,2u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,3,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8, // s5..s6
-  1u8,3,1u8,1u8,1u8,1u8,1u8,3,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8,1u8,3,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8,1u8 ] // s7..s8
+utf8d: Array 400 U8 = [
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 00..1f
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 20..3f
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 40..5f
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 60..7f
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9, // 80..9f
+  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7, // a0..bf
+  8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, // c0..df
+  10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,                                // e0..ef
+  11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8,                                // f0..ff
+  0,1,2,3,5,8,7,1,1,1,4,6,1,1,1,1,                                 // s0..s0
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1, // s1..s2
+  1,2,1,1,1,1,1,2,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1, // s3..s4
+  1,2,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,3,1,1,1,1,1,1, // s5..s6
+  1,3,1,1,1,1,1,3,1,3,1,1,1,1,1,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1] // s7..s8
+
+/// True if the 8 bytes starting at `p` are all ASCII. `p` need not be aligned.
+is_ascii_word (p: Ptr U8): Bool =
+    var word = 0u64
+    word_ptr: Ptr U64 = transmute (mut word)
+    // memcpy avoids an align 8 load when dereferencing
+    _ = memcpy word_ptr p 8
+    band word 0x8080808080808080 == 0
 
 /// A UTF-8 checker for the bytes of a string.
 ///
 /// This is based on the https://bjoern.hoehrmann.de/utf-8/decoder/dfa algorithm
 is_valid_utf8_bytes (data: Ptr U8) (len: Usz): Bool =
-    var state = utf8_accept
+    accept, reject = 0, 1
+    var state = accept
 
-    for i in 0 .. len do
-        b = deref_ptr (offset_bytes data i)
+    // FIXME: Using utf8d directly copies onto the stack on each use
+    var table = utf8d
+    var i = 0
 
-        // SAFETY: `utf8d` has 400 entries: 256 byte-class entries followed by
-        // 9 states * 16 classes = 144 transition entries. The unchecked reads
-        // below can never go out of bounds because:
-        //  - `b` is a U8, so `utf8d[b]` indexes at most 255 (< 400).
-        //  - Every byte-class entry is <= 0xb, so `utf8_type` < 16.
-        //  - Every transition entry is in 0..=8, and `state` starts at
-        //    utf8_accept (0), so by induction `state` is always in 0..=8.
-        //    (utf8_reject = 1 returns immediately and is never used as an index.)
-        //  - The largest index is therefore 256 + 8 * 16 + 11 = 395 < 400.
-        //
-        // Therefore, the manual bound check removal (to improve the performance of the algorithm) is safe.
-        // This also makes Panic an impossibility which means dependencies of this function don't need to 
-        // state that they have a useless Panic effect.
-        
-        utf8_type = Usz (array_get_unchecked utf8d (Usz b) |> deref)
-        state := Usz (array_get_unchecked utf8d (256 + state * 16 + utf8_type) |> deref)
+    while i < len do
+        // Skip 8 ASCII bytes at a time
+        if state == accept and i + 8 <= len and is_ascii_word (offset_bytes data i) then
+            i += 8
+        else
+            b = deref_ptr (offset_bytes data i)
 
-        if state == utf8_reject then
-            return false
+            // SAFETY: `table` has 400 entries: 256 byte-class entries followed by
+            // 9 states * 16 classes = 144 transition entries. The unchecked reads
+            // below can never go out of bounds because:
+            //  - `b` is a U8, so `table[b]` indexes at most 255
+            //  - Every byte-class entry is <= 0xb, so `utf8_type` < 16
+            //  - Every transition entry is in 0..=8, and `state` starts at
+            //    accept=0, so `state` is always in 0..=8
+            //  - The largest index is therefore 256 + 8 * 16 + 11 = 395 < 400
+            utf8_type = Usz (array_get_unchecked table (Usz b) |> deref)
+            state := Usz (array_get_unchecked table (256 + state * 16 + utf8_type) |> deref)
 
-    state == utf8_accept
+            if state == reject then
+                return false
+            i += 1
+
+    state == accept
 
 /// A UTF-8 checker for a string.
 ///
@@ -205,16 +222,16 @@ trim_end (s: String): String can Fs =
 trim (s: String): String can Fs =
     trim_start s |> trim_end
 
-/// Parse a base-10 I32 from a string.
-///
-/// Fails for empty strings, sign-only strings, non-digits, or overflow.
-parse_i32 (s: String): I32 can Fail, Fs =
-    parse_signed_int s
-
 parse_i8 (s: String): I8 can Fail, Fs =
     parse_signed_int s
 
 parse_i16 (s: String): I16 can Fail, Fs =
+    parse_signed_int s
+
+/// Parse a base-10 I32 from a string.
+///
+/// Fails for empty strings, sign-only strings, non-digits, or overflow.
+parse_i32 (s: String): I32 can Fail, Fs =
     parse_signed_int s
 
 parse_i64 (s: String): I64 can Fail, Fs =
