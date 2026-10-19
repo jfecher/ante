@@ -53,8 +53,8 @@ is_valid_utf8_bytes (data: Ptr U8) (len: Usz): Bool =
         // This also makes Panic an impossibility which means dependencies of this function don't need to 
         // state that they have a useless Panic effect.
         
-        utf8_type = Usz ( array_get_unchecked utf8d (Usz b) |> deref )
-        state := Usz ( array_get_unchecked utf8d (256usz + state * 16usz + utf8_type) |> deref )
+        utf8_type = Usz (array_get_unchecked utf8d (Usz b) |> deref)
+        state := Usz (array_get_unchecked utf8d (256 + state * 16 + utf8_type) |> deref)
 
         if state == utf8_reject then
             return false
@@ -131,10 +131,7 @@ substr (var s: String) (begin: Usz) (end: Usz): String =
 /// This fails if all bytes are not valid UTF-8
 string_of (s: s) {Stream s Char e}: String can Panic, Fail, e =
     var chars = Vec.of s
-
-    valid = is_valid_utf8_bytes (transmute chars.data : Ptr U8) (Usz chars.len)
-
-    fail_if (not valid)
+    assert <| is_valid_utf8_bytes (transmute chars.data) (Usz chars.len)
 
     result = String.from_parts (chars.data) (U32 chars.len)
 
@@ -337,12 +334,8 @@ impl try_cast_string_usz: TryCast String Usz Fs with
 /// Fails if the C string contains invalid UTF-8.
 from_c_string (cstr: C.String): String can Fail =
     len = strlen cstr
-
-    valid = is_valid_utf8_bytes
-        (transmute cstr.ptr : Ptr U8)
-        len
-
-    fail_if (not valid)
+    valid = is_valid_utf8_bytes (transmute cstr.ptr) len
+    assert vaild
 
     buf = malloc len
     memcpy buf cstr.ptr len

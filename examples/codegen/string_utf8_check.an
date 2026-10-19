@@ -12,11 +12,10 @@ main () =
     println (is_valid_utf8 "السلام عليكم يا بشر وهلا يا أيها الزرع الجميل")
     println (is_valid_utf8 "")
 
-    data = malloc 4 : Ptr U8
-    array_insert data 0usz 0xffu8
-    array_insert data 1usz 0xfeu8
-    array_insert data 2usz 0x80u8
-    array_insert data 3usz 0u8
+    data = malloc 3 : Ptr U8
+    array_insert data 0 0xff
+    array_insert data 1 0xfe
+    array_insert data 2 0x80
 
     ptr = transmute data : Ptr Char
     invalid = String.from_parts ptr 3
