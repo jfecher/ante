@@ -129,12 +129,11 @@ pub enum Diagnostic {
     LiteralUsedAsName {
         location: Location,
     },
-    ValueExpected {
-        location: Location,
-        typ: Name,
-    },
-    TypeExpected {
+    /// A name referring to an `actual` was used where an `expected` was expected
+    UnexpectedNameKind {
         name: Name,
+        actual: NameKind,
+        expected: NameKind,
         location: Location,
     },
     TypeError {
@@ -380,6 +379,32 @@ impl ConfusingBodyKind {
     }
 }
 
+/// What a name refers to. Used when a name is used in a position expecting
+/// a different kind of item, e.g. a module or value used as a type.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum NameKind {
+    Module,
+    Type,
+    Value,
+}
+
+impl NameKind {
+    /// The kind expected in a type position if `is_type` is set, otherwise in a value position
+    pub fn of_position(is_type: bool) -> NameKind {
+        if is_type { NameKind::Type } else { NameKind::Value }
+    }
+}
+
+impl Display for NameKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NameKind::Module => write!(f, "module"),
+            NameKind::Type => write!(f, "type"),
+            NameKind::Value => write!(f, "value"),
+        }
+    }
+}
+
 /// A hint the compiler can add to a diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Hint {
@@ -536,11 +561,12 @@ impl Diagnostic {
             Diagnostic::LiteralUsedAsName { location: _ } => {
                 "Expected a definition name but found a literal".to_string()
             },
-            Diagnostic::ValueExpected { location: _, typ } => {
-                format!("Expected a value but `{}` is a type", typ)
-            },
-            Diagnostic::TypeExpected { name, location: _ } => {
-                format!("Expected a type but `{name}` is a value")
+            Diagnostic::UnexpectedNameKind { name, actual, expected, location: _ } => {
+                let name = match actual {
+                    NameKind::Module | NameKind::Type => color_type(name),
+                    NameKind::Value => color_name(name),
+                };
+                format!("{name} is a {actual}, not a {expected}")
             },
             Diagnostic::TypeError { actual, expected, kind, function_environments_differ: _, location: _ } => {
                 kind.message(actual, expected)
@@ -842,8 +868,7 @@ impl Diagnostic {
             | Diagnostic::NamespaceNotFound { location, .. }
             | Diagnostic::MethodDeclaredOnUnknownType { location, .. }
             | Diagnostic::LiteralUsedAsName { location }
-            | Diagnostic::ValueExpected { location, .. }
-            | Diagnostic::TypeExpected { location, .. }
+            | Diagnostic::UnexpectedNameKind { location, .. }
             | Diagnostic::TypeError { location, .. }
             | Diagnostic::FunctionArgCountMismatch { location, .. }
             | Diagnostic::NoSuchFieldForType { location, .. }

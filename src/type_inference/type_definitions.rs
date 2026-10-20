@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     diagnostics::Diagnostic,
     iterator_extensions::mapvec,
-    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
+    name_resolution::Origin,
     parser::{
         cst,
         ids::{NameId, TopLevelId, TopLevelName},
@@ -13,6 +13,7 @@ use crate::{
         Locateable, TypeChecker,
         generics::Generic,
         kinds::Kind,
+        recursive_types,
         types::{self, GenericSubstitutions, ParameterType, Type},
     },
 };
@@ -65,8 +66,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let type_name = TopLevelName::new(id, definition.name);
 
-        // Detect self-referential types. TODO: this won't catch any indirect uses or polymorphic recursion.
-        if !definition.shared && self.type_definition_is_recursive_and_unboxed(definition, type_name) {
+        if !definition.kind.is_ability() && recursive_types::is_infinitely_sized(type_name, definition, self.compiler) {
             let typ = self.current_context()[definition.name].as_ref().clone();
             let location = definition.name.locate(self);
             self.compiler.accumulate(Diagnostic::RecursiveType { typ, location });
@@ -93,72 +93,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             let kind = local_kinds[&param.name].clone();
             let _ = self.from_cst_type_with_local_kinds(default, kind, true, false, &mut local_kinds);
-        }
-    }
-
-    fn type_definition_is_recursive_and_unboxed(
-        &self, definition: &cst::TypeDefinition, type_name: TopLevelName,
-    ) -> bool {
-        let resolve = self.current_resolve();
-        let target = Origin::TopLevelDefinition(type_name);
-        match &definition.body {
-            cst::TypeDefinitionBody::Enum(variants, _) => variants
-                .iter()
-                .any(|(_, args)| args.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))),
-            cst::TypeDefinitionBody::Struct(fields) => {
-                fields.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))
-            },
-            _ => false,
-        }
-    }
-
-    /// Used to check for recursively infinitely sized types.
-    fn type_uses_target_unboxed(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
-        match &typ.kind {
-            cst::TypeKind::Named(path) => resolve.path_origins.get(path).copied() == Some(target),
-            cst::TypeKind::Application(f, args) => {
-                if Self::is_pointer_constructor(f, resolve) {
-                    return false;
-                }
-                Self::type_uses_target_unboxed(f, target, resolve)
-                    || args.iter().any(|a| Self::type_uses_target_unboxed(a, target, resolve))
-            },
-            cst::TypeKind::Tuple(elements) | cst::TypeKind::EffectUnion(elements) => {
-                elements.iter().any(|e| Self::type_uses_target_unboxed(e, target, resolve))
-            },
-            cst::TypeKind::Forall(_, body) => Self::type_uses_target_unboxed(body, target, resolve),
-            cst::TypeKind::Function(typ) => {
-                if let Some(env) = typ.environment.as_ref() {
-                    Self::type_uses_target_unboxed(env, target, resolve)
-                } else {
-                    false
-                }
-            },
-
-            cst::TypeKind::Variable(_)
-            | cst::TypeKind::Reference(_)
-            | cst::TypeKind::Pointer
-            | cst::TypeKind::NoClosureEnv
-            | cst::TypeKind::Hole
-            | cst::TypeKind::Error
-            | cst::TypeKind::Unit
-            | cst::TypeKind::Char
-            | cst::TypeKind::Integer(_)
-            | cst::TypeKind::Float(_)
-            | cst::TypeKind::Place(_)
-            | cst::TypeKind::ImplicitPlace
-            | cst::TypeKind::Pure
-            | cst::TypeKind::IntegerConstant(_) => false,
-        }
-    }
-
-    fn is_pointer_constructor(typ: &cst::Type, resolve: &ResolutionResult) -> bool {
-        match &typ.kind {
-            cst::TypeKind::Pointer => true,
-            cst::TypeKind::Named(path) => {
-                matches!(resolve.path_origins.get(path).copied(), Some(Origin::Builtin(Builtin::Ptr)))
-            },
-            _ => false,
         }
     }
 

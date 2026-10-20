@@ -269,7 +269,9 @@ impl Definition {
         let Instruction::PackClosure { function, environment } = &self.instructions[field] else { return None };
         let environment = match self.follow_ids(*environment) {
             Value::InstructionResult(id) => match &self.instructions[id] {
-                Instruction::Transmute(constant) if constant.is_constant() => ConstantEnvironment::Transmuted(*constant, id),
+                Instruction::Transmute(constant) if constant.is_constant() => {
+                    ConstantEnvironment::Transmuted(*constant, id)
+                },
                 _ => ConstantEnvironment::Runtime,
             },
             constant if constant.is_constant() => ConstantEnvironment::Constant(constant),

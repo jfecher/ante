@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use crate::{
-    diagnostics::{Diagnostic, Location, UnimplementedItem},
+    diagnostics::{Diagnostic, Location, NameKind, UnimplementedItem},
     incremental::{AllDefinitions, ExportedDefinitions, GetItem, GetItemRaw, GetType, RawItem, Resolve},
     iterator_extensions::{map, mapvec},
     lexer::token::Integer,
@@ -591,9 +591,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn check_builtin(&mut self, builtin: Builtin, locator: impl Locateable) -> Type {
         match builtin {
             Builtin::Unit | Builtin::Char | Builtin::Bool | Builtin::Ptr | Builtin::Array | Builtin::Never => {
-                let typ = Arc::new(builtin.to_string());
+                let name = Arc::new(builtin.to_string());
                 let location = locator.locate(self);
-                self.compiler.accumulate(Diagnostic::ValueExpected { location, typ });
+                let (actual, expected) = (NameKind::Type, NameKind::Value);
+                self.compiler.accumulate(Diagnostic::UnexpectedNameKind { name, actual, expected, location });
                 Type::ERROR
             },
             // This needs to match various different function types generally in the form

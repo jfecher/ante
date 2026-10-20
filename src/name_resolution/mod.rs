@@ -4,7 +4,7 @@ use std::{
 };
 
 use inc_complete::DbGet;
-use namespace::{CRATE_ROOT_MODULE, Namespace, SourceFileId};
+use namespace::{Namespace, SourceFileId};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ pub mod builtin;
 pub mod namespace;
 
 use crate::{
-    diagnostics::{Diagnostic, Location},
+    diagnostics::{Diagnostic, Location, NameKind},
     incremental::{
         self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, Submodules, VisibleDefinitions,
         VisibleDefinitionsResult,
@@ -307,10 +307,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn get_child_namespace(&self, name: &String, namespace: Namespace) -> Option<Namespace> {
         let current = match namespace {
             Namespace::Local => None,
+            Namespace::Crate(id) => Some(Qualifier::Crate(id)),
             Namespace::Module(id) => Some(Qualifier::Module(id)),
             Namespace::Type(_) => return None,
         };
         match resolve_qualifier_child(self.compiler, self.item.source_file, name, current)? {
+            Qualifier::Crate(id) => Some(Namespace::Crate(id)),
             Qualifier::Module(id) => Some(Namespace::Module(id)),
             Qualifier::Type(type_name) => Some(Namespace::Type(type_name.top_level_item)),
         }
@@ -322,6 +324,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         match namespace {
             this if this == self.namespace() => self.lookup_local_name(name),
             Namespace::Local => self.lookup_local_name(name),
+            Namespace::Crate(_) => None,
             Namespace::Module(file_id) => {
                 let visible = &VisibleDefinitions(file_id).get(self.compiler);
                 if let Some(&id) = visible.definitions.get(name) {
@@ -350,7 +353,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     /// Lookup the given path in the given namespace
     fn lookup_in<'a, Iter>(
-        &mut self, mut path: Iter, mut namespace: Namespace, allow_type_based_resolution: bool,
+        &mut self, mut path: Iter, mut namespace: Namespace, allow_type_based_resolution: bool, is_type: bool,
     ) -> Result<Origin, Diagnostic>
     where
         Iter: ExactSizeIterator<Item = &'a (Name, Location)>,
@@ -393,6 +396,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             && name.as_str() == "intrinsic"
         {
             Ok(Origin::Builtin(Builtin::Intrinsic))
+        } else if let Some(Namespace::Module(_) | Namespace::Crate(_)) = self.get_child_namespace(name, namespace) {
+            let location = location.clone();
+            let name = name.clone();
+            let (actual, expected) = (NameKind::Module, NameKind::of_position(is_type));
+            Err(Diagnostic::UnexpectedNameKind { name, actual, expected, location })
         } else {
             let location = location.clone();
             let name = name.clone();
@@ -423,7 +431,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         None
     }
 
-    fn lookup(&mut self, path: &Path, allow_type_based_resolution: bool) -> Result<Origin, Diagnostic> {
+    fn lookup(&mut self, path: &Path, allow_type_based_resolution: bool, is_type: bool) -> Result<Origin, Diagnostic> {
         let mut components = path.components.iter().peekable();
 
         if components.len() > 1 {
@@ -439,18 +447,19 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 if **first == dependency.name {
                     // Discard the crate name
                     components.next();
-                    return self.lookup_in(components, Namespace::crate_(*dependency_id), allow_type_based_resolution);
+                    let namespace = Namespace::Crate(*dependency_id);
+                    return self.lookup_in(components, namespace, allow_type_based_resolution, is_type);
                 }
             }
         }
 
         // Not an absolute path
-        self.lookup_in(components, Namespace::Local, allow_type_based_resolution)
+        self.lookup_in(components, Namespace::Local, allow_type_based_resolution, is_type)
     }
 
     /// Links a path to its definition or errors if it does not exist
     fn link(&mut self, path: PathId, allow_type_based_resolution: bool, is_type: bool) {
-        match self.lookup(&self.context[path], allow_type_based_resolution) {
+        match self.lookup(&self.context[path], allow_type_based_resolution, is_type) {
             Ok(mut origin) => {
                 // Handle type aliases in an expression position
                 if !is_type
@@ -464,15 +473,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     origin = origin_of_top_level_definition(name, &item.kind);
                 }
                 if !self.is_valid_for_position(origin, is_type) {
-                    let last = self.context[path].components.last().unwrap();
+                    let name = self.context[path].components.last().unwrap().0.clone();
                     let location = self.context.path_location(path).clone();
-                    if is_type {
-                        let name = last.0.clone();
-                        self.emit_diagnostic(Diagnostic::TypeExpected { name, location });
-                    } else {
-                        let typ = last.0.clone();
-                        self.emit_diagnostic(Diagnostic::ValueExpected { location, typ });
-                    }
+                    // Only types and values can be linked, so `origin` must be the other one
+                    let actual = NameKind::of_position(!is_type);
+                    let expected = NameKind::of_position(is_type);
+                    self.emit_diagnostic(Diagnostic::UnexpectedNameKind { name, actual, expected, location });
                 }
                 self.path_links.insert(path, origin);
             },
@@ -1255,6 +1261,7 @@ enum FieldsResult {
 /// Each component before the final in a path is a qualifier
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Qualifier {
+    Crate(CrateId),
     Module(SourceFileId),
     Type(TopLevelName),
 }
@@ -1282,7 +1289,7 @@ where
             local_crate.dependencies.iter().copied().find(|dependency| *components[0].0 == crates[dependency].name);
 
         if let Some(crate_id) = dependency {
-            current = Some(Qualifier::Module(SourceFileId { crate_id, local_module_id: CRATE_ROOT_MODULE }));
+            current = Some(Qualifier::Crate(crate_id));
             i = 1;
         }
     }
@@ -1304,7 +1311,7 @@ where
 {
     match current {
         None => {
-            if let Some(submodule) = get_item_in_submodule(db, current_file, name) {
+            if let Some(&submodule) = Submodules(current_file).get(db).get(name) {
                 return Some(Qualifier::Module(submodule));
             }
 
@@ -1318,8 +1325,9 @@ where
             matches!(&item.kind, TopLevelItemKind::TypeDefinition(_)).then_some(Qualifier::Type(*type_id))
         },
         Some(Qualifier::Type(_)) => None,
+        Some(Qualifier::Crate(crate_id)) => get_crate_module(db, crate_id, name).map(Qualifier::Module),
         Some(Qualifier::Module(id)) => {
-            if let Some(submodule) = get_item_in_submodule(db, id, name) {
+            if let Some(&submodule) = Submodules(id).get(db).get(name) {
                 return Some(Qualifier::Module(submodule));
             }
 
@@ -1329,30 +1337,23 @@ where
     }
 }
 
-fn get_item_in_submodule(
-    db: &(impl DbGet<GetCrateGraph> + DbGet<Submodules>), parent_module: SourceFileId, name: &str,
-) -> Option<SourceFileId> {
-    if parent_module.local_module_id == CRATE_ROOT_MODULE {
-        let crates = GetCrateGraph.get(db);
-        let crate_ = crates.get(&parent_module.crate_id)?;
-        let module_file = std::path::PathBuf::from(name).with_extension("an");
+/// Retrieve the top-level module `name` of the given crate
+fn get_crate_module(db: &impl DbGet<GetCrateGraph>, crate_id: CrateId, name: &str) -> Option<SourceFileId> {
+    let crates = GetCrateGraph.get(db);
+    let crate_ = crates.get(&crate_id)?;
+    let module_file = std::path::PathBuf::from(name).with_extension("an");
 
-        // TODO: This should be a relative lookup, not an absolute one in the current crate
-        // TODO: calling `parent_module.get()` can panic if the parent module is not a valid
-        //       source file to begin with. We should ensure it is always valid.
-        if let Some(id) = crate_.source_files.get(&module_file).copied() {
-            return Some(id);
-        }
-
-        let directory = std::path::PathBuf::from(name);
-        if let Some(id) = crate_.source_files.get(&directory).copied() {
-            return Some(id);
-        }
-
-        // Fall back to absolute path
-        let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
-        crate_.source_files.get(&absolute).copied()
-    } else {
-        Submodules(parent_module).get(db).get(name).copied()
+    // TODO: This should be a relative lookup, not an absolute one in the current crate
+    if let Some(id) = crate_.source_files.get(&module_file).copied() {
+        return Some(id);
     }
+
+    let directory = std::path::PathBuf::from(name);
+    if let Some(id) = crate_.source_files.get(&directory).copied() {
+        return Some(id);
+    }
+
+    // Fall back to absolute path
+    let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
+    crate_.source_files.get(&absolute).copied()
 }

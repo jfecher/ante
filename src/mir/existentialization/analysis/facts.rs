@@ -226,6 +226,6 @@ pub(super) fn materialized_values(definition: &Definition, kind: &impl Fn(Defini
             }
         }
         changed
-    }{}
+    } {}
     values
 }

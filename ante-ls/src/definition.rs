@@ -47,6 +47,7 @@ fn qualifier_definition_inner(compiler: &Db, file_id: SourceFileId, byte_offset:
 
     match resolve_path_qualifier(compiler, file_id, components, index)? {
         Qualifier::Type(name) => rename::declaration_location(compiler, &RenameTarget::top_level(name)),
+        Qualifier::Crate(_) => None,
         Qualifier::Module(module) => {
             let start = Position::start();
             Some(Span { start, end: start }.in_file(module))
@@ -134,8 +135,8 @@ mod tests {
         assert_eq!(loc.span.start.byte_index, source.find('x').unwrap());
     }
 
-    /// A module qualifier resolves to the start of the module's file, and a crate
-    /// component to the crate's root file.
+    /// A module qualifier resolves to the start of the module's file. A crate component
+    /// refers to the crate's root module which has no source file, so it has no definition.
     #[test]
     fn definition_of_module_and_crate_qualifiers() {
         let source = "main () =\n    v = Std.Vec.of [1]\n    ()\n";
@@ -143,12 +144,11 @@ mod tests {
 
         let vec_offset = source.find("Vec").unwrap();
         let loc = definition_at(&db, file_id, vec_offset).expect("module qualifier should resolve");
-        assert_ne!(loc.file_id, file_id, "must resolve into the stdlib Vec module");
+        assert!(loc.file_id.get(&db).path.ends_with("Vec.an"), "must resolve into the stdlib Vec module");
         assert_eq!(loc.span.start.byte_index, 0);
 
+        // This used to return a location in the nonexistent root module file, which panicked when retrieved
         let std_offset = source.find("Std").unwrap();
-        let loc = definition_at(&db, file_id, std_offset).expect("crate component should resolve");
-        assert_ne!(loc.file_id, file_id, "must resolve into the stdlib crate root");
-        assert_eq!(loc.span.start.byte_index, 0);
+        assert!(definition_at(&db, file_id, std_offset).is_none());
     }
 }

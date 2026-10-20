@@ -1,0 +1,146 @@
+import Std.Rc.Rc
+import Std.Vec.Vec
+
+type Box t = x: t
+type Pair a b = first: a, second: b
+type Id t = t
+
+// Each of these store themselves without a pointer indirection
+type Direct = x: Direct
+type List = | Nil | Cons I32 List
+type InTuple = x: (I32, InTuple)
+type InArray = x: Array 2 InArray
+type ThroughBox = | Leaf | Node (Box ThroughBox)
+type ThroughPairs = x: Pair I32 (Pair Char ThroughPairs)
+type ThroughAlias = x: Id ThroughAlias
+type PolymorphicRecursion t = | PNil | PCons t (PolymorphicRecursion (t, t))
+
+type MutualA = x: MutualB, y: I32
+type MutualB = a: MutualA
+
+type GenericA t = x: GenericB t
+type GenericB t = y: GenericA t
+
+type Variant = | Self (Variant.Self) | Other Char
+
+// Not recursive itself, but contains MutualA which is
+type ContainsMutual = x: MutualA
+
+// Each of these are fine since they store themselves behind a pointer
+type InRc = | C1 Char | C2 (Rc InRc)
+type InPtr = | PNil | PCons I32 (Ptr InPtr)
+shared type Shared = | SNil | SCons I32 Shared
+type InVec t = | Leaf | Node (Vec (InVec t))
+type RcList t = | RNil | RCons t (Rc (RcList t))
+type InFunction = f: fn InFunction -> InFunction
+type BoxedRc = x: Box (Rc BoxedRc)
+type SecondBoxed = x: Pair I32 (Rc SecondBoxed)
+type OtherVariant = | Other (OtherVariant.Leaf) | Leaf Char
+
+type PointerA = x: Rc PointerB
+type PointerB = a: PointerA
+
+type Phantom t = x: Ptr t
+type ThroughPhantom = x: Phantom ThroughPhantom
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/recursive_types.an:9:6
+//  8 | // Each of these store themselves without a pointer indirection
+//    | // error: `Direct` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+//  9 | type Direct = x: Direct
+//    |      ^^^^^^
+// 10 | type List = | Nil | Cons I32 List
+// 
+// examples/typechecking/recursive_types.an:10:6
+//  9 | type Direct = x: Direct
+//    | // error: `List` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 10 | type List = | Nil | Cons I32 List
+//    |      ^^^^
+// 11 | type InTuple = x: (I32, InTuple)
+// 
+// examples/typechecking/recursive_types.an:11:6
+// 10 | type List = | Nil | Cons I32 List
+//    | // error: `InTuple` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 11 | type InTuple = x: (I32, InTuple)
+//    |      ^^^^^^^
+// 12 | type InArray = x: Array 2 InArray
+// 
+// examples/typechecking/recursive_types.an:12:6
+// 11 | type InTuple = x: (I32, InTuple)
+//    | // error: `InArray` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 12 | type InArray = x: Array 2 InArray
+//    |      ^^^^^^^
+// 13 | type ThroughBox = | Leaf | Node (Box ThroughBox)
+// 
+// examples/typechecking/recursive_types.an:13:6
+// 12 | type InArray = x: Array 2 InArray
+//    | // error: `ThroughBox` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 13 | type ThroughBox = | Leaf | Node (Box ThroughBox)
+//    |      ^^^^^^^^^^
+// 14 | type ThroughPairs = x: Pair I32 (Pair Char ThroughPairs)
+// 
+// examples/typechecking/recursive_types.an:14:6
+// 13 | type ThroughBox = | Leaf | Node (Box ThroughBox)
+//    | // error: `ThroughPairs` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 14 | type ThroughPairs = x: Pair I32 (Pair Char ThroughPairs)
+//    |      ^^^^^^^^^^^^
+// 15 | type ThroughAlias = x: Id ThroughAlias
+// 
+// examples/typechecking/recursive_types.an:15:6
+// 14 | type ThroughPairs = x: Pair I32 (Pair Char ThroughPairs)
+//    | // error: `ThroughAlias` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 15 | type ThroughAlias = x: Id ThroughAlias
+//    |      ^^^^^^^^^^^^
+// 16 | type PolymorphicRecursion t = | PNil | PCons t (PolymorphicRecursion (t, t))
+// 
+// examples/typechecking/recursive_types.an:16:6
+// 15 | type ThroughAlias = x: Id ThroughAlias
+//    | // error: `PolymorphicRecursion` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 16 | type PolymorphicRecursion t = | PNil | PCons t (PolymorphicRecursion (t, t))
+//    |      ^^^^^^^^^^^^^^^^^^^^
+// 
+// examples/typechecking/recursive_types.an:18:6
+//    | // error: `MutualA` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 18 | type MutualA = x: MutualB, y: I32
+//    |      ^^^^^^^
+// 19 | type MutualB = a: MutualA
+// 
+// examples/typechecking/recursive_types.an:19:6
+// 18 | type MutualA = x: MutualB, y: I32
+//    | // error: `MutualB` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 19 | type MutualB = a: MutualA
+//    |      ^^^^^^^
+// 
+// examples/typechecking/recursive_types.an:21:6
+//    | // error: `GenericA` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 21 | type GenericA t = x: GenericB t
+//    |      ^^^^^^^^
+// 22 | type GenericB t = y: GenericA t
+// 
+// examples/typechecking/recursive_types.an:22:6
+// 21 | type GenericA t = x: GenericB t
+//    | // error: `GenericB` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 22 | type GenericB t = y: GenericA t
+//    |      ^^^^^^^^
+// 
+// examples/typechecking/recursive_types.an:24:6
+//    | // error: `Variant` is infinitely recursive
+//    | // note: Declare the type as `shared` or wrap each instance in a pointer type like `Rc`
+// 24 | type Variant = | Self (Variant.Self) | Other Char
+//    |      ^^^^^^^
+// 
+// Found 13 errors and 0 warnings

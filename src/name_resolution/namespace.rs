@@ -5,23 +5,18 @@ use crate::{parser::ids::TopLevelId, paths::prelude_path_relative_to_stdlib_sour
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(super) enum Namespace {
     /// A local namespace within an expression with possibly both
-    /// locals and globals visible. The actual module will should
+    /// locals and globals visible. The actual module should
     /// always match `Resolver::namespace()`
     Local,
 
+    /// A crate's root
+    Crate(CrateId),
+
     /// A module within a crate
-    #[allow(unused)]
     Module(SourceFileId),
 
     /// A type's namespace containing its methods
-    #[allow(unused)]
     Type(TopLevelId),
-}
-
-impl Namespace {
-    pub(super) fn crate_(crate_id: CrateId) -> Self {
-        Namespace::Module(SourceFileId { crate_id, local_module_id: CRATE_ROOT_MODULE })
-    }
 }
 
 /// A SourceFileId corresponds to one source file in a project
@@ -82,6 +77,3 @@ impl CrateId {
 /// Module ids are expected to be unique only within the same crate.
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct LocalModuleId(pub u32);
-
-/// A crate's root module always has ID 0
-pub const CRATE_ROOT_MODULE: LocalModuleId = LocalModuleId(0);

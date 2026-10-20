@@ -120,7 +120,7 @@ fn propagate_needed(mir: &Mir, facts: &FxHashMap<DefinitionId, Facts>) -> FxHash
             }
         }
         changed
-    }{}
+    } {}
     needed
 }
 
@@ -155,6 +155,6 @@ fn propagate(
             }
         }
         changed
-    }{}
+    } {}
     set
 }

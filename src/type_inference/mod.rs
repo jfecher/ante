@@ -44,6 +44,7 @@ mod implicits;
 pub mod kinds;
 pub mod patterns;
 mod places;
+mod recursive_types;
 mod row;
 pub(crate) mod type_body;
 mod type_definitions;

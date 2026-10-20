@@ -1,0 +1,33 @@
+// Looking up a crate's root module used to panic.
+// `Std.Rc` is a module rather than a type, and we shouldn't also flag `R` as recursive.
+type R =
+    | C1 Char
+    | C2 (Std.Rc R)
+
+main () = Std.foo
+
+bar () = Std.Missing.foo
+
+baz () = Std.Vec
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/regressions/277_crate_qualified_item.an:5:15
+// 4 |     | C1 Char
+// 5 |     | C2 (Std.Rc R)	// error: Rc is a module, not a type
+//   |               ^^
+// 
+// examples/regressions/277_crate_qualified_item.an:7:15
+// 7 | main () = Std.foo	// error: `foo` not found in scope
+//   |               ^^^
+// 
+// examples/regressions/277_crate_qualified_item.an:9:14
+//  9 | bar () = Std.Missing.foo	// error: Namespace `Missing` not found in path
+//    |              ^^^^^^^
+// 
+// examples/regressions/277_crate_qualified_item.an:11:14
+// 11 | baz () = Std.Vec	// error: Vec is a module, not a value
+//    |              ^^^
+// 
+// Found 4 errors and 0 warnings
