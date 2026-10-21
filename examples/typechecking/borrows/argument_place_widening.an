@@ -31,13 +31,13 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (bar: fn t t -> t is pure) (x: t) (_y: t): t is pure = (x: t)
+// (bar: fn t t -> t is pure) (x: t) (_y: t): t = (x: t)
 // 
 // (call_arg: fn (ref 'r I32) -> Unit is pure) (r: ref 'r I32) =
 //     (q: I32) = 2
 //     (_z: ref '(q, r) I32) = (bar: fn (ref '(q, r) I32) (ref '(q, r) I32) -> ref '(q, r) I32 is pure) (r: ref 'r I32) (ref (q: I32))
 // 
-// (call_arg_annotated: fn (ref 'r I32) -> Unit is pure) (r: ref 'r I32): Unit is pure =
+// (call_arg_annotated: fn (ref 'r I32) -> Unit is pure) (r: ref 'r I32): Unit =
 //     (q: I32) = 2
 //     (_z: ref '(q, r) I32) = (bar: fn (ref '(q, r) I32) (ref '(q, r) I32) -> ref '(q, r) I32 is pure) (r: ref 'r I32) (ref (q: I32))
 // 

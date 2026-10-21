@@ -127,7 +127,7 @@ main () =
 //                 (whole: ref 'm (Maybe I32)) = (match_var8: ref 'm (Maybe I32))
 //                 (whole: ref 'm (Maybe I32)) (,: fn (ref 'm (Maybe I32)) (ref 'm! I32) -> (ref 'm (Maybe I32)), (ref 'm! I32) is pure) (x: ref 'm! I32)
 // 
-// (literal: fn (ref 'r I32) -> Bool is pure) (r: ref 'r I32): Bool is pure =
+// (literal: fn (ref 'r I32) -> Bool is pure) (r: ref 'r I32): Bool =
 //     (match_var2: (error)) = (r: ref 'r I32)
 //     switch (match_var2: ref 'r I32)
 //     | 0 -> true

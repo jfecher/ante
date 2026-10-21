@@ -4,9 +4,9 @@ import Std.Hash.Hash
 import Std.Fail.Fail, fail, panic_on_fail, or_panic, on_fail, try
 
 export HashMap, Entry, Hash, HashMap.empty, HashMap.of, HashMap.clear, HashMap.resize, HashMap.should_resize,
-    HashMap.insert, HashMap.get_entry, HashMap.get, HashMap.contains, HashMap.remove, HashMap.len, HashMap.is_empty, HashMap.keys, HashMap.values,
-    HashMap.get_or_insert, HashMap.get_or_insert_with, HashMap.retain, HashMap.merge,
-    HashMap.extend, print_hashmap, stream_map
+    HashMap.insert, HashMap.get_entry, HashMap.get, HashMap.get_mut, HashMap.contains, HashMap.remove, HashMap.len,
+    HashMap.is_empty, HashMap.keys, HashMap.values, HashMap.get_or_insert, HashMap.get_or_insert_with, HashMap.retain,
+    HashMap.merge, HashMap.extend, print_hashmap, stream_map
 
 /// A linear-scan mutable HashMap using a resize factor of 2.0
 type HashMap k v =
@@ -31,13 +31,13 @@ HashMap.is_empty (m: ref HashMap k v): Bool = m.len == 0
 HashMap.empty () = HashMap 0 0 (null ())
 
 /// Create a HashMap containing each `k, v` pair from the given stream.
-HashMap.of (s: s) {Stream s (k, v) e} {Hash k} {Eq k e}: HashMap k v can Panic, e =
+HashMap.of (stream: s) {Stream s (k, v) e} {Hash k} {Eq k e}: HashMap k v can Panic, e =
     var map = HashMap.empty ()
-    map.extend s
+    map.extend stream
     map
 
-HashMap.extend (map: mut HashMap k v) (s: s) {Stream s (k, v) e} {Hash k} {Eq k e}: Unit can Panic, e, Mutate 'map =
-    iter s (fn (k, v) -> map.insert k v)
+HashMap.extend (map: mut HashMap k v) (stream: s) {Stream s (k, v) e} {Hash k} {Eq k e}: Unit can Panic, e, Mutate 'map =
+    iter stream (fn (k, v) -> map.insert k v)
  
 HashMap.clear (map: mut HashMap k v) : Unit can Mutate 'map =
     if map.capacity != 0 then
@@ -158,6 +158,11 @@ HashMap.get_entry_mut (map: mut 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k 
 
 HashMap.get (map: ref 'm HashMap k v) (key: ref k) {Hash k} {Eq k e}: ref 'm! v can Fail, e =
     match map.get_entry key
+    | Some entry -> entry.value
+    | None -> fail ()
+
+HashMap.get_mut (map: mut 'm HashMap k v) (key: ref k) {Hash k} {Eq k e}: mut 'm! v can Fail, e =
+    match map.get_entry_mut key
     | Some entry -> entry.value
     | None -> fail ()
 

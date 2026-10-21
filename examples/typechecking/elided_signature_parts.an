@@ -1,0 +1,63 @@
+import Std.Vec.Vec
+import Std.Stream.Emit
+
+// An elided parameter place is named after its parameter
+same (x: ref t): ref t = x
+
+// Every other elided place in a parameter is a rigid place of its own, so `x` can't be stored in `v`
+store (v: mut (Vec (ref I32))) (x: ref I32): Unit can Mutate 'v, Panic =
+    v.push x
+
+// An annotation's elided parameter places are rigid too, so a local can't be stored in `v`
+store_annotated: fn (mut 'p (Vec (ref I32))) -> Unit can Mutate 'p, Panic = fn v ->
+    x = 1
+    v.push (ref x)
+
+// A place in a parameter's `can` clause isn't an input place, so `x` is the only one
+nested_clause (x: ref I32) (_f: fn Unit -> Unit can Emit (ref I32)): ref I32 = x
+
+// Function parameters without a `can` clause reuse the clause's effect variable
+apply (f: fn I32 -> I32) (x: I32): I32 can e = f x
+
+// Otherwise they share a fresh one, which is added to the function's own clause
+twice (f: fn I32 -> I32) (g: fn I32 -> I32) (x: I32): I32 = g (f x)
+
+main () = ()
+
+// args: -e ast-t --no-color
+// expected exit status: 1
+// expected stdout:
+// import Std.Vec.Vec
+// import Std.Stream.Emit
+// 
+// (same: fn (ref 'x t) -> ref 'x t is pure) (x: ref 'x t): ref t = (x: ref 'x t)
+// 
+// (store: fn (mut 'v (Vec (ref '_ I32))) (ref 'x I32) -> Unit can Mutate 'v, Panic) (v: mut 'v (Vec (ref '_ I32))) (x: ref 'x I32): Unit can Mutate 'v, Panic =
+//     (push: fn (mut 'v (Vec (ref '_ I32))) (ref '_ I32) -> Unit can Mutate 'v, Panic) (v: mut 'v (Vec (ref '_ I32))) (x: ref 'x I32)
+// 
+// (store_annotated: fn (mut 'p (Vec (ref '_ I32))) -> Unit can Mutate 'p, Panic) (v: mut 'p (Vec (ref '_ I32))) =
+//     (x: I32) = 1
+//     (push: fn (mut 'p (Vec (ref '_ I32))) (ref '_ I32) -> Unit can Mutate 'p, Panic) (v: mut 'p (Vec (ref '_ I32))) (ref (x: I32))
+// 
+// (nested_clause: fn (ref 'x I32) (fn Unit -> Unit can Emit (ref I32)) -> ref 'x I32 is pure) (x: ref 'x I32) (_f: fn Unit -> Unit can Emit (ref I32)): ref I32 = (x: ref 'x I32)
+// 
+// (apply: fn (fn I32 -> I32 can e) I32 -> I32 can e) (f: fn I32 -> I32 can e) (x: I32): I32 can e = (f: fn I32 -> I32 can e) (x: I32)
+// 
+// (twice: fn (fn I32 -> I32 can _) (fn I32 -> I32 can _) I32 -> I32 can _) (f: fn I32 -> I32 can _) (g: fn I32 -> I32 can _) (x: I32): I32 = (g: fn I32 -> I32 can _) ((f: fn I32 -> I32 can _) (x: I32))
+// 
+// (main: fn Unit -> Unit is pure) () = ()
+
+
+// expected stderr:
+// examples/typechecking/elided_signature_parts.an:9:12
+//  8 | store (v: mut (Vec (ref I32))) (x: ref I32): Unit can Mutate 'v, Panic =
+//  9 |     v.push x	// error: Argument 2 has type ref 'x I32 but ref '_ I32 was expected
+//    |            ^
+// 
+// examples/typechecking/elided_signature_parts.an:14:13
+// 13 |     x = 1
+// 14 |     v.push (ref x)	// error: Argument 2 has type ref 'x I32 but ref '_ I32 was expected
+//    |             ^^^^^
+// 
+// Found 2 errors and 0 warnings
+

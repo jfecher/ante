@@ -61,45 +61,45 @@ main () =
 //     data: Ptr t
 //     len: Usz
 // 
-// (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) (i: Usz): ref 'v! t is pure =
+// (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) (i: Usz): ref 'v! t =
 //     (transmute: fn (Ptr t) -> ref 'v! t is pure) ((offset: fn (Ptr t) Usz -> Ptr t is pure) ((copy_ptr: Copy (Ptr t))..* (v: ref 'v (MyVec t)).data) (i: Usz))
 // 
-// (get_nested: fn (ref 'v (MyVec (MyVec t))) Usz -> ref 'v!! t is pure) (v: ref 'v (MyVec (MyVec t))) (i: Usz): ref 'v!! t is pure =
+// (get_nested: fn (ref 'v (MyVec (MyVec t))) Usz -> ref 'v!! t is pure) (v: ref 'v (MyVec (MyVec t))) (i: Usz): ref 'v!! t =
 //     (inner: ref 'v! (MyVec t)) = (get: fn (ref 'v (MyVec (MyVec t))) Usz -> ref 'v! (MyVec t) is pure) (v: ref 'v (MyVec (MyVec t))) (i: Usz)
 //     (get: fn (ref 'v! (MyVec t)) Usz -> ref 'v!! t is pure) (inner: ref 'v! (MyVec t)) 0
 // 
-// (forward: fn (ref 'v (MyVec t)) -> ref 'v! t is pure) (v: ref 'v (MyVec t)): ref 'v! t is pure = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) 0
+// (forward: fn (ref 'v (MyVec t)) -> ref 'v! t is pure) (v: ref 'v (MyVec t)): ref 'v! t = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) 0
 // 
 // (inferred: fn (ref 'v (MyVec t)) -> ref 'v! t is pure) (v: ref 'v (MyVec t)) = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) 0
 // 
-// (either: fn (ref 'a I32) (ref 'b I32) -> ref '(a, b) I32 is pure) (x: ref 'a I32) (y: ref 'b I32): ref '(a, b) I32 is pure =
+// (either: fn (ref 'a I32) (ref 'b I32) -> ref '(a, b) I32 is pure) (x: ref 'a I32) (y: ref 'b I32): ref '(a, b) I32 =
 //     if true then (x: ref 'a I32) else (y: ref 'b I32)
 // 
-// (mixed: fn (ref '(a, b!) I32) (ref 'b! I32) -> ref '(a, b!) I32 is pure) (_x: ref '(a, b!) I32) (y: ref 'b! I32): ref '(a, b!) I32 is pure = (y: ref 'b! I32)
+// (mixed: fn (ref '(a, b!) I32) (ref 'b! I32) -> ref '(a, b!) I32 is pure) (_x: ref '(a, b!) I32) (y: ref 'b! I32): ref '(a, b!) I32 = (y: ref 'b! I32)
 // 
-// (elided: fn (ref 'a! I32) -> ref 'a! I32 is pure) (x: ref 'a! I32): ref I32 is pure = (x: ref 'a! I32)
+// (elided: fn (ref 'a! I32) -> ref 'a! I32 is pure) (x: ref 'a! I32): ref I32 = (x: ref 'a! I32)
 // 
-// (annotated: fn (ref 'v (MyVec t)) -> Unit is pure) (vec: ref 'v (MyVec t)): Unit is pure =
+// (annotated: fn (ref 'v (MyVec t)) -> Unit is pure) (vec: ref 'v (MyVec t)): Unit =
 //     (_a: ref 'v! t) = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (vec: ref 'v (MyVec t)) 0
 //     ()
 // 
-// (use_elem: fn (ref 'v! I32) (ref 'v (MyVec I32)) -> Unit is pure) (_r: ref 'v! I32) (_v: ref 'v (MyVec I32)): Unit is pure = ()
+// (use_elem: fn (ref 'v! I32) (ref 'v (MyVec I32)) -> Unit is pure) (_r: ref 'v! I32) (_v: ref 'v (MyVec I32)): Unit = ()
 // 
 // type Pair =
 //     first: I32
 //     second: I32
 // 
-// (first: fn (ref 'p Pair) -> ref 'p.first I32 is pure) (p: ref 'p Pair): ref 'p.first I32 is pure = (transmute: fn (ref 'p Pair) -> ref 'p.first I32 is pure) (p: ref 'p Pair)
+// (first: fn (ref 'p Pair) -> ref 'p.first I32 is pure) (p: ref 'p Pair): ref 'p.first I32 = (transmute: fn (ref 'p Pair) -> ref 'p.first I32 is pure) (p: ref 'p Pair)
 // 
 // type Rc 'p t =
 //     ptr: Ptr t
 // 
-// (rc_get: fn (ref 'outer (Rc 'inner t)) -> ref '(inner, outer!) t is pure) (rc: ref 'outer (Rc 'inner t)): ref '(outer!, inner) t is pure = (transmute: fn (Ptr t) -> ref '(inner, outer!) t is pure) ((copy_ptr: Copy (Ptr t))..* (rc: ref 'outer (Rc 'inner t)).ptr)
+// (rc_get: fn (ref 'outer (Rc 'inner t)) -> ref '(inner, outer!) t is pure) (rc: ref 'outer (Rc 'inner t)): ref '(outer!, inner) t = (transmute: fn (Ptr t) -> ref '(inner, outer!) t is pure) ((copy_ptr: Copy (Ptr t))..* (rc: ref 'outer (Rc 'inner t)).ptr)
 // 
 // type L 'q t =
 //     value: ref 'q t
 // 
-// (holder: fn (L 'q! t) -> ref 'q! t is pure) (l: L 'q! t): ref 'q! t is pure = (l: L 'q! t).value
+// (holder: fn (L 'q! t) -> ref 'q! t is pure) (l: L 'q! t): ref 'q! t = (l: L 'q! t).value
 // 
 // (main: fn Unit -> Unit is pure) () =
 //     (xs: MyVec I32) = (MyVec: fn (Ptr I32) Usz -> MyVec I32 is pure) ((transmute: fn I32 -> Ptr I32 is pure) 0) 0

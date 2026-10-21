@@ -28,10 +28,10 @@ main () =
 // ignored_param_c1m723_4219_0 _x_1 = 0
 // 
 // // id = c1m723_2389
-// typed_c1m723_2389_0 (a_1: t_2): t_2 is pure = a_1
+// typed_c1m723_2389_0 (a_1: t_2): t_2 = a_1
 // 
 // // id = c1m723_507
-// named_place_c1m723_507_0 (x_1: ref 'x_1 I32): Unit_bUnit is pure = ()
+// named_place_c1m723_507_0 (x_1: ref 'x_1 I32): Unit_bUnit = ()
 // 
 // // id = c1m723_1944
 // main_c1m723_1944_0 () =

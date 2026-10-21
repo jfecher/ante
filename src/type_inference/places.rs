@@ -8,7 +8,7 @@ use crate::{
     diagnostics::Diagnostic,
     incremental::{DbHandle, GetItem, GetItemRaw, RawItem},
     iterator_extensions::mapvec,
-    name_resolution::{Origin, ResolutionResult},
+    name_resolution::Origin,
     parser::{
         cst::{self, Expr, PlaceSegment, ReferenceKind, Segments, TopLevelItemKind, TypeDefinitionBody},
         ids::{ExprId, NameId, NameStore},
@@ -831,77 +831,6 @@ fn strip_segments(entry: &Type, suffix: &[PlaceSegment]) -> Option<Type> {
             Some(Type::project_place(base, segments.strip_suffix(suffix)?, &none, &none))
         },
         _ => None,
-    }
-}
-
-/// This is the place inferred when a place in a return type position is elided
-pub enum PlaceElision<'a> {
-    /// There is one candidate input place, and it is an `ImplicitPlace`.
-    Elided,
-    /// There is one candidate input place, and it is already named.
-    Named(&'a cst::Type),
-    /// No input place, this occurs in e.g. `ptr_to_ref: fn (Ptr t) -> ref t`.
-    Free,
-    /// Two or more candidate input places: an error should be issued.
-    Ambiguous,
-}
-
-/// What a written place refers to, used to tell whether two written places are the same
-type PlaceKey<'a> = Vec<(Option<Origin>, &'a [PlaceSegment])>;
-
-fn place_key<'a>(resolve: &ResolutionResult, paths: &'a [cst::PlacePath]) -> PlaceKey<'a> {
-    mapvec(paths, |path| (resolve.name_origins.get(&path.root).copied(), path.segments.as_slice()))
-}
-
-/// Collect every place in `typ`
-fn collect_places<'a>(
-    resolve: &ResolutionResult, typ: &'a cst::Type, implicit_count: &mut usize,
-    named: &mut Vec<(PlaceKey<'a>, &'a cst::Type)>,
-) {
-    match &typ.kind {
-        cst::TypeKind::Application(f, args) => {
-            if matches!(f.kind, cst::TypeKind::Reference(_))
-                && let Some(place_arg) = args.first()
-            {
-                match &place_arg.kind {
-                    cst::TypeKind::ImplicitPlace => *implicit_count += 1,
-                    cst::TypeKind::Place(paths) => {
-                        let key = place_key(resolve, paths);
-                        if named.iter().all(|(other, _)| *other != key) {
-                            named.push((key, place_arg));
-                        }
-                    },
-                    _ => (),
-                }
-            }
-            for arg in args.iter() {
-                collect_places(resolve, arg, implicit_count, named);
-            }
-        },
-        cst::TypeKind::Tuple(elements) => {
-            for element in elements {
-                collect_places(resolve, element, implicit_count, named);
-            }
-        },
-        _ => (),
-    }
-}
-
-/// Which input place an elided return place should be inferred from
-pub fn function_place_elision<'a>(resolve: &ResolutionResult, function: &'a cst::FunctionType) -> PlaceElision<'a> {
-    let mut implicit_count = 0;
-    let mut named = Vec::new();
-    for param in &function.parameters {
-        collect_places(resolve, &param.typ, &mut implicit_count, &mut named);
-    }
-    if let Some(environment) = function.environment.as_ref() {
-        collect_places(resolve, environment, &mut implicit_count, &mut named);
-    }
-    match (implicit_count, named.len()) {
-        (0, 0) => PlaceElision::Free,
-        (1, 0) => PlaceElision::Elided,
-        (0, 1) => PlaceElision::Named(named[0].1),
-        _ => PlaceElision::Ambiguous,
     }
 }
 

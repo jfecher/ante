@@ -44,10 +44,10 @@ main () =
 //             (emit: fn a -> Unit can Emit a) (x: a)
 //         (resume: fn Unit [Ptr] -> Unit is pure) ()
 // 
-// (for_: fn (fn Unit [_] -> Unit can Emit a) (fn a [_] -> b can $effect) -> Unit can $effect) (stream: fn Unit [_] -> Unit can Emit a) (f: fn a [_] -> b can $effect) =
+// (for_: fn (fn Unit [_] -> Unit can Emit a) (fn a [_] -> b can _) -> Unit can _) (stream: fn Unit [_] -> Unit can Emit a) (f: fn a [_] -> b can _) =
 //     handle fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
-//     | (emit: fn a -> Unit can Emit a) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit is pure) [(f: fn a [_] -> b can $effect)] ->
-//         (f: fn a [_] -> b can $effect) (x: a)
+//     | (emit: fn a -> Unit can Emit a) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit is pure) [(f: fn a [_] -> b can _)] ->
+//         (f: fn a [_] -> b can _) (x: a)
 //         (resume: fn Unit [Ptr] -> Unit is pure) ()
 // 
 // (main: fn Unit -> Unit can Fs) () =

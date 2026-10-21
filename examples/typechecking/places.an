@@ -16,7 +16,7 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (foo: fn Unit -> I32 is pure) (): I32 is pure = 5
+// (foo: fn Unit -> I32 is pure) (): I32 = 5
 // 
 // type Pair =
 //     a: I32

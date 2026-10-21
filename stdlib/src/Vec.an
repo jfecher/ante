@@ -21,13 +21,13 @@ Vec.len (v: ref Vec a) = v.len
 Vec.capacity (v: ref Vec a) = v.cap
 
 /// Create a new Vec with the elements from the given stream
-Vec.of (s: s) {Stream s t e}: Vec t can Panic, e =
+Vec.of (stream: s) {Stream s t e}: Vec t can Panic, e =
     var vec = Vec.empty ()
-    vec.extend s
+    vec.extend stream
     vec
 
-Vec.extend (vec: mut Vec t) (s: s) {Stream s t e}: Unit can Panic, e, Mutate 'vec =
-    iter s (vec.push _)
+Vec.extend (vec: mut Vec t) (stream: s) {Stream s t e}: Unit can Panic, e, Mutate 'vec =
+    iter stream (vec.push _)
 
 /// Reserve space for `numElems` more elements in `v`. The new slots are uninitialized.
 Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic, Mutate 'v =

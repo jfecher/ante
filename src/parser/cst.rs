@@ -144,6 +144,11 @@ impl Type {
         }
     }
 
+    /// True if this is a function type without a `can` clause
+    pub fn is_function_without_effects(&self) -> bool {
+        matches!(&self.kind, TypeKind::Function(function) if function.effects.is_none())
+    }
+
     /// True if this type has a hole to infer, such as the environment of a `=>` function type
     pub fn contains_hole(&self) -> bool {
         self.contains_hole_with(&mut |_, _| false)
@@ -155,12 +160,7 @@ impl Type {
         match &self.kind {
             TypeKind::Hole => true,
             TypeKind::Named(path) => on_named(*path, 0),
-            TypeKind::Function(function) => {
-                function.parameters.iter().any(|parameter| recur(&parameter.typ))
-                    || function.environment.as_ref().is_some_and(|environment| recur(environment))
-                    || recur(&function.return_type)
-                    || function.effects.iter().flatten().any(recur)
-            },
+            TypeKind::Function(function) => function.types().any(recur),
             TypeKind::Application(function, args) => {
                 args.iter().any(&mut recur)
                     || match &function.kind {
@@ -300,15 +300,29 @@ pub struct FunctionType {
     pub effects: Option<Vec<Type>>,
 }
 
+impl FunctionType {
+    /// Each type directly within this function type
+    pub fn types(&self) -> impl Iterator<Item = &Type> {
+        let parameters = self.parameters.iter().map(|parameter| &parameter.typ);
+        parameters
+            .chain(self.environment.as_deref())
+            .chain(std::iter::once(&*self.return_type))
+            .chain(self.effects.iter().flatten())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct ParameterType {
     pub is_implicit: bool,
     pub typ: Type,
+
+    /// The parameter's name, if this is the signature of a definition
+    pub name: Option<NameId>,
 }
 
 impl ParameterType {
     pub fn new(typ: Type, is_implicit: bool) -> ParameterType {
-        ParameterType { typ, is_implicit }
+        ParameterType { typ, is_implicit, name: None }
     }
 
     pub fn explicit(typ: Type) -> ParameterType {

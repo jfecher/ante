@@ -22,7 +22,7 @@ use crate::{
         TypeChecker,
         generics::Generic,
         kinds::Kind,
-        places::{self, Place},
+        places::Place,
         row::{
             Row, RowKind, canonicalize_row, construct_row, flatten_row_into, follow_row, is_open, sort_and_dedup_row,
         },
@@ -620,18 +620,25 @@ impl Type {
         typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle,
         insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
+        Self::generalized(|next_id| {
+            let mut local_kinds = LocalKinds::default();
+            Self::from_cst_type_with_kind(
+                typ,
+                Kind::Type,
+                resolve,
+                db,
+                next_id,
+                &mut local_kinds,
+                insert_implicit_type_vars,
+                open_effects_by_default,
+            )
+        })
+    }
+
+    /// Run `convert` with fresh ids from 0, then generalize the type variables it created
+    pub(crate) fn generalized(convert: impl FnOnce(&mut u32) -> Type) -> Type {
         let mut next_id = 0;
-        let mut local_kinds = LocalKinds::default();
-        let typ = Self::from_cst_type_with_kind(
-            typ,
-            Kind::Type,
-            resolve,
-            db,
-            &mut next_id,
-            &mut local_kinds,
-            insert_implicit_type_vars,
-            open_effects_by_default,
-        );
+        let typ = convert(&mut next_id);
 
         if next_id == 0 {
             // fast track - if no type variables were created, we have nothing to replace
@@ -684,6 +691,28 @@ impl Type {
         .convert(typ, expected)
     }
 
+    /// Convert a definition's function type; a top-level `signature`'s elided parts become rigid generics
+    pub(crate) fn from_cst_function(
+        function: &cst::FunctionType, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
+        open_effects_by_default: bool, signature: bool,
+    ) -> Type {
+        let mut local_kinds = LocalKinds::default();
+        let mut visited = Vec::new();
+        let elision = if signature { Elision::Signature } else { Elision::Infer };
+        TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, open_effects_by_default, &mut visited)
+            .convert_function(function, elision, None)
+    }
+
+    /// Convert a top-level definition's type annotation; its function type's elided parameter places are rigid
+    pub(crate) fn from_cst_annotation(
+        typ: &cst::Type, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32, open_effects_by_default: bool,
+    ) -> Type {
+        let mut local_kinds = LocalKinds::default();
+        let mut visited = Vec::new();
+        TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, open_effects_by_default, &mut visited)
+            .convert_annotation(typ)
+    }
+
     /// Convert an effects clause into an effect row [Type].
     pub(crate) fn from_cst_effects_clause(
         effects: Option<&[cst::Type]>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
@@ -699,7 +728,7 @@ impl Type {
             open_effects_by_default,
             &mut visited,
         )
-        .convert_effects_clause(effects)
+        .convert_effects_clause(effects, None)
     }
 }
 
@@ -717,8 +746,29 @@ struct TypeConverter<'a, 'b> {
     /// The stack of type aliases currently being expanded, used to detect recursive aliases
     visited: &'a mut Vec<TopLevelName>,
 
-    /// The place to use for the return type, if it has an elided place
-    elided_return_place: Option<Type>,
+    /// What an elided place converts to here
+    elided_place: ElidedPlace,
+}
+
+/// Which elision rules a function type's parameters follow
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Elision {
+    /// Elided places are fresh variables
+    Infer,
+    /// A top-level annotation's elided parameter places are rigid generics
+    Annotation,
+    /// A top-level lambda's signature also names places after parameters and shares bare parameters' effects
+    Signature,
+}
+
+/// What an elided place converts to
+enum ElidedPlace {
+    /// A fresh place variable
+    Infer,
+    /// A place in a signature's parameter: the parameter's own place first, if any, then fresh rigid places
+    Parameter(Option<Type>),
+    /// A place in a return type, which refers to the function's only input place
+    Return(Type),
 }
 
 impl<'a, 'b> TypeConverter<'a, 'b> {
@@ -734,7 +784,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             insert_implicit_type_vars,
             open_effects_by_default,
             visited,
-            elided_return_place: None,
+            elided_place: ElidedPlace::Infer,
         }
     }
 
@@ -817,28 +867,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 (place, Kind::Place)
             },
             crate::parser::cst::TypeKind::Function(function) => {
-                // TODO: Places on higher-order functions should likely be inferred to have
-                // a `forall` over the function type rather than changing elided places as is done
-                // here and still placing all places in the same forall over the outer function.
-                let outer_shared_place = std::mem::take(&mut self.elided_return_place);
-                self.elided_return_place = self.find_elided_place(function);
-
-                let parameters = mapvec(&function.parameters, |param| {
-                    let typ = self.convert_with_kind(&param.typ, Kind::Type);
-                    ParameterType::new(typ, param.is_implicit)
-                });
-                let environment = match function.environment.as_ref() {
-                    Some(environment) => self.convert_with_kind(environment, Kind::Type),
-                    None => Type::NO_CLOSURE_ENV,
-                };
-
-                let return_type = self.convert_with_kind(&function.return_type, Kind::Type);
-                self.elided_return_place = outer_shared_place;
-
-                let effects = self.convert_effects_clause(function.effects.as_deref());
-
-                let f = Type::Function(Shared::new(FunctionType { parameters, environment, return_type, effects }));
-                (f, Kind::Type)
+                (self.convert_function(function, Elision::Infer, None), Kind::Type)
             },
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
@@ -856,9 +885,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 (Type::Tuple(Shared::new(elements)), Kind::Type)
             },
             crate::parser::cst::TypeKind::Hole if self.insert_implicit_type_vars => {
-                let typ = Type::Variable(TypeVariableId(*self.next_id));
-                *self.next_id += 1;
-                (typ, Kind::Type)
+                (self.next_type_variable(), Kind::Type)
             },
             crate::parser::cst::TypeKind::Hole => {
                 self.db.accumulate(Diagnostic::HoleCantBeUsed { location: typ.location.clone() });
@@ -867,26 +894,42 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             // TODO: There is a separate check in type definition bodies to reject these.
             // Rework it to be more similar to the HoleCantBeUsed above.
             crate::parser::cst::TypeKind::ImplicitPlace => {
-                if let Some(place) = &self.elided_return_place {
-                    (place.clone(), Kind::Place)
-                } else {
-                    let typ = Type::Variable(TypeVariableId(*self.next_id));
-                    *self.next_id += 1;
-                    (typ, Kind::Place)
-                }
+                let place = match &mut self.elided_place {
+                    ElidedPlace::Infer => self.next_type_variable(),
+                    ElidedPlace::Parameter(own) => own.take().unwrap_or_else(|| self.next_elided_generic()),
+                    ElidedPlace::Return(place) => place.clone(),
+                };
+                (place, Kind::Place)
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
             crate::parser::cst::TypeKind::Pure => (Type::pure(), Kind::Effect),
             crate::parser::cst::TypeKind::EffectUnion(operands) => {
-                (self.convert_effect_row_entries(operands), Kind::Effect)
+                (self.convert_effect_row_entries(operands, None), Kind::Effect)
             },
             crate::parser::cst::TypeKind::Forall(generics, body) => {
-                for param in generics {
-                    let kind = param.kind.map(kind_from_annotation).unwrap_or(Kind::Type);
-                    self.local_kinds.insert(param.name, kind);
-                }
+                self.declare_forall_kinds(generics);
                 self.convert(body, expected)
             },
+        }
+    }
+
+    /// Record the kind of each generic in an explicit `forall`
+    fn declare_forall_kinds(&mut self, generics: &cst::Generics) {
+        for param in generics {
+            let kind = param.kind.map(kind_from_annotation).unwrap_or(Kind::Type);
+            self.local_kinds.insert(param.name, kind);
+        }
+    }
+
+    /// Convert a top-level definition's type annotation; its function type's elided parameter places are rigid
+    fn convert_annotation(&mut self, typ: &cst::Type) -> Type {
+        match &typ.kind {
+            cst::TypeKind::Function(function) => self.convert_function(function, Elision::Annotation, None),
+            cst::TypeKind::Forall(generics, body) => {
+                self.declare_forall_kinds(generics);
+                self.convert_annotation(body)
+            },
+            _ => self.convert_with_kind(typ, Kind::Type),
         }
     }
 
@@ -977,48 +1020,127 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         }
     }
 
-    /// If this function's return type has an elided place in its return,
-    /// return what it should be treated as, or error if it is ambiguous.
-    fn find_elided_place(&mut self, function: &cst::FunctionType) -> Option<Type> {
+    /// Convert a function type, following `elision`'s rules for its parameters
+    fn convert_function(
+        &mut self, function: &cst::FunctionType, elision: Elision, implicit_effects: Option<Type>,
+    ) -> Type {
+        // TODO: Places a callee provides (callback parameters, `can` clauses) need a `forall` on their function type
+        let signature = elision == Elision::Signature;
+
+        // Parameters without a `can` clause share the signature's row variable, or a fresh one
+        let row_variable = function.effects.iter().flatten().find(|e| matches!(e.kind, cst::TypeKind::Variable(_)));
+        let has_bare_parameter = function.parameters.iter().any(|param| param.typ.is_function_without_effects());
+        let parameter_row = (signature && has_bare_parameter).then(|| match row_variable {
+            Some(variable) => self.convert_with_kind(variable, Kind::Effect),
+            None => self.next_elided_generic(),
+        });
+
+        let parameters = mapvec(&function.parameters, |param| {
+            let typ = match &param.typ.kind {
+                cst::TypeKind::Function(bare) if signature && bare.effects.is_none() => {
+                    self.convert_function(bare, Elision::Infer, parameter_row.clone())
+                },
+                _ if elision != Elision::Infer => {
+                    let place = ElidedPlace::Parameter(self.parameter_place(param));
+                    self.convert_with_place(&param.typ, place)
+                },
+                _ => self.convert_with_place(&param.typ, ElidedPlace::Infer),
+            };
+            ParameterType::new(typ, param.is_implicit)
+        });
+        let environment = match function.environment.as_ref() {
+            Some(environment) => self.convert_with_place(environment, ElidedPlace::Infer),
+            None => Type::NO_CLOSURE_ENV,
+        };
+
+        let return_place = self.elided_return_place(function, &parameters, &environment);
+        let return_type = self.convert_with_place(&function.return_type, return_place);
+
+        // A bare parameter's effects are its signature's row variable, added to the signature's clause if fresh
+        let implicit_effects = match function.effects {
+            Some(_) => parameter_row.filter(|_| row_variable.is_none()),
+            None => implicit_effects,
+        };
+        let effects = self.with_elided_place(ElidedPlace::Infer, |this| {
+            this.convert_effects_clause(function.effects.as_deref(), implicit_effects)
+        });
+        Type::Function(Shared::new(FunctionType { parameters, environment, return_type, effects }))
+    }
+
+    /// Convert `typ` with `place` for its elided places
+    fn convert_with_place(&mut self, typ: &cst::Type, place: ElidedPlace) -> Type {
+        self.with_elided_place(place, |this| this.convert_with_kind(typ, Kind::Type))
+    }
+
+    /// Run `convert` with `place` for elided places
+    fn with_elided_place<T>(&mut self, place: ElidedPlace, convert: impl FnOnce(&mut Self) -> T) -> T {
+        let outer_place = std::mem::replace(&mut self.elided_place, place);
+        let result = convert(self);
+        self.elided_place = outer_place;
+        result
+    }
+
+    /// What elided places in `function`'s return type refer to: its only input place, if it has one
+    fn elided_return_place(
+        &mut self, function: &cst::FunctionType, parameters: &[ParameterType], environment: &Type,
+    ) -> ElidedPlace {
         if !function.return_type.has_elided_place() {
-            return None;
+            return ElidedPlace::Infer;
         }
 
-        match places::function_place_elision(self.resolve, function) {
-            places::PlaceElision::Elided => {
-                let place = Type::Variable(TypeVariableId(*self.next_id));
-                *self.next_id += 1;
-                Some(place)
-            },
-            places::PlaceElision::Free => None,
-            places::PlaceElision::Named(place) => Some(self.convert(place, Some(&Kind::Place)).0),
-            places::PlaceElision::Ambiguous => {
+        let mut places = Vec::new();
+        for typ in parameters.iter().map(|parameter| &parameter.typ).chain(std::iter::once(environment)) {
+            collect_input_places(typ, &mut places);
+        }
+
+        match places.as_slice() {
+            [] => ElidedPlace::Infer,
+            [place] => ElidedPlace::Return(place.clone()),
+            _ => {
                 let location = function.return_type.location.clone();
                 self.db.accumulate(Diagnostic::AmbiguousElidedPlace { location });
-                None
+                ElidedPlace::Infer
             },
         }
     }
 
-    /// Convert an effects clause into an effect row; `None` is open or closed per `self.open_effects_by_default`.
-    fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>) -> Type {
-        match effects {
-            None if self.open_effects_by_default => Type::Effects(Some(Shared::new(vec![self.next_type_variable()]))),
-            None => Type::pure(),
-            Some(list) => self.convert_effect_row_entries(list),
+    /// The place of a signature's `parameter`, named after it
+    fn parameter_place(&mut self, parameter: &cst::ParameterType) -> Option<Type> {
+        let name = parameter.name.filter(|_| parameter.typ.has_elided_place())?;
+        Some(self.convert_type_variable(name, Some(&Kind::Place), &parameter.typ.location).0)
+    }
+
+    /// Convert an effects clause into an effect row with `implicit` added.
+    /// An omitted clause without `implicit` is open or closed per `self.open_effects_by_default`.
+    fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>, implicit: Option<Type>) -> Type {
+        match (effects, implicit) {
+            (None, None) if self.open_effects_by_default => {
+                Type::Effects(Some(Shared::new(vec![self.next_type_variable()])))
+            },
+            (None, None) => Type::pure(),
+            (list, implicit) => self.convert_effect_row_entries(list.unwrap_or_default(), implicit),
         }
     }
 
-    /// Convert a list of effect type entries into an effect row
-    fn convert_effect_row_entries(&mut self, list: &[cst::Type]) -> Type {
-        let effects = mapvec(list, |e| self.convert_with_kind(e, Kind::Effect));
+    /// Convert a list of effect type entries, plus `implicit` if given, into an effect row
+    fn convert_effect_row_entries(&mut self, list: &[cst::Type], implicit: Option<Type>) -> Type {
+        let mut effects = mapvec(list, |e| self.convert_with_kind(e, Kind::Effect));
+        effects.extend(implicit);
         Type::effects(&effects, &Default::default(), &Default::default())
     }
 
-    fn next_type_variable(&mut self) -> Type {
+    fn next_type_variable_id(&mut self) -> TypeVariableId {
         let id = TypeVariableId(*self.next_id);
         *self.next_id += 1;
-        Type::Variable(id)
+        id
+    }
+
+    fn next_type_variable(&mut self) -> Type {
+        Type::Variable(self.next_type_variable_id())
+    }
+
+    fn next_elided_generic(&mut self) -> Type {
+        Type::Generic(Generic::Elided(self.next_type_variable_id()))
     }
 
     /// If `name` refers to a type alias, return its body type with `args` substituted
@@ -1051,7 +1173,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             return None;
         };
         Some(self.expand_alias(name, &ctx, definition, args, false, |converter| {
-            converter.convert_effects_clause(Some(effects))
+            converter.convert_effects_clause(Some(effects), None)
         }))
     }
 
@@ -1093,6 +1215,20 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
         self.visited.pop();
         result
+    }
+}
+
+/// Collect the distinct place of each reference in `typ`, except within function types
+fn collect_input_places(typ: &Type, places: &mut Vec<Type>) {
+    if let Some(place) = typ.reference_places(&TypeBindings::default())
+        && !places.contains(&place)
+    {
+        places.push(place);
+    }
+    match typ {
+        Type::Application(_, args) => args.iter().for_each(|arg| collect_input_places(arg, places)),
+        Type::Tuple(elements) => elements.iter().for_each(|element| collect_input_places(element, places)),
+        _ => (),
     }
 }
 
@@ -1173,7 +1309,7 @@ impl Type {
         let mut declared_substitutions = GenericSubstitutions::default();
         for generic in generics.iter() {
             match generic {
-                Generic::Named(_) => new_generics.push(*generic),
+                Generic::Named(_) | Generic::Elided(_) => new_generics.push(*generic),
                 Generic::Inferred(_) => {
                     let id = TypeVariableId(*next_id);
                     *next_id += 1;
@@ -1582,6 +1718,7 @@ where
             Type::UserDefined(origin) => self.fmt_type_origin(*origin, f),
             Type::Generic(Generic::Named(origin)) => self.fmt_type_origin(*origin, f),
             Type::Generic(Generic::Inferred(id)) => write!(f, "g{id}"),
+            Type::Generic(Generic::Elided(_)) => write!(f, "_"),
             Type::Variable(id) => {
                 if let Some(binding) = self.bindings.get(id) {
                     self.fmt_type(binding, parenthesize, f)

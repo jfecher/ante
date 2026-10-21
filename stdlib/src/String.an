@@ -146,8 +146,8 @@ substr (var s: String) (begin: Usz) (end: Usz): String =
 /// Collect each character from the given stream into a String
 ///
 /// This fails if all bytes are not valid UTF-8
-string_of (s: s) {Stream s Char e}: String can Panic, Fail, e =
-    var chars = Vec.of s
+string_of (stream: s) {Stream s Char e}: String can Panic, Fail, e =
+    var chars = Vec.of stream
     assert <| is_valid_utf8_bytes (transmute chars.data) (Usz chars.len)
 
     result = String.from_parts (chars.data) (U32 chars.len)
@@ -160,8 +160,8 @@ string_of (s: s) {Stream s Char e}: String can Panic, Fail, e =
 ///
 /// If a separator is desired between each string, use this
 /// in combination with `intersperse`, e.g. `join <| intersperse my_stream (fn () -> "")`
-join (s: s) {Stream s String e}: String can e =
-    foldl s "" (++)
+join (stream: s) {Stream s String e}: String can e =
+    foldl stream "" (++)
 
 /// Emits each byte in this string
 bytes (s: String) = fn () can Emit U8 ->

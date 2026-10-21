@@ -37,11 +37,11 @@ type Mismatch (n: type) =
 //     fst: a
 //     snd: b
 // 
-// (get_first: fn (ref 'arr (Array n t)) -> ref 'arr t is pure) (arr: ref 'arr (Array n t)): ref t is pure =
+// (get_first: fn (ref 'arr (Array n t)) -> ref 'arr t is pure) (arr: ref 'arr (Array n t)): ref t =
 //     (array_get_unchecked: fn (ref 'arr (Array n t)) Usz -> ref 'arr t is pure) (arr: ref 'arr (Array n t)) 0
 // 
-// (take_len: fn (ref (Array n t)) -> Usz is pure) =
-//     fn (arr: ref (Array n t)) -> (array_len: fn (ref (Array n t)) -> Usz is pure) (arr: ref (Array n t))
+// (take_len: fn (ref '_ (Array n t)) -> Usz is pure) =
+//     fn (arr: ref '_ (Array n t)) -> (array_len: fn (ref '_ (Array n t)) -> Usz is pure) (arr: ref '_ (Array n t))
 // 
 // type Bad n t =
 //     arr: Array n t

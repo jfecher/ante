@@ -307,7 +307,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             this.declared_types.insert(name, declared);
                             seeded
                         },
-                        None => get_type::get_partial_type(definition, context.as_ref(), resolution, compiler, next_id),
+                        None => get_type::get_partial_type(
+                            definition,
+                            context.as_ref(),
+                            resolution,
+                            compiler,
+                            next_id,
+                            true,
+                        ),
                     };
 
                     this.next_type_variable_id.set(*next_id);

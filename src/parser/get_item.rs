@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     diagnostics::Location,
@@ -7,18 +7,14 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal, Name, Parameter, Path, Pattern,
-            SequenceItem, TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition, Type, TypeDefinitionBody,
-            TypeKind,
+            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal, Parameter, Path, Pattern, SequenceItem,
+            TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition, Type, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
-        ids::{ExprId, NameId, PathId, PatternId},
+        ids::{ExprId, PathId, PatternId},
     },
     shared_arc::Shared,
 };
-
-/// Unspellable name for the synthetic generic used to default a bare parameter's missing effects.
-const IMPLICIT_EFFECT_NAME: &str = "$effect";
 
 pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Shared<TopLevelItem>, Shared<DesugarContext>) {
     incremental::enter_query();
@@ -54,8 +50,6 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Shared<TopLevelItem>,
         },
         TopLevelItemKind::Definition(definition) => {
             let mut new_context = DesugarContext::new(context);
-            default_effects(definition.rhs, &mut new_context);
-            name_elided_places(definition.rhs, &mut new_context);
             desugar_expression(definition.rhs, &mut new_context);
             (item, Shared::new(new_context))
         },
@@ -168,146 +162,6 @@ fn desugar_trait_or_effect(
         generics: ability.generics.clone(),
         body: TypeDefinitionBody::Struct(fields),
     })
-}
-
-/// Defaults a definition's missing effects clause.
-fn default_effects(expr: ExprId, context: &mut DesugarContext) {
-    let Expr::Lambda(mut lambda) = context[expr].clone() else { return };
-
-    let is_bare_function_parameter = |context: &DesugarContext, parameter: &Parameter| {
-        matches!(&context[parameter.pattern],
-            Pattern::TypeAnnotation(_, typ) if matches!(&typ.kind, TypeKind::Function(f) if f.effects.is_none()))
-    };
-
-    let bare_parameters: Vec<&Parameter> =
-        lambda.parameters.iter().filter(|p| is_bare_function_parameter(context, p)).collect();
-    if bare_parameters.is_empty() {
-        if lambda.return_type.is_some() && lambda.effects.is_none() {
-            lambda.effects = Some(Vec::new());
-            context.set_expr(expr, Expr::Lambda(lambda));
-        }
-        return;
-    }
-
-    let location = context.expr_location(expr).clone();
-    let existing_row_variable = lambda.effects.as_ref().and_then(|clause| {
-        clause.iter().find_map(|entry| match &entry.kind {
-            TypeKind::Variable(name) => Some(*name),
-            _ => None,
-        })
-    });
-    // Reuse the clause's row variable if it has one; otherwise synthesize the
-    // unspellable `$effect`, which can't collide with a real user-written generic.
-    let e = existing_row_variable
-        .unwrap_or_else(|| context.push_name(Arc::new(IMPLICIT_EFFECT_NAME.to_string()), location.clone()));
-
-    for parameter in bare_parameters {
-        let Pattern::TypeAnnotation(inner, mut typ) = context[parameter.pattern].clone() else { unreachable!() };
-        let TypeKind::Function(function_type) = &mut typ.kind else { unreachable!() };
-        function_type.effects = Some(vec![Type::new(TypeKind::Variable(e), location.clone())]);
-        context.set_pattern(parameter.pattern, Pattern::TypeAnnotation(inner, typ));
-    }
-
-    // The parameters' effects must also flow into this function's own row, even
-    // when it has an explicit clause: `can X` becomes the open row `can X, $effect`.
-    // A fully unannotated function (no return type, no explicit clause) is left as `None`
-    // so its own row stays a genuinely open, flexible variable that inference extends
-    // naturally as calls to the bare parameter (and anything else) are checked -- pinning
-    // it to `$effect` here would wrongly close the row.
-    if existing_row_variable.is_none() && (lambda.effects.is_some() || lambda.return_type.is_some()) {
-        let effect_entry = Type::new(TypeKind::Variable(e), location);
-        match &mut lambda.effects {
-            Some(clause) => clause.push(effect_entry),
-            None => lambda.effects = Some(vec![effect_entry]),
-        }
-    }
-    context.set_expr(expr, Expr::Lambda(lambda));
-}
-
-/// Name each elided place in a function's parameters after it, like `(v: mut 'v Vec I32)`
-fn name_elided_places(expr: ExprId, context: &mut DesugarContext) {
-    let Expr::Lambda(lambda) = &context[expr] else { return };
-    let annotations = lambda.parameters.iter().filter_map(|parameter| match &context[parameter.pattern] {
-        Pattern::TypeAnnotation(inner, typ) => Some((parameter.pattern, *inner, typ)),
-        _ => None,
-    });
-    let annotations: Vec<_> = annotations.collect();
-    let elided: Vec<_> = annotations.iter().filter(|(_, _, typ)| typ.has_elided_place()).collect();
-    if elided.is_empty() {
-        return;
-    }
-
-    // A place can't be named after its parameter if a type variable is, like the `t` in `(t: ref t)`
-    let signature = annotations.iter().map(|(_, _, typ)| *typ);
-    let signature: Vec<_> = signature.chain(&lambda.return_type).chain(lambda.effects.iter().flatten()).collect();
-    let elided = mapvec(elided, |(pattern, inner, typ)| {
-        let name = match &context[*inner] {
-            Pattern::Variable(name) => Some(context[*name].clone()),
-            _ => None,
-        };
-        let own_name = name.clone().filter(|name| !signature.iter().any(|typ| uses_type_variable(typ, name, context)));
-        let base = name.unwrap_or_else(|| Arc::new("p".to_string()));
-        (*pattern, *inner, (*typ).clone(), base, own_name)
-    });
-
-    let mut taken = None;
-    for (pattern, inner, mut typ, base, mut own_name) in elided {
-        replace_elided_places(&mut typ, &mut |location| {
-            let name = own_name.take().unwrap_or_else(|| {
-                let taken = taken.get_or_insert_with(|| item_names(context));
-                fresh_name(&base, taken)
-            });
-            context.push_name(name, location.clone())
-        });
-        context.set_pattern(pattern, Pattern::TypeAnnotation(inner, typ));
-    }
-}
-
-/// True if `typ` uses `name` as a type variable
-fn uses_type_variable(typ: &Type, name: &str, context: &DesugarContext) -> bool {
-    let recur = |typ: &Type| uses_type_variable(typ, name, context);
-    match &typ.kind {
-        TypeKind::Variable(variable) => context[*variable].as_str() == name,
-        TypeKind::Function(function) => {
-            function.parameters.iter().any(|parameter| recur(&parameter.typ))
-                || function.environment.as_deref().is_some_and(recur)
-                || recur(&function.return_type)
-                || function.effects.iter().flatten().any(recur)
-        },
-        TypeKind::Application(function, args) => recur(function) || args.iter().any(recur),
-        TypeKind::Tuple(types) | TypeKind::EffectUnion(types) => types.iter().any(recur),
-        TypeKind::Forall(_, typ) => recur(typ),
-        _ => false,
-    }
-}
-
-/// Replace each elided place in `typ`, except within function types, with a place named by `name`
-fn replace_elided_places(typ: &mut Type, name: &mut impl FnMut(&Location) -> NameId) {
-    match &mut typ.kind {
-        TypeKind::ImplicitPlace => {
-            let root = name(&typ.location);
-            typ.kind = TypeKind::Place(vec![cst::PlacePath { root, segments: Vec::new() }]);
-        },
-        TypeKind::Application(_, types) | TypeKind::Tuple(types) => {
-            for typ in types {
-                replace_elided_places(typ, name);
-            }
-        },
-        _ => (),
-    }
-}
-
-/// Every name used in this item
-fn item_names(context: &DesugarContext) -> BTreeSet<Name> {
-    (0..context.names_len()).map(|id| context[NameId::new(id as u32)].clone()).collect()
-}
-
-/// The first of `base`, `base2`, `base3`, ... not in `taken`
-fn fresh_name(base: &str, taken: &mut BTreeSet<Name>) -> Name {
-    let mut candidates = std::iter::once(base.to_string()).chain((2..).map(|i| format!("{base}{i}")));
-    let name = Arc::new(candidates.find(|name| !taken.contains(name)).unwrap());
-    taken.insert(name.clone());
-    name
 }
 
 /// Traverse the expression recursively, desugaring along the way looking for

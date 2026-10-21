@@ -47,10 +47,10 @@ ignore_fail (f: a can Fail, e): Unit can e =
 /// along with other effects. Otherwise, it will loop forever.
 ///
 /// ```
-/// get_input () -> string can IO = ...
-/// parse (s: string) -> u32 can Fail = ...
+/// get_input (): String can IO = ...
+/// parse (s: String): U32 can Fail = ...
 ///
-/// number = retry_until_success $$
+/// number = retry_until_success do
 ///     input = get_input ()
 ///     parse input
 /// ```

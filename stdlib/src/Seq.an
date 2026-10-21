@@ -84,9 +84,9 @@ Seq.empty (): Seq t =
     Seq 0 (null ())
 
 /// Create a Seq holding each item from the given stream
-Seq.of (s: s) {Stream s t e} {Drop t e}: Seq t can e =
+Seq.of (stream: s) {Stream s t e} {Drop t e}: Seq t can e =
     seq = Seq.empty ()
-    foldl s seq Seq.push
+    foldl stream seq Seq.push
 
 /// Create a Seq with the given initial capacity
 Seq.with_capacity (capacity: Usz): Seq t =

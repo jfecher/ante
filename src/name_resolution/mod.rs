@@ -65,6 +65,9 @@ struct Resolver<'local, 'inner> {
     /// Local bindings whose use we check for the unused warning. Excludes type variables and implicits
     checked_locals: BTreeSet<NameId>,
 
+    /// Locals that are type variables, generics, or places rather than values
+    type_variables: BTreeSet<NameId>,
+
     /// Nesting depth of enclosing `while`/`for` loops. Used to reject `break`/`continue` outside of loops.
     loop_depth: u32,
 }
@@ -246,6 +249,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             top_level_names: Vec::new(),
             used_locals: Default::default(),
             checked_locals: Default::default(),
+            type_variables: Default::default(),
             loop_depth: 0,
             context,
         }
@@ -1064,10 +1068,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn resolve_variable(&mut self, name_id: NameId, auto_declare: bool) {
         let name = &self.context[name_id];
 
-        if let Some(origin) = self.lookup_local_name(name) {
+        if self.find_local(name).is_some_and(|local| !self.type_variables.contains(&local)) {
+            let location = self.context.name_location(name_id).clone();
+            self.emit_diagnostic(Diagnostic::ValueUsedAsType { name: name.clone(), location });
+        } else if let Some(origin) = self.lookup_local_name(name) {
             self.name_links.insert(name_id, origin);
         } else if auto_declare {
             self.declare_name(name_id, false);
+            self.type_variables.insert(name_id);
         } else {
             let location = self.context.name_location(name_id).clone();
             let name = self.context[name_id].clone();
@@ -1082,8 +1090,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Some(local) => {
                 self.name_links.insert(name_id, Origin::Local(local));
             },
-            // Places named during desugaring are either a parameter's or fresh
-            None if self.context.is_synthetic_name(name_id) => self.declare_name(name_id, false),
             None => self.resolve_variable(name_id, auto_declare),
         }
     }
@@ -1168,6 +1174,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.emit_diagnostic(Diagnostic::RequiredTypeParameterAfterDefault { location });
             }
             self.declare_name(generic.name, false);
+            self.type_variables.insert(generic.name);
         }
     }
 

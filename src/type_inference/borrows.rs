@@ -572,10 +572,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         };
         let place_name =
             |generic| named(generic).map_or("an inferred place".to_string(), |name| format!("'{}", names[name]));
-        let effect_name = |generic| {
-            let name = named(generic).filter(|name| !names.is_synthetic_name(*name));
-            name.map_or("its arguments".to_string(), |name| names[name].to_string())
-        };
+        let effect_name = |generic| named(generic).map_or("its arguments".to_string(), |name| names[name].to_string());
         let function_name = &names[name.local_name_id];
 
         for (i, (first, first_places)) in place_generics.iter().enumerate() {

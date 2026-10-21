@@ -8,8 +8,8 @@ impl stream_pair: Stream Pair I32 (Emit I32) with
         emit p.a
         emit p.b
 
-each (s: s) {Stream s a e} (f: fn a -> Unit can Print, e): Unit can Print, e =
-    handle Stream.stream s
+each (stream: s) {Stream s a e} (f: fn a -> Unit can Print, e): Unit can Print, e =
+    handle Stream.stream stream
     | emit x ->
         f x
         resume ()

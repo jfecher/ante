@@ -9,6 +9,7 @@ use crate::{
 pub enum Generic {
     Named(Origin),
     Inferred(TypeVariableId),
+    Elided(TypeVariableId),
 }
 
 impl Generic {
@@ -16,7 +17,7 @@ impl Generic {
     /// Otherwise, return it as a [Type::Generic].
     pub(crate) fn as_type(&self) -> Type {
         match self {
-            Generic::Named(_) => Type::Generic(*self),
+            Generic::Named(_) | Generic::Elided(_) => Type::Generic(*self),
             Generic::Inferred(id) => Type::Variable(*id),
         }
     }
@@ -24,7 +25,7 @@ impl Generic {
     /// If this is a [Generic::Inferred], return its id. Otherwise, return [None].
     pub(crate) fn as_inferred(self) -> Option<TypeVariableId> {
         match self {
-            Generic::Named(_) => None,
+            Generic::Named(_) | Generic::Elided(_) => None,
             Generic::Inferred(id) => Some(id),
         }
     }
@@ -35,6 +36,7 @@ impl std::fmt::Display for Generic {
         match self {
             Generic::Named(origin) => write!(f, "_{origin}"),
             Generic::Inferred(id) => write!(f, "_{id}"),
+            Generic::Elided(id) => write!(f, "_e{id}"),
         }
     }
 }

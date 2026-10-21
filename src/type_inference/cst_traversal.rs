@@ -79,7 +79,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         self.with_next_id(|next_id| {
-            get_partial_type(definition, self.current_context(), self.current_resolve(), self.compiler, next_id)
+            get_partial_type(
+                definition,
+                self.current_context(),
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+                is_top_level,
+            )
         })
     }
 

@@ -1,9 +1,9 @@
 use crate::{
     incremental::{self, DbHandle, GetItem, GetType, Resolve, TypeCheck},
-    iterator_extensions::mapvec,
+    iterator_extensions::opt_mapvec,
     name_resolution::{Origin, ResolutionResult},
     parser::{
-        cst::{self, Definition, Expr, Pattern, TopLevelItemKind, TypeKind},
+        cst::{self, Definition, Expr, Lambda, Pattern, TopLevelItemKind, TypeKind},
         desugar_context::DesugarContext,
         ids::TopLevelName,
     },
@@ -119,51 +119,17 @@ pub fn try_get_generalized_type(
     }
 
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true, false));
+        return Some(Type::generalized(|next_id| Type::from_cst_annotation(typ, resolve, compiler, next_id, false)));
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
-        let return_type = match lambda.return_type.as_ref() {
-            Some(rt) => Box::new(rt.clone()),
-            None => match &context[lambda.body] {
-                // Treat returning a constructor as an explicit return type to allow
-                // implicits to avoid annotating repetitive return types.
-                Expr::Constructor(c) if constructor_type_is_fully_applied(&c.typ, resolve, compiler) => {
-                    Box::new(c.typ.clone())
-                },
-                _ => return None,
-            },
-        };
-
-        let parameters = lambda
-            .parameters
-            .iter()
-            .map(|parameter| match &context[parameter.pattern] {
-                Pattern::TypeAnnotation(_, typ) => Some(cst::ParameterType::new(typ.clone(), parameter.is_implicit)),
-                Pattern::Literal(cst::Literal::Unit) => {
-                    let location = context.pattern_location(parameter.pattern).clone();
-                    Some(cst::ParameterType::explicit(cst::Type::new(TypeKind::Unit, location)))
-                },
-                _ => None,
-            })
-            .collect::<Option<Vec<_>>>()?;
-
-        // Any lambda at global scope shouldn't be able to capture any local variables
-        let environment = None;
-
-        let cst_function_type =
-            cst::FunctionType { parameters, environment, return_type, effects: lambda.effects.clone() };
-
-        // We construct a function type to convert wholesale instead of converting as we go
-        // to avoid repeating logic in [Type::from_cst_type], namely handling of effect types.
-        let lambda_location = context.expr_location(definition.rhs).clone();
-        let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
-
-        Some(Type::from_cst_type_generalized(&cst_fn_type, resolve, compiler, true, false))
+        let signature = lambda_signature(lambda, None, true, context, resolve, compiler)?;
+        Some(Type::generalized(|next_id| Type::from_cst_function(&signature, resolve, compiler, next_id, false, true)))
 
     // The body being a type annotation is common for `extern` declarations: `puts = extern "puts": fn ...`
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
-        Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true, false))
+        let typ = &annotation.rhs;
+        Some(Type::generalized(|next_id| Type::from_cst_annotation(typ, resolve, compiler, next_id, false)))
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {
@@ -171,6 +137,44 @@ pub fn try_get_generalized_type(
     } else {
         None
     }
+}
+
+/// A lambda's function type with `missing` as its environment and omitted types, if given
+fn lambda_signature(
+    lambda: &Lambda, missing: Option<cst::Type>, is_top_level: bool, context: &DesugarContext,
+    resolve: &ResolutionResult, compiler: &DbHandle,
+) -> Option<cst::FunctionType> {
+    let return_type = match (&lambda.return_type, &context[lambda.body]) {
+        (Some(typ), _) => typ.clone(),
+        // Treat returning a constructor as an explicit return type to allow
+        // implicits to avoid annotating repetitive return types.
+        (None, Expr::Constructor(c)) if constructor_type_is_fully_applied(&c.typ, resolve, compiler) => c.typ.clone(),
+        (None, _) => missing.clone()?,
+    };
+
+    let parameters = opt_mapvec(&lambda.parameters, |parameter| {
+        let (typ, name) = match &context[parameter.pattern] {
+            Pattern::TypeAnnotation(inner, typ) => {
+                let name = if let Pattern::Variable(name) = &context[*inner] { Some(*name) } else { None };
+                (typ.clone(), name)
+            },
+            Pattern::Literal(cst::Literal::Unit) => {
+                let location = context.pattern_location(parameter.pattern).clone();
+                (cst::Type::new(TypeKind::Unit, location), None)
+            },
+            _ => (missing.clone()?, None),
+        };
+        Some(cst::ParameterType { typ, is_implicit: parameter.is_implicit, name })
+    })?;
+
+    // A top-level function with a return type and no `can` clause is pure
+    let effects = match &lambda.effects {
+        None if is_top_level && lambda.return_type.is_some() => Some(Vec::new()),
+        effects => effects.clone(),
+    };
+
+    let environment = missing.map(Box::new);
+    Some(cst::FunctionType { parameters, environment, return_type: Box::new(return_type), effects })
 }
 
 fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
@@ -207,41 +211,28 @@ pub fn try_get_seeded_and_declared_type(
 /// In the case there are no annotations, a fresh type variable is returned.
 pub fn get_partial_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
-    next_id: &mut u32,
+    next_id: &mut u32, is_top_level: bool,
 ) -> Type {
+    // Only a top-level annotation's elided parameter places are rigid
+    let convert_annotation = |typ: &cst::Type, next_id: &mut u32| {
+        if is_top_level {
+            Type::from_cst_annotation(typ, resolve, compiler, next_id, true)
+        } else {
+            Type::from_cst_type(typ, resolve, compiler, next_id, &mut LocalKinds::default(), true, true)
+        }
+    };
+
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        let mut local_kinds = LocalKinds::default();
-        return Type::from_cst_type(typ, resolve, compiler, next_id, &mut local_kinds, true, true);
+        return convert_annotation(typ, next_id);
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
-        let lambda_location = context.expr_location(definition.rhs).clone();
-        let hole = || cst::Type::new(cst::TypeKind::Hole, lambda_location.clone());
-
-        let return_type = Box::new(lambda.return_type.clone().unwrap_or_else(|| match &context[lambda.body] {
-            Expr::Constructor(c) if constructor_type_is_fully_applied(&c.typ, resolve, compiler) => c.typ.clone(),
-            _ => hole(),
-        }));
-
-        let parameters = mapvec(&lambda.parameters, |parameter| match &context[parameter.pattern] {
-            Pattern::TypeAnnotation(_, typ) => cst::ParameterType::new(typ.clone(), parameter.is_implicit),
-            Pattern::Literal(cst::Literal::Unit) => {
-                let location = context.pattern_location(parameter.pattern).clone();
-                cst::ParameterType::explicit(cst::Type::new(TypeKind::Unit, location))
-            },
-            _ => cst::ParameterType::explicit(hole()),
-        });
-
-        let environment = Some(Box::new(cst::Type::new(cst::TypeKind::Hole, lambda_location.clone())));
-        let cst_function_type =
-            cst::FunctionType { parameters, environment, return_type, effects: lambda.effects.clone() };
-
-        let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
-        let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, &mut local_kinds, true, true)
+        let hole = cst::Type::new(cst::TypeKind::Hole, context.expr_location(definition.rhs).clone());
+        let signature = lambda_signature(lambda, Some(hole), is_top_level, context, resolve, compiler)
+            .expect("omitted types are holes");
+        Type::from_cst_function(&signature, resolve, compiler, next_id, true, is_top_level)
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
-        let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true, true)
+        convert_annotation(&annotation.rhs, next_id)
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {

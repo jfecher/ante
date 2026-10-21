@@ -93,6 +93,10 @@ pub enum Diagnostic {
         name: Name,
         location: Location,
     },
+    ValueUsedAsType {
+        name: Name,
+        location: Location,
+    },
     ExpectedType {
         actual: String,
         expected: String,
@@ -543,6 +547,9 @@ impl Diagnostic {
             Diagnostic::NameNotInScope { name, location: _ } => {
                 format!("`{name}` not found in scope")
             },
+            Diagnostic::ValueUsedAsType { name, location: _ } => {
+                format!("`{name}` is a value in scope, not a type variable")
+            },
             Diagnostic::ExpectedType { actual, expected, location: _ } => {
                 format!("Expected type `{expected}` but found `{actual}`")
             },
@@ -862,6 +869,7 @@ impl Diagnostic {
             | Diagnostic::ExportedItemNotFound { location, .. }
             | Diagnostic::MethodExportRequiresType { location, .. }
             | Diagnostic::NameNotInScope { location, .. }
+            | Diagnostic::ValueUsedAsType { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
             | Diagnostic::RecursiveTypeAlias { location, .. }

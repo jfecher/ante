@@ -21,13 +21,13 @@ main () =
 // expected stdout:
 // import Std.Slice.Slice, slice
 // 
-// (first_of: fn (ref 'array (Array n t)) -> ref 'array t is pure) (array: ref 'array (Array n t)): ref t is pure =
+// (first_of: fn (ref 'array (Array n t)) -> ref 'array t is pure) (array: ref 'array (Array n t)): ref t =
 //     (array_get_unchecked: fn (ref 'array (Array n t)) Usz -> ref 'array t is pure) (array: ref 'array (Array n t)) 0
 // 
-// (first_of_explicit: fn (ref 'a (Array n t)) -> ref 'a t is pure) (array: ref 'a (Array n t)): ref 'a t is pure =
+// (first_of_explicit: fn (ref 'a (Array n t)) -> ref 'a t is pure) (array: ref 'a (Array n t)): ref 'a t =
 //     (array_get_unchecked: fn (ref 'a (Array n t)) Usz -> ref 'a t is pure) (array: ref 'a (Array n t)) 0
 // 
-// (mix: fn (ref 'a (Array n t)) (ref '_b (Array m t)) -> ref 'a t is pure) (a: ref 'a (Array n t)) (_b: ref '_b (Array m t)): ref 'a t is pure =
+// (mix: fn (ref 'a (Array n t)) (ref '_b (Array m t)) -> ref 'a t is pure) (a: ref 'a (Array n t)) (_b: ref '_b (Array m t)): ref 'a t =
 //     (array_get_unchecked: fn (ref 'a (Array n t)) Usz -> ref 'a t is pure) (a: ref 'a (Array n t)) 0
 // 
 // (main: fn Unit -> Unit is pure) () =
