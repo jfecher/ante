@@ -393,6 +393,8 @@ fn fmt_instruction(
         mir::Instruction::BitwiseOr(a, b) => write!(f, "bitwise_or {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseXor(a, b) => write!(f, "bitwise_xor {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseNot(x) => write!(f, "bitwise_not {}", v(x))?,
+        mir::Instruction::BitwiseShl(a, b) => write!(f, "bitwise_shl {}, {}", v(a), v(b))?,
+        mir::Instruction::BitwiseShr(a, b) => write!(f, "bitwise_shr {}, {}", v(a), v(b))?,
         mir::Instruction::SignExtend(x) => write!(f, "sign_extend {}", v(x))?,
         mir::Instruction::ZeroExtend(x) => write!(f, "zero_extend {}", v(x))?,
         mir::Instruction::SignedToFloat(x) => write!(f, "signed_to_float {}", v(x))?,

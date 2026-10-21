@@ -1003,6 +1003,17 @@ impl<'ctx> ModuleContext<'ctx> {
                 let b = self.lookup_value(b).into_int_value();
                 self.builder.build_xor(a, b, "").unwrap().as_basic_value_enum()
             },
+            mir::Instruction::BitwiseShl(a, b) => {
+                let a = self.lookup_value(a).into_int_value();
+                let b = self.lookup_value(b).into_int_value();
+                self.builder.build_left_shift(a, b, "").unwrap().as_basic_value_enum()
+            },
+            mir::Instruction::BitwiseShr(a, b) => {
+                let a = self.lookup_value(a).into_int_value();
+                let b = self.lookup_value(b).into_int_value();
+                let sign_extend = function.instruction_result_type(id).is_signed_int();
+                self.builder.build_right_shift(a, b, sign_extend, "").unwrap().as_basic_value_enum()
+            },
             mir::Instruction::BitwiseNot(value) => {
                 let value = self.lookup_value(value).into_int_value();
                 self.builder.build_not(value, "").unwrap().as_basic_value_enum()

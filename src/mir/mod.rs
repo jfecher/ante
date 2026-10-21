@@ -732,6 +732,10 @@ pub enum Instruction {
     BitwiseOr(Value, Value),
     BitwiseXor(Value, Value),
     BitwiseNot(Value),
+    /// Shift left. The shift amount is the same width as the value.
+    BitwiseShl(Value, Value),
+    /// Shift right. Signed integers sign-extend; unsigned integers zero-fill.
+    BitwiseShr(Value, Value),
 
     SignExtend(Value),
     ZeroExtend(Value),
@@ -869,6 +873,8 @@ macro_rules! for_each_instruction_value {
             Instruction::BitwiseOr(a, b) => two(a, b),
             Instruction::BitwiseXor(a, b) => two(a, b),
             Instruction::BitwiseNot(value) => f(value),
+            Instruction::BitwiseShl(a, b) => two(a, b),
+            Instruction::BitwiseShr(a, b) => two(a, b),
             Instruction::SignExtend(value) => f(value),
             Instruction::ZeroExtend(value) => f(value),
             Instruction::SignedToFloat(value) => f(value),
@@ -1363,7 +1369,7 @@ impl Type {
         }
     }
 
-    fn is_signed_int(&self) -> bool {
+    pub(crate) fn is_signed_int(&self) -> bool {
         match self {
             Type::Primitive(PrimitiveType::Int(kind)) => kind.is_signed(),
             _ => false,

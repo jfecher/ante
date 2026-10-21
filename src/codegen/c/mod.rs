@@ -1166,6 +1166,11 @@ impl Builder {
             mir::Instruction::BitwiseAnd(a, b) => self.write_binary(id, definition, mir, a, " & ", b),
             mir::Instruction::BitwiseOr(a, b) => self.write_binary(id, definition, mir, a, " | ", b),
             mir::Instruction::BitwiseXor(a, b) => self.write_binary(id, definition, mir, a, " ^ ", b),
+            mir::Instruction::BitwiseShl(a, b) => self.write_binary(id, definition, mir, a, " << ", b),
+            mir::Instruction::BitwiseShr(a, b) => {
+                let signed = mir.type_of_value(a, definition).is_signed_int();
+                self.write_binary_signed(id, definition, mir, a, " >> ", b, signed)
+            },
             mir::Instruction::BitwiseNot(value) => {
                 self.write_result_binding(id, definition);
                 self.write("~");
