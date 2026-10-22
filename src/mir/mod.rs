@@ -260,12 +260,18 @@ impl Definition {
         }
     }
 
-    /// The function and environment of closure field `index` of this global, if it is a constant tuple
-    pub fn constant_closure_field(&self, index: u32) -> Option<(Value, ConstantEnvironment)> {
+    /// The function of field `index` of this global, if it is a constant tuple and the field is a
+    /// known function, such as the method of a trait impl. If the field is a closure, the closure's
+    /// environment is returned as well.
+    pub fn constant_function_field(&self, index: u32) -> Option<(Value, Option<ConstantEnvironment>)> {
         let Some(TerminatorInstruction::Result(result)) = &self.entry_block().terminator else { return None };
         let Value::InstructionResult(result) = self.follow_ids(*result) else { return None };
         let Instruction::MakeTuple(fields) = &self.instructions[result] else { return None };
-        let Value::InstructionResult(field) = self.follow_ids(*fields.get(index as usize)?) else { return None };
+        let field = self.follow_ids(*fields.get(index as usize)?);
+        if self.definition_of(field).is_some() {
+            return Some((field, None));
+        }
+        let Value::InstructionResult(field) = field else { return None };
         let Instruction::PackClosure { function, environment } = &self.instructions[field] else { return None };
         let environment = match self.follow_ids(*environment) {
             Value::InstructionResult(id) => match &self.instructions[id] {
@@ -277,7 +283,7 @@ impl Definition {
             constant if constant.is_constant() => ConstantEnvironment::Constant(constant),
             _ => ConstantEnvironment::Runtime,
         };
-        Some((*function, environment))
+        Some((*function, Some(environment)))
     }
 
     /// Invoke `f` on each value used by an instruction or terminator of this definition
@@ -778,7 +784,7 @@ pub enum Instruction {
     },
 }
 
-/// The environment of a closure stored in a constant global, see [Definition::constant_closure_field]
+/// The environment of a closure stored in a constant global, see [Definition::constant_function_field]
 pub enum ConstantEnvironment {
     Constant(Value),
     /// A constant transmuted to the environment's type by the given instruction

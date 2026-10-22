@@ -1,0 +1,53 @@
+trait Named t =
+    name: fn t -> String
+
+impl named_i32: Named I32 with
+    name _ = "i32"
+
+// An implicit's type must be known without checking its body, so its impl can't be inferred
+implicit alias: Named I32 = named_i32
+
+implicit forward {d: Named t}: Named t = d
+
+// Naming the impl explicitly is fine
+implicit alias2: Named I32 named_i32 = named_i32
+
+implicit forward2 {d: Named t i}: Named t i = d
+
+// Omitting it through a type alias is the same
+type NamedI32 (i = _) = Named I32 i
+
+implicit aliased: NamedI32 = named_i32
+
+// An impl's own impl argument is always its own data type
+impl named_bool: Named Bool named_i32 with
+    name _ = "bool"
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/implicit_omitted_impl.an:8:17
+//  7 | // An implicit's type must be known without checking its body, so its impl can't be inferred
+//    | // error: Named's omitted parameter i needs to be specified here
+//  8 | implicit alias: Named I32 = named_i32
+//    |                 ^^^^^^^^^
+// 
+// examples/typechecking/implicit_omitted_impl.an:10:32
+//    | // error: Named's omitted parameter i needs to be specified here
+// 10 | implicit forward {d: Named t}: Named t = d
+//    |                                ^^^^^^^
+// 
+// examples/typechecking/implicit_omitted_impl.an:20:19
+//    | // error: NamedI32's omitted parameter i needs to be specified here
+// 20 | implicit aliased: NamedI32 = named_i32
+//    |                   ^^^^^^^^
+// 
+// examples/typechecking/implicit_omitted_impl.an:23:6
+// 22 | // An impl's own impl argument is always its own data type
+//    | // error: Expected named_i32 but found named_bool
+// 23 | impl named_bool: Named Bool named_i32 with
+//    |      ^^^^^^^^^^
+// 24 |     name _ = "bool"
+// 
+// Found 4 errors and 0 warnings
+

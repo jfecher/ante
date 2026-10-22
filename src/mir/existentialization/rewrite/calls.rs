@@ -55,8 +55,13 @@ impl Rewriter<'_> {
         let parameters = &callee.entry_block().parameter_types;
         let environment_type = (parameters.len() == arguments.len() + 1).then(|| parameters[arguments.len()].clone());
 
+        // A plain function has no environment to pass
+        if environment_type.is_some() != known.environment.is_some() {
+            return None;
+        }
+
         // Checked before converting any argument so falling back to a function value call emits nothing twice
-        let runtime = matches!(known.environment, ConstantEnvironment::Runtime);
+        let runtime = matches!(known.environment, Some(ConstantEnvironment::Runtime));
         if environment_type
             .as_ref()
             .is_some_and(|typ| is_dynamic(typ) || (runtime && is_dynamic(&self.old_type(function))))
@@ -64,8 +69,8 @@ impl Rewriter<'_> {
             return None;
         }
         let mut args = mapvec(arguments, |argument| self.arg(argument));
-        if let Some(environment_type) = environment_type {
-            let environment = match known.environment {
+        if let (Some(environment_type), Some(environment)) = (environment_type, known.environment) {
+            let environment = match environment {
                 ConstantEnvironment::Constant(constant) => Arg::Value(constant),
                 // Environments the callee never reads
                 ConstantEnvironment::Transmuted(..) if environment_type == Type::POINTER => {

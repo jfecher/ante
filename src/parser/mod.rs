@@ -804,7 +804,7 @@ impl<'tokens> Parser<'tokens> {
             .try_parse_or_recover_to_newline(|this| this.parse_block_or_expression())
             .unwrap_or_else(|| self.push_expr(Expr::Error, self.current_token_location()));
 
-        Ok(Definition { implicit, mutable, pattern, rhs })
+        Ok(Definition::new(implicit, mutable, pattern, rhs))
     }
 
     /// function_definition: function_name_pattern parameter+ (':' typ)? effects_clause '=' expression
@@ -822,7 +822,7 @@ impl<'tokens> Parser<'tokens> {
 
         let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false, effects });
         self.insert_expr(lambda_id, lambda, start_location);
-        Ok(Definition { implicit, mutable: false, pattern: name, rhs: lambda_id })
+        Ok(Definition::new(implicit, false, name, lambda_id))
     }
 
     /// function_signature_tail: (':' typ)? effects_clause '='
@@ -1091,7 +1091,7 @@ impl<'tokens> Parser<'tokens> {
         let effects = Some(self.parse_effect_list());
         let location = typ.location.to(&self.previous_token_location());
         let parameters = vec![ParameterType::explicit(Type::new(TypeKind::Unit, typ.location.clone()))];
-        let environment = Some(Box::new(Type::new(TypeKind::Hole, typ.location.clone())));
+        let environment = Some(Box::new(Type::new(TypeKind::RigidHole, typ.location.clone())));
         let return_type = Box::new(typ);
         Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
     }
@@ -1190,7 +1190,7 @@ impl<'tokens> Parser<'tokens> {
 
         if environment.is_none() && self.accept(Token::FatArrow) {
             let location = self.previous_token_location();
-            environment = Some(Box::new(Type::new(TypeKind::Hole, location)));
+            environment = Some(Box::new(Type::new(TypeKind::RigidHole, location)));
         } else {
             self.expect(Token::RightArrow, "`->` to separate this function type's parameters from its return type")?;
         }

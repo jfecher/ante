@@ -8,7 +8,7 @@ impl scale_i32: Scale I32 with
 
 apply (f: fn a b -> r) x y = f x y
 
-apply_scale (f: fn t I32 {Scale t} => t) (x: t) {Scale t}: t = f x 3
+apply_scale (f: fn t I32 {Scale t i} => t) (x: t) {Scale t i}: t = f x 3
 
 double_unit (_x: t) {Scale t}: t =
     Scale.scale Scale.unit 2

@@ -6,7 +6,20 @@ use_hole () =
 
 f (g: fn _ -> _) = g 1
 
+type Box t = value: t
+
+// A `_` written in a parameter is inferred from the body like any other type variable
+pick (x: Box _) (y: Box t): Box t = if true then x else y
+mismatched_boxes () = pick (Box 3i32) (Box (5i64, 6i64))
+
+// A `=>` parameter's environment is rigid, so the body can't narrow it
+narrow (f: fn I32 => I32 is pure): fn I32 -> I32 = f
+
+// An environment written as `[_]` is inferred instead
+infer_env (f: fn I32 [_] -> I32 is pure): fn I32 -> I32 = f
+
 // args: -e ast-t --no-color
+// expected exit status: 1
 // expected stdout:
 // type Pair a b =
 //     first: a
@@ -17,4 +30,37 @@ f (g: fn _ -> _) = g 1
 //     (p: Pair I32 I32).first
 // 
 // (f: fn (fn I32 -> _ can _) -> _ can _) (g: fn I32 -> _ can _) = (g: fn I32 -> _ can _) 1
+// 
+// type Box t =
+//     value: t
+// 
+// (pick: fn (Box t) (Box t) -> Box t is pure) (x: Box t) (y: Box t): Box t = if true then (x: Box t) else (y: Box t)
+// 
+// (mismatched_boxes: fn Unit -> Box I32 is pure) () = (pick: fn (Box I32) (Box I32) -> Box I32 is pure) ((Box: fn I32 -> Box I32 is pure) 3_I32) ((Box: fn I32 -> Box I32 is pure) (5_I64 (,: fn I64 I64 -> I64, I64 is pure) 6_I64))
+// 
+// (narrow: fn (fn I32 [_] -> I32 is pure) -> (fn I32 -> I32 is pure) is pure) (f: fn I32 [_] -> I32 is pure): fn I32 -> I32 = (f: fn I32 [_] -> I32 is pure)
+// 
+// (infer_env: fn (fn I32 -> I32 is pure) -> (fn I32 -> I32 is pure) is pure) (f: fn I32 -> I32 is pure): fn I32 -> I32 = (f: fn I32 -> I32 is pure)
+
+// expected stderr:
+// examples/typechecking/type_hole.an:13:45
+// 12 | pick (x: Box _) (y: Box t): Box t = if true then x else y
+//    | // error: Argument 1 has type I64, I64 but I32 was expected
+// 13 | mismatched_boxes () = pick (Box 3i32) (Box (5i64, 6i64))
+//    |                                             ^^^^^^^
+// 
+// examples/typechecking/type_hole.an:13:45
+// 12 | pick (x: Box _) (y: Box t): Box t = if true then x else y
+//    | // error: This function call returns I64, I64 but I32 was expected
+// 13 | mismatched_boxes () = pick (Box 3i32) (Box (5i64, 6i64))
+//    |                                             ^^^^^^^
+// 
+// examples/typechecking/type_hole.an:16:52
+// 15 | // A `=>` parameter's environment is rigid, so the body can't narrow it
+//    | // error: The body of this function has type fn I32 => I32 is pure but it is expected to return fn I32 -> I32 is pure
+//    | // note: Separate closures are not equal because they may capture different data
+// 16 | narrow (f: fn I32 => I32 is pure): fn I32 -> I32 = f
+//    |                                                    ^
+// 
+// Found 3 errors and 0 warnings
 

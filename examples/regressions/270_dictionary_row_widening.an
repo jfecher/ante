@@ -8,7 +8,7 @@ effect Observe =
 
 type Counter = limit: U32
 
-implicit stream_counter: Stream Counter U32 Tick = Stream with
+impl stream_counter: Stream Counter U32 Tick with
     stream counter = loop (i = 0) ->
         if i < counter.limit then
             tick ()

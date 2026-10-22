@@ -15,12 +15,14 @@ use crate::{
     parser::{
         cst::{self, KindAnnotation, PlaceSegment, ReferenceKind},
         desugar_context::DesugarContext,
+        get_item::{IMPL_GENERIC_DISPLAY_NAME, TraitDefinition},
         ids::{NameId, NameStore, TopLevelName},
     },
     shared_arc::Shared,
     type_inference::{
         TypeChecker,
         generics::Generic,
+        get_type,
         kinds::Kind,
         places::Place,
         row::{
@@ -152,6 +154,13 @@ pub enum PrimitiveType {
     /// A special tag a closure's environment can be unified to, at
     /// which point it becomes a free function
     NoClosureEnv,
+
+    /// The environment of a handler's `resume`, which is a pointer to its coroutine.
+    ResumeEnv,
+
+    /// The unique tag on each `impl`. It is a struct containing each of the impl's
+    /// captures. Writing an impl's name in a type position refers to this type.
+    ImplData(TopLevelName),
 }
 
 /// Maps type variables to their bindings
@@ -261,6 +270,8 @@ impl Type {
             integer_literal_vars,
             float_literal_vars,
             hide_environments: false,
+            optional_args: OptionalArgs::Unbound,
+            number_elided: false,
             names,
             db,
         }
@@ -610,6 +621,7 @@ impl Type {
             local_kinds,
             insert_implicit_type_vars,
             open_effects_by_default,
+            Omissions::Fresh,
         )
     }
 
@@ -631,6 +643,7 @@ impl Type {
                 &mut local_kinds,
                 insert_implicit_type_vars,
                 open_effects_by_default,
+                Omissions::Rigid,
             )
         })
     }
@@ -654,6 +667,7 @@ impl Type {
     pub(crate) fn from_cst_type_with_kind(
         typ: &cst::Type, expected: Kind, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
         local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
+        omissions: Omissions,
     ) -> Type {
         let mut visited = Vec::new();
         TypeConverter::new(
@@ -665,51 +679,50 @@ impl Type {
             open_effects_by_default,
             &mut visited,
         )
+        .with_omissions(omissions)
         .convert_with_kind(typ, expected)
     }
 
-    /// Returns a tuple of:
-    /// - The converted type
-    /// - The kind of the converted type
-    ///
-    /// Does not error if the returned type is not of kind [Kind::Type].
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn from_cst_type_helper(
-        typ: &cst::Type, expected: Option<&Kind>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
-    ) -> (Type, Kind) {
+    /// Converts the type of a constructor expression. A constructor's type may omit any of its type
+    /// arguments, in which case it is applied to a fresh type variable for each. Type aliases are expanded.
+    pub(crate) fn from_cst_constructor_type(
+        typ: &cst::Type, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
+    ) -> Type {
         let mut visited = Vec::new();
-        TypeConverter::new(
-            resolve,
-            db,
-            next_id,
-            local_kinds,
-            insert_implicit_type_vars,
-            open_effects_by_default,
-            &mut visited,
-        )
-        .convert(typ, expected)
+        let mut local_kinds = LocalKinds::default();
+        let mut converter = TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, true, &mut visited);
+        let (typ, kind) = converter.convert(typ, None);
+        let arity = kind.required_argument_count();
+        if arity == 0 {
+            return typ;
+        }
+        let args = mapvec(0..arity, |_| converter.next_type_variable());
+        converter.apply_type_constructor(typ, &kind, args).0
     }
 
-    /// Convert a definition's function type; a top-level `signature`'s elided parts become rigid generics
+    /// Convert a definition's function type; a top-level `signature`'s elided parts convert as `omissions` says
     pub(crate) fn from_cst_function(
         function: &cst::FunctionType, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        open_effects_by_default: bool, signature: bool,
+        open_effects_by_default: bool, signature: bool, omissions: Omissions,
     ) -> Type {
         let mut local_kinds = LocalKinds::default();
         let mut visited = Vec::new();
         let elision = if signature { Elision::Signature } else { Elision::Infer };
         TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, open_effects_by_default, &mut visited)
+            .with_omissions(omissions)
             .convert_function(function, elision, None)
     }
 
-    /// Convert a top-level definition's type annotation; its function type's elided parameter places are rigid
+    /// Convert a top-level definition's type annotation; its function type's elided parameter
+    /// places convert as `omissions` says
     pub(crate) fn from_cst_annotation(
         typ: &cst::Type, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32, open_effects_by_default: bool,
+        omissions: Omissions,
     ) -> Type {
         let mut local_kinds = LocalKinds::default();
         let mut visited = Vec::new();
         TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, open_effects_by_default, &mut visited)
+            .with_omissions(omissions)
             .convert_annotation(typ)
     }
 
@@ -732,6 +745,29 @@ impl Type {
     }
 }
 
+/// The name error messages use for the generic `generic` of `definition`. A trait's unspellable
+/// impl generic is given a spellable name instead.
+pub(crate) fn generic_display_name(
+    definition: &cst::TypeDefinition, generic: usize, context: &DesugarContext,
+) -> String {
+    if Some(generic) == definition.impl_generic_index() {
+        IMPL_GENERIC_DISPLAY_NAME.to_string()
+    } else {
+        context[definition.generics[generic].name].to_string()
+    }
+}
+
+/// What to do when a type hole is encountered
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(crate) enum Omissions {
+    /// Each is a fresh type variable
+    Fresh,
+    /// Each is a unique rigid [Generic::Elided]
+    Rigid,
+    /// Omitting a type argument is an error
+    Error,
+}
+
 /// Converts a [cst::Type] to a type-checker [Type].
 struct TypeConverter<'a, 'b> {
     resolve: &'a ResolutionResult,
@@ -748,6 +784,13 @@ struct TypeConverter<'a, 'b> {
 
     /// What an elided place converts to here
     elided_place: ElidedPlace,
+
+    /// What each part left out of a type converts to
+    omissions: Omissions,
+
+    /// True while converting a parameter of a top-level signature, where each [cst::TypeKind::RigidHole]
+    /// converts as [Omissions] says
+    in_signature_parameter: bool,
 }
 
 /// Which elision rules a function type's parameters follow
@@ -755,7 +798,7 @@ struct TypeConverter<'a, 'b> {
 enum Elision {
     /// Elided places are fresh variables
     Infer,
-    /// A top-level annotation's elided parameter places are rigid generics
+    /// A top-level annotation's elided parameter places convert as [Omissions] says
     Annotation,
     /// A top-level lambda's signature also names places after parameters and shares bare parameters' effects
     Signature,
@@ -765,7 +808,8 @@ enum Elision {
 enum ElidedPlace {
     /// A fresh place variable
     Infer,
-    /// A place in a signature's parameter: the parameter's own place first, if any, then fresh rigid places
+    /// A place in a signature's parameter: the parameter's own place first, if any, then places
+    /// converted as [Omissions] says
     Parameter(Option<Type>),
     /// A place in a return type, which refers to the function's only input place
     Return(Type),
@@ -785,7 +829,14 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             open_effects_by_default,
             visited,
             elided_place: ElidedPlace::Infer,
+            omissions: Omissions::Fresh,
+            in_signature_parameter: false,
         }
+    }
+
+    fn with_omissions(mut self, omissions: Omissions) -> Self {
+        self.omissions = omissions;
+        self
     }
 
     /// Convert `typ` and error if its [Kind] does not unify with `expected`.
@@ -879,15 +930,17 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 (Type::Primitive(PrimitiveType::Reference(*kind)), Kind::from_args(vec![Kind::Place, Kind::Type]))
             },
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
-            crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements = mapvec(elements, |t| self.convert_with_kind(t, Kind::Type));
                 (Type::Tuple(Shared::new(elements)), Kind::Type)
             },
-            crate::parser::cst::TypeKind::Hole if self.insert_implicit_type_vars => {
-                (self.next_type_variable(), Kind::Type)
+            crate::parser::cst::TypeKind::RigidHole if self.in_signature_parameter => (self.next_omitted(), Kind::Type),
+            crate::parser::cst::TypeKind::Hole | crate::parser::cst::TypeKind::RigidHole
+                if self.insert_implicit_type_vars =>
+            {
+                (self.next_omitted(), Kind::Type)
             },
-            crate::parser::cst::TypeKind::Hole => {
+            crate::parser::cst::TypeKind::Hole | crate::parser::cst::TypeKind::RigidHole => {
                 self.db.accumulate(Diagnostic::HoleCantBeUsed { location: typ.location.clone() });
                 (Type::ERROR, Kind::Error)
             },
@@ -896,7 +949,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             crate::parser::cst::TypeKind::ImplicitPlace => {
                 let place = match &mut self.elided_place {
                     ElidedPlace::Infer => self.next_type_variable(),
-                    ElidedPlace::Parameter(own) => own.take().unwrap_or_else(|| self.next_elided_generic()),
+                    ElidedPlace::Parameter(own) => own.take().unwrap_or_else(|| self.next_omitted()),
                     ElidedPlace::Return(place) => place.clone(),
                 };
                 (place, Kind::Place)
@@ -962,29 +1015,34 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             }
         }
 
-        let result_kind = f_kind.result_kind();
-
         let mut converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
             let expected_kind = f_kind.get_nth_parameter_kind(i);
             self.convert_with_kind(arg, expected_kind)
         });
 
-        if let Some(name) = name {
-            if converted_args.len() < arity {
-                self.push_default_arguments(name, &f_kind, &mut converted_args, location);
-            }
+        if let Some(name) = name
+            && converted_args.len() < arity
+        {
+            self.push_default_arguments(name, &f_kind, &mut converted_args, location);
+        }
 
-            // Expand a generic type or effect alias if necessary
-            if let Some(expanded) = self.expand_type_alias(name, &converted_args) {
+        assert!(!converted_args.is_empty());
+        self.apply_type_constructor(f, &f_kind, converted_args)
+    }
+
+    /// Apply `constructor` to `args`, expanding any type or effect alias.
+    fn apply_type_constructor(&mut self, constructor: Type, kind: &Kind, args: Vec<Type>) -> (Type, Kind) {
+        // Expand a generic type or effect alias if necessary
+        if let Type::UserDefined(Origin::TopLevelDefinition(name)) = &constructor {
+            if let Some(expanded) = self.expand_type_alias(*name, &args) {
                 return (expanded, Kind::Type);
-            } else if let Some(expanded) = self.expand_effect_alias(name, &converted_args) {
+            } else if let Some(expanded) = self.expand_effect_alias(*name, &args) {
                 return (expanded, Kind::Effect);
             }
         }
 
-        assert!(!converted_args.is_empty());
-        let typ = Type::Application(Shared::new(f), Shared::new(converted_args));
-        (typ, result_kind)
+        let typ = Type::Application(Shared::new(constructor), Shared::new(args));
+        (typ, kind.result_kind())
     }
 
     /// The minimum number of arguments `name` accepts. Returns `None` if it is not a type definition
@@ -1006,15 +1064,18 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         for (i, param) in definition.generics.iter().enumerate().skip(args.len()) {
             let default = param.default.as_ref().expect("omitted parameters should all have defaults");
 
-            let typ = if !self.insert_implicit_type_vars && default.contains_hole() {
+            let cant_infer = !self.insert_implicit_type_vars || self.omissions == Omissions::Error;
+            let typ = if cant_infer && default.contains_hole() {
                 let typ = ctx[definition.name].to_string();
-                let param = ctx[param.name].to_string();
+                let param = generic_display_name(definition, i, &ctx);
                 self.db.accumulate(Diagnostic::DefaultHoleCantBeUsed { typ, param, location: location.clone() });
                 Type::ERROR
             } else {
                 let implicit = self.insert_implicit_type_vars;
                 let kind = kind.get_nth_parameter_kind(i);
-                self.expand_alias(name, &ctx, definition, args, implicit, |c| c.convert_with_kind(default, kind))
+                self.expand_alias(name, &ctx, definition, args, implicit, |converter| {
+                    converter.convert_with_kind(default, kind)
+                })
             };
             args.push(typ);
         }
@@ -1032,9 +1093,11 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         let has_bare_parameter = function.parameters.iter().any(|param| param.typ.is_function_without_effects());
         let parameter_row = (signature && has_bare_parameter).then(|| match row_variable {
             Some(variable) => self.convert_with_kind(variable, Kind::Effect),
-            None => self.next_elided_generic(),
+            None => self.next_omitted(),
         });
 
+        let outer_in_signature_parameter = self.in_signature_parameter;
+        self.in_signature_parameter |= elision != Elision::Infer;
         let parameters = mapvec(&function.parameters, |param| {
             let typ = match &param.typ.kind {
                 cst::TypeKind::Function(bare) if signature && bare.effects.is_none() => {
@@ -1048,6 +1111,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             };
             ParameterType::new(typ, param.is_implicit)
         });
+        self.in_signature_parameter = outer_in_signature_parameter;
         let environment = match function.environment.as_ref() {
             Some(environment) => self.convert_with_place(environment, ElidedPlace::Infer),
             None => Type::NO_CLOSURE_ENV,
@@ -1139,6 +1203,14 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         Type::Variable(self.next_type_variable_id())
     }
 
+    /// A hole or a part left out of a top-level signature's parameter, see [Omissions]
+    fn next_omitted(&mut self) -> Type {
+        match self.omissions {
+            Omissions::Rigid => self.next_elided_generic(),
+            Omissions::Fresh | Omissions::Error => self.next_type_variable(),
+        }
+    }
+
     fn next_elided_generic(&mut self) -> Type {
         Type::Generic(Generic::Elided(self.next_type_variable_id()))
     }
@@ -1200,7 +1272,8 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             insert_implicit_type_vars,
             false,
             self.visited,
-        );
+        )
+        .with_omissions(self.omissions);
 
         let body_type = convert_body(&mut converter);
 
@@ -1260,16 +1333,23 @@ impl Type {
             },
             Some(origin @ Origin::TopLevelDefinition(type_name)) => {
                 let (item, ctx) = GetItem(type_name.top_level_item).get(db);
-                match &item.kind {
-                    cst::TopLevelItemKind::TypeDefinition(definition) => {
-                        let kind = crate::definition_collection::kind_of_type_definition(definition);
-                        (make_type(origin), kind)
-                    },
-                    _ => {
-                        let name = item.kind.name().to_string(ctx.as_ref());
-                        db.accumulate(Diagnostic::NotAType { name, location: location.clone() });
-                        (Type::ERROR, Kind::Type)
-                    },
+                if let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind {
+                    return (make_type(origin), crate::definition_collection::kind_of_type_definition(definition));
+                }
+
+                // An impl's name in a type position refers to its data type, a type
+                // constructor over each of the impl's parameter types.
+                if let cst::TopLevelItemKind::Definition(definition) = &item.kind
+                    && definition.impl_info.is_some()
+                    && let resolve = Resolve(type_name.top_level_item).get(db)
+                    && get_type::trait_impl_of(definition, &ctx, &resolve, db).is_some()
+                {
+                    let kind = Kind::from_args(vec![Kind::Type; definition.impl_parameters(ctx.as_ref()).len()]);
+                    (Type::Primitive(PrimitiveType::ImplData(type_name)), kind)
+                } else {
+                    let name = item.kind.name().to_string(ctx.as_ref());
+                    db.accumulate(Diagnostic::NotAType { name, location: location.clone() });
+                    (Type::ERROR, Kind::Type)
                 }
             },
             Some(origin @ Origin::Local(name)) => {
@@ -1309,7 +1389,16 @@ impl Type {
         let mut declared_substitutions = GenericSubstitutions::default();
         for generic in generics.iter() {
             match generic {
-                Generic::Named(_) | Generic::Elided(_) => new_generics.push(*generic),
+                Generic::Named(_) => new_generics.push(*generic),
+                // Elided generics stay rigid but are renumbered since each signature numbers them
+                // locally from zero and they would otherwise collide with those of other signatures.
+                Generic::Elided(_) => {
+                    let new_generic = Generic::Elided(TypeVariableId(*next_id));
+                    *next_id += 1;
+                    new_generics.push(new_generic);
+                    seed_substitutions.insert(*generic, Type::Generic(new_generic));
+                    declared_substitutions.insert(*generic, Type::Generic(new_generic));
+                },
                 Generic::Inferred(_) => {
                     let id = TypeVariableId(*next_id);
                     *next_id += 1;
@@ -1553,6 +1642,38 @@ impl Type {
         }
     }
 
+    /// The type constructor at the head of this type, along with its arguments if it is applied
+    fn head_and_args<'a>(&'a self, bindings: &'a TypeBindings) -> (&'a Type, Option<&'a [Type]>) {
+        match self.follow(bindings) {
+            Type::Application(constructor, args) => (constructor.follow(bindings), Some(args.as_slice())),
+            other => (other, None),
+        }
+    }
+
+    /// The top-level definition this type names, along with its arguments if it is applied
+    pub(crate) fn definition_head<'a>(
+        &'a self, bindings: &'a TypeBindings,
+    ) -> Option<(TopLevelName, Option<&'a [Type]>)> {
+        match self.head_and_args(bindings) {
+            (Type::UserDefined(Origin::TopLevelDefinition(name)), args) => Some((*name, args)),
+            _ => None,
+        }
+    }
+
+    /// If this is a trait dictionary type, return the trait along with its arguments if it is applied
+    pub(crate) fn trait_application<'a>(
+        &'a self, bindings: &'a TypeBindings, db: &impl DbGet<GetItem>,
+    ) -> Option<(TraitDefinition, Option<&'a [Type]>)> {
+        let (name, args) = self.definition_head(bindings)?;
+        Some((TraitDefinition::get(name, db)?, args))
+    }
+
+    /// The impl type argument of a trait dictionary type, see [cst::TypeDefinitionKind::Trait]
+    pub(crate) fn impl_arg<'a>(&'a self, bindings: &'a TypeBindings, db: &impl DbGet<GetItem>) -> Option<&'a Type> {
+        let (trait_, args) = self.trait_application(bindings, db)?;
+        args?.get(trait_.impl_generic_index())
+    }
+
     /// If this is user-defined, return the origin
     pub fn as_user_defined(&self) -> Option<&Origin> {
         match self {
@@ -1640,6 +1761,32 @@ impl Type {
         construct_row(RowKind::Effects, list, bindings, more_bindings)
     }
 
+    /// The data type of the impl `name`, applied to the types of the impl's parameters if it has any
+    pub(crate) fn impl_data(name: TopLevelName, parameter_types: Vec<Type>) -> Type {
+        let impl_data = Type::Primitive(PrimitiveType::ImplData(name));
+        if parameter_types.is_empty() {
+            impl_data
+        } else {
+            Type::Application(Shared::new(impl_data), Shared::new(parameter_types))
+        }
+    }
+
+    /// If this is a type application, return it with its argument at `index` replaced with `arg`
+    pub(crate) fn with_arg(&self, index: usize, arg: Type) -> Option<Type> {
+        let Type::Application(constructor, args) = self else { return None };
+        let mut args = args.as_ref().clone();
+        *args.get_mut(index)? = arg;
+        Some(Type::Application(constructor.clone(), Shared::new(args)))
+    }
+
+    /// If this is the data type of an impl, return that impl's name, see [Type::impl_data]
+    pub(crate) fn impl_data_name(&self, bindings: &TypeBindings) -> Option<TopLevelName> {
+        match self.head_and_args(bindings) {
+            (Type::Primitive(PrimitiveType::ImplData(name)), _) => Some(*name),
+            _ => None,
+        }
+    }
+
     /// The effect constructor an effect-row entry refers to, ignoring its type arguments.
     pub(crate) fn effect_head(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Origin> {
         match self.follow_two(bindings, more_bindings) {
@@ -1686,13 +1833,45 @@ pub struct TypePrinter<'a, Db, Names> {
     /// In error messages we omit the `[env]` block and instead write `=>` for functions
     /// with an environment. The typed AST dump keeps the env.
     hide_environments: bool,
+    /// Which trailing arguments of a type constructor are omitted
+    optional_args: OptionalArgs,
+    /// Print each [Generic::Elided] with its id rather than as `_`, to tell them apart
+    number_elided: bool,
     pub(super) names: &'a Names,
     db: &'a Db,
+}
+
+/// Which trailing arguments of a type constructor a [TypePrinter] omits. Only arguments whose
+/// parameter defaults to `_`, such as a trait's impl argument, are ever omitted.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum OptionalArgs {
+    /// Omit unbound type variables, which would also be omitted when writing the type
+    Unbound,
+    /// Also omit rigid [Generic::Elided] arguments, which can't be written. Used in error messages.
+    Unknown,
+    /// Also omit each trait's impl argument. Used in error messages comparing two types whose
+    /// impl arguments aren't what distinguishes them.
+    UnknownAndImpls,
 }
 
 impl<'a, Db, Names> TypePrinter<'a, Db, Names> {
     pub fn hiding_environments(mut self) -> Self {
         self.hide_environments = true;
+        self
+    }
+
+    pub fn omitting_unknown_args(mut self) -> Self {
+        self.optional_args = OptionalArgs::Unknown;
+        self
+    }
+
+    pub fn omitting_unknown_and_impl_args(mut self) -> Self {
+        self.optional_args = OptionalArgs::UnknownAndImpls;
+        self
+    }
+
+    pub fn numbering_elided_generics(mut self) -> Self {
+        self.number_elided = true;
         self
     }
 }
@@ -1714,10 +1893,15 @@ where
 {
     pub(super) fn fmt_type(&self, typ: &Type, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match typ {
+            Type::Primitive(PrimitiveType::ImplData(name)) => {
+                let (_, context) = GetItem(name.top_level_item).get(self.db);
+                write!(f, "{}", context[name.local_name_id])
+            },
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
             Type::UserDefined(origin) => self.fmt_type_origin(*origin, f),
             Type::Generic(Generic::Named(origin)) => self.fmt_type_origin(*origin, f),
             Type::Generic(Generic::Inferred(id)) => write!(f, "g{id}"),
+            Type::Generic(generic @ Generic::Elided(_)) if self.number_elided => write!(f, "{generic}"),
             Type::Generic(Generic::Elided(_)) => write!(f, "_"),
             Type::Variable(id) => {
                 if let Some(binding) = self.bindings.get(id) {
@@ -1759,7 +1943,7 @@ where
                 self.fmt_type(&function.return_type, returns_fn, f)?;
                 self.fmt_effects_suffix(&function.effects, f)
             }),
-            Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
+            Type::Application(constructor, args) => {
                 let constructor = constructor.follow(self.bindings);
                 let item = match constructor {
                     Type::UserDefined(Origin::TopLevelDefinition(name)) => {
@@ -1767,40 +1951,47 @@ where
                     },
                     _ => None,
                 };
+                let definition = match item.as_ref().map(|(item, _)| &item.kind) {
+                    Some(cst::TopLevelItemKind::TypeDefinition(definition)) => Some(definition),
+                    _ => None,
+                };
+                let shown = args.len() - self.omittable_trailing_args(definition, args);
 
-                // Hack: If the constructor formats to `,` then print it infix
-                let is_pair = item.as_ref().is_some_and(|(item, context)| match item.kind.name() {
-                    cst::ItemName::Single(name) => context[name].as_str() == ",",
-                    _ => unreachable!(),
-                });
+                // A type whose arguments are all omitted is written like a type without any
+                try_parenthesize(parenthesize && shown != 0, f, |f| {
+                    // Hack: If the constructor formats to `,` then print it infix
+                    let is_pair = item.as_ref().is_some_and(|(item, context)| match item.kind.name() {
+                        cst::ItemName::Single(name) => context[name].as_str() == ",",
+                        _ => unreachable!(),
+                    });
 
-                if is_pair && args.len() == 2 {
-                    self.fmt_type(&args[0], true, f)?;
-                    write!(f, ", ")?;
-                    self.fmt_type(&args[1], true, f)
-                } else {
-                    let is_reference = args.len() == 2
-                        && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference(_)));
+                    if is_pair && args.len() == 2 {
+                        self.fmt_type(&args[0], true, f)?;
+                        write!(f, ", ")?;
+                        self.fmt_type(&args[1], true, f)
+                    } else {
+                        let is_reference = args.len() == 2
+                            && matches!(
+                                constructor.follow(self.bindings),
+                                Type::Primitive(PrimitiveType::Reference(_))
+                            );
+                        let generics = definition.map_or(&[][..], |definition| definition.generics.as_slice());
 
-                    let generics = match item.as_ref().map(|(item, _)| &item.kind) {
-                        Some(cst::TopLevelItemKind::TypeDefinition(definition)) => definition.generics.as_slice(),
-                        _ => &[],
-                    };
-
-                    self.fmt_type(constructor, true, f)?;
-                    for (i, arg) in args.iter().enumerate() {
-                        let place_param =
-                            generics.get(i).is_some_and(|param| param.kind == Some(KindAnnotation::Place));
-                        if (is_reference && i == 0) || place_param || arg.follow(self.bindings).is_place_row() {
-                            self.fmt_place_arg(arg, is_reference, f)?;
-                        } else {
-                            write!(f, " ")?;
-                            self.fmt_type(arg, true, f)?;
+                        self.fmt_type(constructor, true, f)?;
+                        for (i, arg) in args[..shown].iter().enumerate() {
+                            let place_param =
+                                generics.get(i).is_some_and(|param| param.kind == Some(KindAnnotation::Place));
+                            if (is_reference && i == 0) || place_param || arg.follow(self.bindings).is_place_row() {
+                                self.fmt_place_arg(arg, is_reference, f)?;
+                            } else {
+                                write!(f, " ")?;
+                                self.fmt_type(arg, true, f)?;
+                            }
                         }
+                        Ok(())
                     }
-                    Ok(())
-                }
-            }),
+                })
+            },
             Type::Forall(generics, typ) => try_parenthesize(parenthesize, f, |f| {
                 write!(f, "forall")?;
                 for generic in generics.iter() {
@@ -1830,6 +2021,30 @@ where
                 self.fmt_type(base, false, f)?;
                 write!(f, "{}", cst::Segments(segments))
             },
+        }
+    }
+
+    /// The number of trailing arguments of a type defined by `definition` to omit when printing,
+    /// see [OptionalArgs]. Only an argument whose parameter defaults to `_` may be omitted.
+    fn omittable_trailing_args(&self, definition: Option<&cst::TypeDefinition>, args: &[Type]) -> usize {
+        let Some(definition) = definition else { return 0 };
+        let omit_impls = self.optional_args == OptionalArgs::UnknownAndImpls;
+        let impl_index =
+            definition.impl_generic_index().filter(|_| omit_impls && args.len() == definition.generics.len());
+
+        let omittable = |i: usize| {
+            definition.generics.get(i).is_some_and(|param| param.defaults_to_hole())
+                && (Some(i) == impl_index || self.is_unknown_arg(&args[i]))
+        };
+        (0..args.len()).rev().take_while(|i| omittable(*i)).count()
+    }
+
+    /// True if `arg` is an omittable argument which is not known, see [OptionalArgs]
+    fn is_unknown_arg(&self, arg: &Type) -> bool {
+        match arg.follow(self.bindings) {
+            Type::Variable(_) => true,
+            Type::Generic(Generic::Elided(_)) => self.optional_args != OptionalArgs::Unbound,
+            _ => false,
         }
     }
 
@@ -1945,6 +2160,8 @@ impl std::fmt::Display for PrimitiveType {
             PrimitiveType::Reference(kind) => write!(f, "{kind}"),
             PrimitiveType::Array => write!(f, "Array"),
             PrimitiveType::NoClosureEnv => write!(f, "{NO_CLOSURE_ENV_STRING}"),
+            PrimitiveType::ResumeEnv => write!(f, "ResumeEnv"),
+            PrimitiveType::ImplData(_) => write!(f, "(impl)"),
         }
     }
 }

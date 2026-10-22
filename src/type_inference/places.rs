@@ -22,7 +22,6 @@ use crate::{
 
 use super::{
     TypeErrorKind,
-    free_variables::FreeVars,
     generics::Generic,
     types::{FunctionType, Type, TypeBindings, TypePrinter, TypeVariableId},
 };
@@ -573,7 +572,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Every place a function's type mentions, including those of each variable it captures
     fn mentioned_places(&self, function: &FunctionType, lambda: ExprId) -> Vec<PlaceEntry> {
-        let mut captures = FreeVars::default();
+        let mut captures = self.lambda_free_vars_context(lambda);
         captures.find_free_variables(lambda, self);
 
         let mut entries = Vec::new();
@@ -785,9 +784,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Float(_)
             | cst::TypeKind::Char
             | cst::TypeKind::Reference(_)
-            | cst::TypeKind::Pointer
             | cst::TypeKind::NoClosureEnv
             | cst::TypeKind::Hole
+            | cst::TypeKind::RigidHole
             | cst::TypeKind::Unit
             | cst::TypeKind::Place(_)
             | cst::TypeKind::Pure

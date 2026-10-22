@@ -1,0 +1,56 @@
+trait Describe t =
+    describe: fn (ref t) -> String
+    describe_twice: fn (ref t) -> String
+
+impl describe_i32: Describe I32 with
+    describe x = cast x.*
+    describe_twice x = describe x ++ describe x
+
+impl describe_bool: Describe Bool with
+    describe b = if b.* then "yes" else "no"
+    describe_twice b = describe b ++ "!"
+
+// The impl's data holds both of its implicit parameters once, and each method reads
+// them from there rather than capturing them separately.
+impl describe_pair {Describe a} {Describe b}: Describe (a, b) with
+    describe p = "(" ++ describe p.first ++ ", " ++ describe p.second ++ ")"
+    describe_twice p = describe_twice p.second ++ describe_twice p.first
+
+// A dictionary's methods called through a generic function
+describe_all (x: ref t) {Describe t}: String =
+    describe x ++ " " ++ describe_twice x
+
+// Since methods read the impl's parameters from its data, declaring a method with `=>` is the
+// same as declaring it with `->`
+trait Gen t =
+    gen: fn t => I32
+
+impl gen_i32 (k: I32): Gen I32 with
+    gen x = x + k
+
+trait Count t =
+    count: fn t -> t
+
+// A `var` parameter is a mutable local within each method call: each call starts from the
+// value the impl was created with rather than the value a previous call left behind.
+impl counter (var n: I32): Count I32 with
+    count x =
+        n := n + x
+        n
+
+main () =
+    print_to_stdout do
+    nested = ((1i32, false), 2i32)
+    println (describe_all (ref nested))
+    implicit g = gen_i32 10
+    println (gen 1i32)
+    c = counter 10
+    println (c.count 1)
+    println (c.count 5)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// ((1, no), 2) 22no!11
+// 11
+// 11
+// 15

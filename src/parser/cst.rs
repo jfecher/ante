@@ -8,7 +8,7 @@ use crate::{
     shared_arc::Shared,
 };
 
-use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId};
+use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId, TopLevelName};
 
 /// The Concrete Syntax Tree (CST) is the output of parsing a source file.
 /// This is expected to mirror the source file without removing too much information.
@@ -156,9 +156,19 @@ impl Type {
 
     /// Like [Type::contains_hole], but also calls `on_named(path, arg_count)` on each named type
     pub fn contains_hole_with(&self, on_named: &mut impl FnMut(PathId, usize) -> bool) -> bool {
-        let mut recur = |typ: &Type| typ.contains_hole_with(on_named);
+        self.contains_hole_where(true, on_named)
+    }
+
+    /// True if this type has a `_` hole, ignoring any [TypeKind::RigidHole]
+    pub fn contains_inferred_hole(&self) -> bool {
+        self.contains_hole_where(false, &mut |_, _| false)
+    }
+
+    fn contains_hole_where(&self, count_rigid: bool, on_named: &mut impl FnMut(PathId, usize) -> bool) -> bool {
+        let mut recur = |typ: &Type| typ.contains_hole_where(count_rigid, on_named);
         match &self.kind {
             TypeKind::Hole => true,
+            TypeKind::RigidHole => count_rigid,
             TypeKind::Named(path) => on_named(*path, 0),
             TypeKind::Function(function) => function.types().any(recur),
             TypeKind::Application(function, args) => {
@@ -171,6 +181,16 @@ impl Type {
             TypeKind::Tuple(types) | TypeKind::EffectUnion(types) => types.iter().any(recur),
             TypeKind::Forall(_, typ) => recur(typ),
             _ => false,
+        }
+    }
+
+    /// The path naming the type constructor at the head of this type, skipping any type arguments
+    /// so that `Vec a` returns the path of `Vec`
+    pub fn head_path(&self) -> Option<PathId> {
+        match &self.kind {
+            TypeKind::Named(path) => Some(*path),
+            TypeKind::Application(constructor, _) => constructor.head_path(),
+            _ => None,
         }
     }
 }
@@ -205,12 +225,12 @@ pub enum TypeKind {
     /// ability types into in some cases.
     NoClosureEnv,
 
-    /// This type can't be parsed, it is only used by `GetItem` to desugar
-    /// ability method environments to a pointer type.
-    Pointer,
-
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
+
+    /// Like a [TypeKind::Hole] but is replaced by a fresh, rigid generic rather than an inferred
+    /// type variable. If a top-level item's type is not fully specified, this will still be inferred.
+    RigidHole,
 
     /// Synthesized by the parser for the place arg of `ref t` / `mut t` / `imm t` /
     /// `uniq t` when no `'name` was written. Becomes a fresh place variable in normal
@@ -351,6 +371,10 @@ impl TypeDefinitionKind {
     pub fn is_effect(self) -> bool {
         matches!(self, TypeDefinitionKind::Effect)
     }
+
+    pub fn is_trait(self) -> bool {
+        matches!(self, TypeDefinitionKind::Trait)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -367,6 +391,11 @@ impl TypeDefinition {
     /// Number of generic parameters without a default
     pub fn required_generic_count(&self) -> usize {
         self.generics.iter().rposition(|param| param.default.is_none()).map_or(0, |index| index + 1)
+    }
+
+    /// If this is a trait, return the index of its impl generic.
+    pub fn impl_generic_index(&self) -> Option<usize> {
+        self.kind.is_trait().then(|| self.generics.len() - 1)
     }
 }
 
@@ -531,6 +560,35 @@ pub struct Definition {
     pub mutable: bool,
     pub pattern: PatternId,
     pub rhs: ExprId,
+
+    /// Set on the top-level definition an `impl` desugars to
+    pub impl_info: Option<Box<ImplInfo>>,
+}
+
+impl Definition {
+    pub fn new(implicit: bool, mutable: bool, pattern: PatternId, rhs: ExprId) -> Self {
+        Self { implicit, mutable, pattern, rhs, impl_info: None }
+    }
+
+    /// Each of the parameters of the `impl` this definition was desugared from. If there are any,
+    /// the definition's body is a lambda taking them, otherwise the body is [ImplInfo::constructor] itself.
+    pub fn impl_parameters<'a>(&self, context: &'a impl IdStore) -> &'a [Parameter] {
+        match context.get_expr(self.rhs) {
+            Expr::Lambda(lambda) if self.impl_info.is_some() => &lambda.parameters,
+            _ => &[],
+        }
+    }
+}
+
+/// The parts of an `impl` which its desugared definition doesn't otherwise make explicit.
+/// See [crate::parser::get_item] for how an impl is desugared.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct ImplInfo {
+    /// The impl's name, which is also the name of its definition
+    pub name: TopLevelName,
+
+    /// The constructor creating the impl's value, the body of the definition or its lambda
+    pub constructor: ExprId,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -779,6 +837,15 @@ pub struct GenericParam {
 impl GenericParam {
     pub fn new(name: NameId) -> Self {
         Self { name, kind: None, default: None }
+    }
+
+    pub fn is_effect(&self) -> bool {
+        self.kind == Some(KindAnnotation::Effect)
+    }
+
+    /// True if this parameter's argument may be omitted to have it inferred, as in `(t = _)`
+    pub fn defaults_to_hole(&self) -> bool {
+        self.default.as_ref().is_some_and(|default| matches!(default.kind, TypeKind::Hole))
     }
 }
 

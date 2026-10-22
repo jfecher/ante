@@ -1,0 +1,53 @@
+trait Show t =
+    show: fn t -> String
+    name: String
+
+make_show (prefix: String): fn I32 => String =
+    fn x -> prefix ++ cast x
+
+// A method given as an arbitrary expression is evaluated on each call to the method
+impl show_i32: Show I32 with
+    show = make_show "i32: "
+    name = "i32"
+
+impl show_u8: Show U8 with
+    show = (fn (x: U8) -> "u8: " ++ cast x) : fn U8 -> String
+    name = "u8"
+
+type Box a = value: a
+
+show_box (b: Box a) {Show a}: String = "Box(" ++ Show.show b.value ++ ")"
+
+// A method given as a name is called directly
+impl show_box_impl {Show a}: Show (Box a) with
+    show = show_box
+    name = "box"
+
+// Methods given as expressions may use the impl's parameters
+impl show_pair {s: Show a}: Show (a, a) with
+    show = (fn (x, y) -> Show.show x {s} ++ " & " ++ Show.show y {s}) : fn (a, a) => String
+    name = "pair"
+
+wrap (f: fn a => String): fn a => String = fn x -> "[" ++ f x ++ "]"
+
+impl show_bool {s: Show U8}: Show Bool with
+    show = wrap fn b -> if b then Show.show 1u8 {s} else Show.show 0u8 {s}
+    name = "bool"
+
+main () =
+    print_to_stdout do
+    println (Show.show 1i32)
+    println (Show.show 2i32)
+    println (Show.show 3u8)
+    println (Show.show (Box (Box 5u8)))
+    println (Show.show (6i32, 7i32))
+    println (Show.show true)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// i32: 1
+// i32: 2
+// u8: 3
+// Box(Box(u8: 5))
+// i32: 6 & i32: 7
+// [u8: 1]

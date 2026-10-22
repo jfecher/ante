@@ -1,0 +1,18 @@
+import Std.HashMap.HashMap, empty, insert, get
+import Std.Hash.Hash, hash_u8
+
+// The map's `Hash` impl is omitted from the return type so it is inferred from the body
+build (): HashMap U8 I32 can Panic =
+    var map = HashMap.empty ()
+    ignore (map.insert 1 2)
+    ignore (map.insert 3 4)
+    map
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    map = build ()
+    println map.len
+
+// args: --delete-binary --no-color
+// expected stdout: 2

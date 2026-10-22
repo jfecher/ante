@@ -137,7 +137,7 @@ fn inlinee<'a>(caller: &Definition, function: &Value, mir: &Callees<'a>) -> Opti
     inlinable.then(|| Inlinee { callee: &mir.mir.definitions[&id], bindings, environment })
 }
 
-/// The function of a closure stored in a constant global. This is usually a trait impl method
+/// The function stored in a constant global. This is usually a trait impl method
 fn dictionary_method(
     caller: &Definition, tuple: &Value, index: u32, mir: &Mir,
 ) -> Option<(DefinitionId, Option<Arc<GenericBindings>>, Option<Environment>)> {
@@ -147,20 +147,21 @@ fn dictionary_method(
     if !global.is_global() || global.blocks.len() != 1 || outer.len() != global.generic_count as usize {
         return None;
     }
-    let (function, environment) = global.constant_closure_field(index)?;
+    let (function, environment) = global.constant_function_field(index)?;
     let (function, bindings) = match global.definition_of(function)? {
         (id, None) if !is_generic(mir, &id) => (id, None),
         (id, Some(bindings)) => (id, Some(Arc::new(mapvec(bindings.iter(), |binding| binding.substitute(&outer))))),
         _ => return None,
     };
     let environment = match environment {
-        ConstantEnvironment::Constant(constant) => Environment::Value(constant),
-        ConstantEnvironment::Transmuted(constant, id) => {
-            Environment::Transmuted(constant, global.instruction_result_type(id).substitute(&outer))
+        None => None,
+        Some(ConstantEnvironment::Constant(constant)) => Some(Environment::Value(constant)),
+        Some(ConstantEnvironment::Transmuted(constant, id)) => {
+            Some(Environment::Transmuted(constant, global.instruction_result_type(id).substitute(&outer)))
         },
-        ConstantEnvironment::Runtime => return None,
+        Some(ConstantEnvironment::Runtime) => return None,
     };
-    Some((function, bindings, Some(environment)))
+    Some((function, bindings, environment))
 }
 
 /// Referring to itself would inline forever, and a reference to a generic definition without an

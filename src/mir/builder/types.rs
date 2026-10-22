@@ -9,8 +9,9 @@ use crate::{
     mir::{EffectKey, EvidenceEntry, FunctionType, Generic, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
     parser::{
-        cst::{TopLevelItem, TopLevelItemKind, TypeDefinition, TypeDefinitionBody},
-        ids::{ExprId, PathId, PatternId, TopLevelId, TopLevelName},
+        cst::{Name, TopLevelItem, TopLevelItemKind, TypeDefinition, TypeDefinitionBody},
+        get_item::TraitDefinition,
+        ids::{PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         TypeBody,
@@ -22,11 +23,6 @@ impl<'local, Db> Context<'local, Db>
 where
     Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
 {
-    pub(super) fn convert_expr_type(&self, expr: ExprId) -> Type {
-        let typ = &self.types.result.maps.expr_types[&expr];
-        self.convert_type(typ, None)
-    }
-
     pub(super) fn convert_path_type(&self, path: PathId) -> Type {
         let typ = &self.types.result.maps.path_types[&path];
         self.convert_type(typ, None)
@@ -65,6 +61,15 @@ where
         match tuple {
             Type::Tuple(fields) => fields.get(n).cloned().unwrap_or(Type::ERROR),
             _ => Type::ERROR,
+        }
+    }
+
+    /// The index of the impl data within a dictionary of the given type, which is always its last
+    /// field. See [ConvertTypeContext::dictionary_type].
+    pub(super) fn impl_data_index(dictionary_type: &Type) -> u32 {
+        match dictionary_type {
+            Type::Tuple(fields) => fields.len().saturating_sub(1) as u32,
+            _ => 0,
         }
     }
 }
@@ -116,10 +121,14 @@ where
             },
             TCType::Application(constructor, new_args) => {
                 assert!(args.is_none());
-                if let TCType::Primitive(crate::type_inference::types::PrimitiveType::Array) =
-                    constructor.follow(self.type_bindings)
-                {
-                    return self.convert_array_application(new_args);
+                match constructor.follow(self.type_bindings) {
+                    TCType::Primitive(crate::type_inference::types::PrimitiveType::Array) => {
+                        return self.convert_array_application(new_args);
+                    },
+                    TCType::Primitive(crate::type_inference::types::PrimitiveType::ImplData(_)) => {
+                        return self.impl_data_type(new_args);
+                    },
+                    _ => (),
                 }
                 self.convert_type(constructor, Some(new_args))
             },
@@ -161,7 +170,7 @@ where
 
     /// The identity of a row entry's effect within evidence
     pub(super) fn effect_key(&self, effect: &TCType) -> EffectKey {
-        let Some((name, args)) = self.definition_head(effect) else {
+        let Some((name, args)) = effect.definition_head(self.type_bindings) else {
             panic!("effect_key: not an effect type: {effect:?}");
         };
         self.effect_key_of(name, args)
@@ -216,21 +225,9 @@ where
 
     /// True if `effect` refers to an effect definition with zero operations.
     fn effect_has_no_operations(&self, effect: &TCType) -> bool {
-        let Some((name, _)) = self.definition_head(effect) else { return false };
+        let Some((name, _)) = effect.definition_head(self.type_bindings) else { return false };
         let (item, _) = GetItem(name.top_level_item).get(self.compiler);
         matches!(Self::type_definition(&item), Some(definition) if Self::is_empty_effect(definition))
-    }
-
-    /// The top-level definition `typ` names with its arguments if applied
-    fn definition_head<'t>(&'t self, typ: &'t TCType) -> Option<(TopLevelName, Option<&'t [TCType]>)> {
-        match typ.follow(self.type_bindings) {
-            TCType::UserDefined(Origin::TopLevelDefinition(name)) => Some((*name, None)),
-            TCType::Application(constructor, args) => match constructor.follow(self.type_bindings) {
-                TCType::UserDefined(Origin::TopLevelDefinition(name)) => Some((*name, Some(args.as_slice()))),
-                _ => None,
-            },
-            _ => None,
-        }
     }
 
     fn type_definition(item: &TopLevelItem) -> Option<&TypeDefinition> {
@@ -246,15 +243,35 @@ where
             && matches!(&definition.body, TypeDefinitionBody::Struct(fields) if fields.is_empty())
     }
 
-    /// The method types of a trait dictionary type
-    pub(super) fn trait_method_types(&self, dictionary: &TCType) -> Vec<TCType> {
-        let Some((name, args)) = self.definition_head(dictionary) else {
-            panic!("trait_method_types: `{dictionary:?}` is not a trait");
+    /// The data of an impl whose parameters have the types `parameter_types`: a struct holding each
+    /// of the impl's parameters.
+    pub(super) fn impl_data_type(&self, parameter_types: &[TCType]) -> Type {
+        Type::tuple(mapvec(parameter_types, |typ| self.convert_type(typ, None)))
+    }
+
+    /// The layout of a dictionary of the trait `trait_`, named `name`, applied to `args`: each of the
+    /// trait's members followed by the data of the impl the dictionary was created from, see
+    /// [Context::impl_data_index]. Each method takes a pointer to that impl data as its first parameter,
+    /// which is how it reads the impl's parameters.
+    fn dictionary_type(&self, trait_: &TraitDefinition, args: Option<&[TCType]>) -> Type {
+        let body = GetTypeBody(trait_.type_name(), args.map(<[_]>::to_vec)).get(self.compiler);
+        let methods = trait_.method_flags(self.compiler);
+        let mut fields = mapvec(trait_fields(&body).iter().zip(methods), |((_, member), is_method)| {
+            let member = self.convert_type(member, None);
+            if is_method { method_field_type(member) } else { member }
+        });
+
+        let impl_data = args.and_then(|args| args.get(trait_.impl_generic_index()));
+        fields.push(impl_data.map_or(Type::ERROR, |impl_data| self.convert_type(impl_data, None)));
+        Type::tuple(fields)
+    }
+
+    /// The type body of the trait of a trait dictionary type, see [trait_fields]
+    pub(super) fn trait_members(&self, dictionary: &TCType) -> Arc<TypeBody> {
+        let Some((name, args)) = dictionary.definition_head(self.type_bindings) else {
+            panic!("`{dictionary:?}` is not a trait");
         };
-        match name.top_level_item.type_body(args, self.compiler) {
-            TypeBody::Product { fields, .. } => mapvec(fields, |(_, typ)| typ),
-            TypeBody::Sum(_) => panic!("trait_method_types: trait is a sum type"),
-        }
+        GetTypeBody(name, args.map(<[_]>::to_vec)).get(self.compiler)
     }
 
     /// C-compatible conversion (no evidence parameter) for `extern` symbols and `resume`
@@ -315,7 +332,7 @@ where
 
     /// Resolves a [Self::split_row] entry to its capability tuple type
     pub(super) fn effect_capability_tuple_type_of(&self, effect: &TCType) -> Type {
-        let Some((name, args)) = self.definition_head(effect) else {
+        let Some((name, args)) = effect.definition_head(self.type_bindings) else {
             panic!("effect_capability_tuple_type_of: not an effect type: {effect:?}");
         };
         self.effect_capability_tuple_type(name.top_level_item, args)
@@ -395,6 +412,9 @@ where
     }
 
     fn expand_user_defined_body(&self, id: TopLevelName, args: Option<&[TCType]>) -> Type {
+        if let Some(trait_) = TraitDefinition::get(id, self.compiler) {
+            return self.dictionary_type(&trait_, args);
+        }
         let body = GetTypeBody(id, args.map(|args| args.to_vec())).get(self.compiler);
         self.convert_type_body(&body, self.common_field_count(id))
     }
@@ -473,6 +493,29 @@ where
                 unreachable!("bare Array reached MIR; applied form is handled in convert_type")
             },
             crate::type_inference::types::PrimitiveType::NoClosureEnv => Type::NO_CLOSURE_ENV,
+            crate::type_inference::types::PrimitiveType::ResumeEnv => Type::POINTER,
+            crate::type_inference::types::PrimitiveType::ImplData(_) => self.impl_data_type(&[]),
         }
+    }
+}
+
+/// The name and type of each member of a trait's type body
+pub(super) fn trait_fields(body: &TypeBody) -> &[(Name, TCType)] {
+    match body {
+        TypeBody::Product { fields, .. } => fields,
+        TypeBody::Sum(_) => unreachable!("a trait's type body is always a product"),
+    }
+}
+
+/// The type of a dictionary field holding a method of the function type `method`, which takes a
+/// pointer to its impl's data as its first parameter
+pub(super) fn method_field_type(method: Type) -> Type {
+    match method {
+        Type::Function(function) => {
+            let mut function = Arc::unwrap_or_clone(function);
+            function.parameters.insert(0, Type::POINTER);
+            Type::Function(Arc::new(function))
+        },
+        other => other,
     }
 }

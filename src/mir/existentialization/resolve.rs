@@ -60,15 +60,16 @@ pub(super) fn resolve(value: &Value, definition: &Definition, kind: &impl Fn(Def
     }
 }
 
-/// A closure read out of a constant global. This is usually a method of a trait impl
+/// A function or closure read out of a constant global. This is usually a method of a trait impl
 pub(super) struct KnownClosure {
     pub(super) function: DefinitionId,
     pub(super) bindings: Bindings,
-    pub(super) environment: ConstantEnvironment,
+    /// The closure's environment, or `None` for a plain function
+    pub(super) environment: Option<ConstantEnvironment>,
 }
 
-/// Resolve a value of the form `global.index` where `global` is a constant tuple holding a closure
-/// of a known function, so the call can skip the uniform calling convention.
+/// Resolve a value of the form `global.index` where `global` is a constant tuple holding a known
+/// function or a closure of one, so the call can skip the uniform calling convention.
 ///
 /// This helps speed up existentialized code noticeably.
 pub(super) fn known_closure(
@@ -84,7 +85,7 @@ pub(super) fn known_closure(
     if global.generic_count > 0 {
         return None;
     }
-    let (function, environment) = global.constant_closure_field(*index)?;
+    let (function, environment) = global.constant_function_field(*index)?;
     let Target::Function(function, bindings) = resolve(&function, global, kind) else { return None };
     Some(KnownClosure { function, bindings, environment })
 }

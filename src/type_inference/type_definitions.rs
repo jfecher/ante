@@ -12,7 +12,6 @@ use crate::{
     type_inference::{
         Locateable, TypeChecker,
         generics::Generic,
-        kinds::Kind,
         recursive_types,
         types::{self, GenericSubstitutions, ParameterType, Type},
     },
@@ -29,7 +28,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // Convert the body even though the result is unused to issue kind or recursion errors
                 Self::reject_implicit_places(body, self.compiler);
                 let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-                let _ = self.from_cst_type_with_local_kinds(body, Kind::Type, false, false, &mut local_kinds);
+                let _ = self.from_cst_type_in_type_definition(body, false, &mut local_kinds);
                 return;
             },
             cst::TypeDefinitionBody::EffectAlias(effects) => {
@@ -49,11 +48,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {
-                // Ability fields are publicly visible (e.g. `Eq.eq`), so each needs its own type.
-                if definition.kind.is_ability() {
-                    self.build_method_types(id, definition, fields);
-                }
                 if definition.kind.is_effect() {
+                    self.build_effect_operation_types(id, definition, fields);
                     return;
                 }
                 let fields = mapvec(fields, |(_, field_type)| field_type);
@@ -79,7 +75,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
 
         for (constructor_name, args) in constructors.iter() {
-            let actual = self.build_constructor_type(type_name, definition, &generics, args, &mut local_kinds);
+            let parameters = self.convert_constructor_parameters(definition, args, &mut local_kinds);
+            if definition.kind.is_trait() {
+                self.build_trait_member_types(type_name, definition, &parameters);
+            }
+            let actual = self.build_constructor_type(type_name, definition, &generics, parameters);
             self.check_name(*constructor_name, &actual);
         }
     }
@@ -126,23 +126,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         (data_type, substitutions)
     }
 
-    /// Build and returns a constructor type for a sum or product type.
-    ///
-    /// Expects the given sum or product type to be the current context. This cannot be called
-    /// within another definition that merely references the type in question.
-    ///
-    /// `type_name` should be the name of the struct/product type rather than
-    /// the name for each individual variant, in the case of sum types.
-    ///
-    /// Note that the order of the generics of type constructors must match the ordering of the
-    /// generics of the type since this is what [TopLevelId::type_body] later expects.
-    fn build_constructor_type<'a>(
-        &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, generics: &[Generic],
-        variant_args: &[&cst::Type], local_kinds: &mut crate::type_inference::types::LocalKinds,
-    ) -> Type {
-        let (mut result, substitutions) = self.type_definition_type(type_name, item, false);
-        assert!(substitutions.is_empty());
-
+    /// Convert the parameter types of a constructor for a sum or product type, whose arguments
+    /// are declared as `variant_args`. A trait's methods never have an environment of their own,
+    /// see [Self::without_method_environment].
+    fn convert_constructor_parameters(
+        &mut self, item: &cst::TypeDefinition, variant_args: &[&cst::Type],
+        local_kinds: &mut crate::type_inference::types::LocalKinds,
+    ) -> Vec<Type> {
         // TODO: Change lifetime desugaring to work on function types better.
         // `fn (ref t) (ref t) -> Bool` should likely be `forall 'a. fn (ref 'a t) (ref 'a t) -> Bool`
         if !item.kind.is_ability() {
@@ -154,14 +144,35 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // TODO: Review allowing abilities to desugar here; the new type variables need to be tracked.
         let insert_implicit_type_vars = item.kind.is_ability();
 
-        // `false` here stops `can` clauses from being polymorphic by default.
-        let parameters = mapvec(variant_args, |arg| {
-            let param =
-                self.from_cst_type_with_local_kinds(arg, Kind::Type, insert_implicit_type_vars, false, local_kinds);
-            types::ParameterType::explicit(param)
-        });
+        // Effects are closed by default here which stops `can` clauses from being polymorphic by default.
+        mapvec(variant_args, |arg| {
+            let param = self.from_cst_type_in_type_definition(arg, insert_implicit_type_vars, local_kinds);
+            if item.kind.is_trait() {
+                self.without_method_environment(arg, param)
+            } else {
+                param
+            }
+        })
+    }
 
-        if !variant_args.is_empty() {
+    /// Build and returns a constructor type for a sum or product type, taking the given parameters.
+    ///
+    /// Expects the given sum or product type to be the current context. This cannot be called
+    /// within another definition that merely references the type in question.
+    ///
+    /// `type_name` should be the name of the struct/product type rather than
+    /// the name for each individual variant, in the case of sum types.
+    ///
+    /// Note that the order of the generics of type constructors must match the ordering of the
+    /// generics of the type since this is what [TopLevelId::type_body] later expects.
+    fn build_constructor_type(
+        &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, generics: &[Generic], parameters: Vec<Type>,
+    ) -> Type {
+        let (mut result, substitutions) = self.type_definition_type(type_name, item, false);
+        assert!(substitutions.is_empty());
+
+        if !parameters.is_empty() {
+            let parameters = mapvec(parameters, types::ParameterType::explicit);
             result = Type::Function(Shared::new(types::FunctionType {
                 parameters,
                 environment: Type::NO_CLOSURE_ENV,
@@ -174,8 +185,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             result = Type::Forall(Shared::new(generics.to_vec()), Shared::new(result));
         }
 
-        // The `false` flag above is normally enough to keep types closed, but ability
-        // method signatures may carry `ImplicitPlace` placeholders that become fresh
+        // Converting the parameters with effects closed is normally enough to keep types closed,
+        // but ability method signatures may carry `ImplicitPlace` placeholders that become fresh
         // type variables. Promote any such inferred free vars into the surrounding
         // `Forall` so the constructor stays a closed polytype.
         let free_vars = result.free_vars(&self.bindings);
@@ -211,48 +222,92 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// For a trait, the name `Eq.eq` is publically visible. We want to give it the type:
-    /// `Eq.eq: fn t t {Eq t} -> Bool`
+    /// `Eq.eq: fn t t {Eq t i} -> Bool`
     ///
-    /// It should be generalized to `forall t. fn t t {Eq t} -> Bool` later.
-    ///
-    /// The function's closure environment is hard-coded to `Pointer` by the ability
-    /// desugarer so every ability value has uniform size.
-    ///
-    /// For effects, each function in `E` gets a `can E` clause.
-    fn build_method_types(&mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)]) {
-        let type_name = TopLevelName::new(id, definition.name);
-        let is_effect = definition.kind.is_effect();
+    /// It should be generalized to `forall t i. fn t t {Eq t i} -> Bool` later. `member_types` are
+    /// the types of the trait's members as fields of its dictionary, see [Self::convert_constructor_parameters].
+    /// A member whose type is a function is a method, see [crate::parser::get_item::TraitDefinition::method_flags].
+    fn build_trait_member_types(
+        &mut self, type_name: TopLevelName, definition: &cst::TypeDefinition, member_types: &[Type],
+    ) {
+        let cst::TypeDefinitionBody::Struct(members) = &definition.body else {
+            unreachable!("a trait's body is always a struct")
+        };
+        let (dictionary_type, substitutions) = self.type_definition_type(type_name, definition, false);
+        assert!(substitutions.is_empty());
 
-        for (method_name, method_type) in fields.iter() {
-            let (arg, substitutions) = self.type_definition_type(type_name, definition, false);
+        for ((member_name, _), member_type) in members.iter().zip(member_types) {
+            let member_type = match self.follow_type(member_type) {
+                Type::Function(_) => {
+                    self.add_implicit_arg_to_function_type(member_type.clone(), dictionary_type.clone())
+                },
+                _ => member_type.clone(),
+            };
+            self.check_name(*member_name, &member_type);
+        }
+    }
+
+    /// Effect operations are publicly visible (e.g. `Emit.emit`), so each needs its own type.
+    /// Each operation in `E` gets a `can E` clause.
+    fn build_effect_operation_types(
+        &mut self, id: TopLevelId, definition: &cst::TypeDefinition, operations: &[(NameId, cst::Type)],
+    ) {
+        let type_name = TopLevelName::new(id, definition.name);
+
+        for (operation_name, cst_operation_type) in operations.iter() {
+            let (effect, substitutions) = self.type_definition_type(type_name, definition, false);
             assert!(substitutions.is_empty());
-            // Each method is generalized independently, so it gets a fresh kind map seeded
-            // from the trait/effect's own generic annotations.
+            // Each operation is generalized independently, so it gets a fresh kind map seeded
+            // from the effect's own generic annotations.
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
 
-            let cst_method_type = method_type;
-            let mut method_type =
-                self.from_cst_type_with_local_kinds(cst_method_type, Kind::Type, true, false, &mut local_kinds);
+            // Omitting a type argument defaulting to `_` is an error, as it would be for a type's fields
+            let mut operation_type = self.from_cst_type_in_type_definition(cst_operation_type, true, &mut local_kinds);
 
-            if is_effect {
-                match &cst_method_type.kind {
-                    cst::TypeKind::Function(function) => {
-                        if function.effects.is_some() {
-                            let location = cst_method_type.location.clone();
-                            self.compiler.accumulate(Diagnostic::EffectOperationWithEffectClause { location });
-                        }
-                        method_type = self.set_effect_on_function_type(method_type, arg);
-                    },
-                    _ => {
-                        let location = cst_method_type.location.clone();
-                        self.compiler.accumulate(Diagnostic::EffectOperationMustBeFunction { location });
-                    },
-                }
-            } else if matches!(method_type, Type::Function(_)) {
-                method_type = self.add_implicit_arg_to_function_type(method_type, arg);
+            match &cst_operation_type.kind {
+                cst::TypeKind::Function(function) => {
+                    if function.effects.is_some() {
+                        let location = cst_operation_type.location.clone();
+                        self.compiler.accumulate(Diagnostic::EffectOperationWithEffectClause { location });
+                    }
+                    operation_type = self.set_effect_on_function_type(operation_type, effect);
+                },
+                _ => {
+                    let location = cst_operation_type.location.clone();
+                    self.compiler.accumulate(Diagnostic::EffectOperationMustBeFunction { location });
+                },
             }
-            self.check_name(*method_name, &method_type);
+            self.check_name(*operation_name, &operation_type);
         }
+    }
+
+    /// A trait method reads the data of its impl rather than capturing anything, so it never has an
+    /// environment of its own. A method declared with `=>` is the same as one declared with `->`.
+    /// Issues an error if the method of type `method_type`, declared as `cst_type`, has any other
+    /// environment. Returns any other type unchanged.
+    fn without_method_environment(&self, cst_type: &cst::Type, method_type: Type) -> Type {
+        let Type::Function(function) = self.follow_type(&method_type) else { return method_type };
+        let explicit_environment = match &cst_type.kind {
+            cst::TypeKind::Function(function) => function
+                .environment
+                .as_ref()
+                .filter(|env| !matches!(env.kind, cst::TypeKind::Hole | cst::TypeKind::RigidHole)),
+            _ => None,
+        };
+        let location = match explicit_environment {
+            Some(environment) => Some(environment.location.clone()),
+            None => match self.follow_type(&function.environment) {
+                Type::Variable(_) | Type::Primitive(types::PrimitiveType::NoClosureEnv) => None,
+                _ => Some(cst_type.location.clone()),
+            },
+        };
+        if let Some(location) = location {
+            self.compiler.accumulate(Diagnostic::TraitMethodEnvironment { location });
+        }
+
+        let mut function = function.as_ref().clone();
+        function.environment = Type::NO_CLOSURE_ENV;
+        Type::Function(Shared::new(function))
     }
 
     /// Given a function type, return a new function type with the given argument added to the end

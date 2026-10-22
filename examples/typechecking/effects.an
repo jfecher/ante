@@ -39,16 +39,16 @@ main () =
 // 
 // (handle_basic: fn Unit -> Unit can Use String) (): Unit can Use String =
 //     handle fn () -> (log: fn String -> Unit can Log) "test1"
-//     | (log: fn String -> Unit can Log) (v: String) -> fn (v: String) (resume: fn Unit [Ptr] -> Unit is pure) -> (set: fn String -> Unit can Use String) (v: String)
+//     | (log: fn String -> Unit can Log) (v: String) -> fn (v: String) (resume: fn Unit [ResumeEnv] -> Unit is pure) -> (set: fn String -> Unit can Use String) (v: String)
 // 
 // (use_resume: fn Unit -> Unit is pure) () =
 //     handle fn () -> ()
-//     | (get: fn Unit -> I32 can Use I32) () -> fn () (resume: fn I32 [Ptr] -> Unit is pure) -> (resume: fn I32 [Ptr] -> Unit is pure) 3_I32
-//     | (set: fn I32 -> Unit can Use I32) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit is pure) -> (resume: fn Unit [Ptr] -> Unit is pure) ()
+//     | (get: fn Unit -> I32 can Use I32) () -> fn () (resume: fn I32 [ResumeEnv] -> Unit is pure) -> (resume: fn I32 [ResumeEnv] -> Unit is pure) 3_I32
+//     | (set: fn I32 -> Unit can Use I32) (_: I32) -> fn (_: I32) (resume: fn Unit [ResumeEnv] -> Unit is pure) -> (resume: fn Unit [ResumeEnv] -> Unit is pure) ()
 // 
 // (does_use: fn I32 -> Unit can Use I32) (x: I32): Unit can Use I32 =
 //     (y: I32) = (get: fn Unit -> I32 can Use I32) ()
-//     (set: fn I32 -> Unit can Use I32) ((add_i32: Add I32).+ (y: I32) (x: I32))
+//     (set: fn I32 -> Unit can Use I32) ((add_i32: Add I32 add_i32).+ (y: I32) (x: I32))
 // 
 // (pure_fn: fn Unit -> Unit is pure) (): Unit is pure =
 //     (log: fn String -> Unit can Log) "foo"

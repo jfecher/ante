@@ -19,7 +19,7 @@ use crate::{
         ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId},
     },
     shared_arc::Shared,
-    type_inference::{TypeChecker, patterns::DecisionTree, types::Type},
+    type_inference::{TypeChecker, dictionary_coercions::DictionaryCoercion, patterns::DecisionTree, types::Type},
 };
 
 /// Extends a [TopLevelContext] with additional expressions, names, and paths
@@ -87,6 +87,10 @@ pub struct ExtendedTopLevelContext {
     /// Function values coerced to a wider effect row, mapped to the function type they were
     /// coerced to. The MIR builder wraps each in a closure of that type capturing the original.
     function_coercions: FxHashMap<ExprId, Type>,
+
+    /// Each trait dictionary coerced to wider effect args, mapped to the trait type it was coerced
+    /// to and how the MIR builder adapts it to that type
+    dictionary_coercions: FxHashMap<ExprId, (Type, DictionaryCoercion)>,
 }
 
 impl<'local, 'innter> TypeChecker<'local, 'innter> {
@@ -132,6 +136,7 @@ impl ExtendedTopLevelContext {
             closure_environments: Default::default(),
             move_closures: Default::default(),
             function_coercions: Default::default(),
+            dictionary_coercions: Default::default(),
         }
     }
 
@@ -334,6 +339,15 @@ impl ExtendedTopLevelContext {
 
     pub(crate) fn mark_move_closure(&mut self, expr: ExprId) {
         self.move_closures.insert(expr);
+    }
+
+    pub(crate) fn insert_dictionary_coercion(&mut self, expr: ExprId, expected: Type, coercion: DictionaryCoercion) {
+        self.dictionary_coercions.insert(expr, (expected, coercion));
+    }
+
+    /// The trait type a dictionary was coerced to with wider effect args, and how it is adapted to it
+    pub fn get_dictionary_coercion(&self, expr: ExprId) -> Option<&(Type, DictionaryCoercion)> {
+        self.dictionary_coercions.get(&expr)
     }
 
     /// Copy all per-`ExprId` codegen metadata recorded for `from` onto `to`.

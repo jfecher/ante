@@ -2,18 +2,18 @@
 trait Foo a b =
     foo: fn a -> b
 
-implicit foo_impl: Foo I32 String =
-    Foo fn _ -> "hi"
+impl foo_impl: Foo I32 String with
+    foo _ = "hi"
 
 str = foo 0i32
 
 // args: -e ast-t --no-color
 // expected stdout:
-// type Foo a b =
-//     foo: fn a [Ptr Unit] -> b
+// type Foo a b ($impl = _) =
+//     foo: fn a -> b
 // 
-// implicit (foo_impl: Foo I32 String) =
-//     (Foo: fn (fn I32 [Ptr Unit] -> String is pure) -> Foo I32 String is pure) (fn (_: I32) -> "hi")
+// implicit (foo_impl: Foo I32 String foo_impl) = Foo I32 String with
+//     (foo: fn I32 -> String is pure) = fn (_: I32) -> "hi"
 // 
-// (str: String) = (foo_impl: Foo I32 String).foo 0_I32
+// (str: String) = (foo_impl: Foo I32 String foo_impl).foo 0_I32
 

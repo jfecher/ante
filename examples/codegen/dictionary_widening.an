@@ -1,0 +1,153 @@
+// Dictionaries may be given more effects than their impl performs
+trait Run t (e: effect) =
+    run: fn t -> I32 can e
+    other: fn t -> I32
+
+impl run_i32: Run I32 pure with
+    run x = x + 1
+    other x = x
+
+impl run_add (k: I32): Run I32 pure with
+    run x = x + k
+    other x = x * k
+
+// `run_pair` is generic over its effects. Instantiating it to adapt a dictionary created from it
+// to more effects must not register its fresh effect variables with an implicit scope, since each
+// item's implicit scopes are gone by the time dictionary coercions are decided.
+impl run_pair {Run t e}: Run (t, t) e with
+    run p = Run.run p.first + Run.run p.second
+    other p = Run.other p.first + Run.other p.second
+
+// The type of `run_with` has an effect row of its own, in its parameter's type
+impl run_with (f: fn I32 -> I32 can e): Run I32 e with
+    run x = f x
+    other x = x
+
+trait Outer t (e: effect) (ri = _) =
+    inner: Run t e ri
+    bonus: fn t -> I32 can e
+    label: String
+
+impl outer_i32: Outer I32 pure (run_add I32) with
+    inner = run_add 1
+    bonus x = x * 100
+    label = "outer"
+
+trait Show t =
+    show: fn t -> String
+
+impl show_i32: Show I32 with
+    show x = cast x
+
+effect Ping =
+    ping: fn Unit -> Unit
+
+effect Pong =
+    pong: fn Unit -> Unit
+
+both (x: t) {Run t e} {Copy t} (g: fn Unit => Unit can e): I32 can e =
+    r = Run.run x
+    g ()
+    r + Run.other x
+
+// The impl of `d` is unknown here so it is wrapped in a new dictionary with more effects
+generic_widen (x: t) {d: Run t e2} {Copy t} (g: fn Unit => Unit can Ping, e2): I32 can Ping, e2 =
+    both x g
+
+// Widening an already widened dictionary wraps it again
+twice (x: t) {d: Run t e3} {Copy t} (g: fn Unit => Unit can Pong, Ping, e3): I32 can Pong, Ping, e3 =
+    generic_widen x g
+
+// A dictionary which is never widened keeps its impl
+same (x: t) {d: Run t e4} {Copy t} (g: fn Unit => Unit can e4): I32 can e4 =
+    both x g
+
+// A dictionary held by a field of another is adapted as well
+use_outer (x: t) {o: Outer t e ri} {Copy t} (g: fn Unit => Unit can e): I32 can e =
+    g ()
+    Run.run x {o.inner} + o.bonus x
+
+// The dictionary's impl is known to be `run_pair`, which performs no effects here
+get_pair (): Run (I32, I32) pure = run_pair {run_i32}
+
+get_run_with (): Run I32 pure = run_with (fn x -> x * 10)
+
+// The dictionary a trait method is called on may have narrower effects than the caller performs.
+// It is never adapted to wider effects since the method is called with evidence for its own.
+call_run (x: I32) {d: Run I32 e}: I32 can Ping, e =
+    ping ()
+    Run.run x {d}
+
+// `use_dict` and `get_dict` are mutually recursive without annotations so they are checked
+// together. Which impl `d` is created from is only known once `get_dict` is checked.
+use_dict n =
+    d = get_dict n
+    both 3i32 {d} (fn () -> ping ())
+
+get_dict n =
+    if n > 100 then
+        _ = use_dict (n - 1)
+        run_add 0
+    else run_add n
+
+// `a` widens `run_i32`'s effects while `b` calls a trait method. Since the two are inferred
+// together, each must only see its own record of which dictionaries were coerced.
+a n {s: Show I32} =
+    handle
+        _ = both 3i32 {run_i32} (fn () -> ping ())
+    | ping () ->
+        println "ping"
+        resume ()
+    if n > 0 then b (n - 1) {s} else ()
+
+b n {s: Show I32} =
+    println (Show.show n {s})
+    if n > 0 then a (n - 1) {s} else ()
+
+main () =
+    print_to_stdout do
+    d = get_pair ()
+    r = get_run_with ()
+    handle
+        handle
+            println (generic_widen 3i32 {run_add 10} (fn () -> ping ()))
+            println (twice 4i32 {run_add 2} (fn () -> ping (); pong ()))
+            println (same 5i32 {run_add 1} (fn () -> ()))
+            println (use_outer 6i32 {outer_i32} (fn () -> ping ()))
+            println (both (1i32, 2i32) {d} (fn () -> ping ()))
+            println (both 4i32 {r} (fn () -> ping ()))
+            println (use_dict 5)
+            println (Run.run 1i32)
+            println (call_run 2)
+        | ping () ->
+            println "ping"
+            resume ()
+    | pong () ->
+        println "pong"
+        resume ()
+    b 3 {show_i32}
+
+// args: --delete-binary --no-color
+// expected stdout:
+// ping
+// 43
+// ping
+// pong
+// 14
+// 11
+// ping
+// 607
+// ping
+// 8
+// ping
+// 44
+// ping
+// 23
+// 2
+// ping
+// 3
+// 3
+// ping
+// 1
+// ping
+

@@ -2,9 +2,9 @@ trait Foo a b =
     foo: fn a -> b
     bar: a
 
-// error: missing definition of bar
-implicit foo_i32_string: Foo I32 String =
-    Foo (fn _x -> "test") 2
+impl foo_i32_string: Foo I32 String with
+    foo _x = "test"
+    bar = 2
 
 main () =
     foo 3
@@ -13,13 +13,14 @@ main () =
 // args: -e ast-r --no-color
 // expected stdout:
 // // id = c1m488_1237
-// type Foo_c1m488_1237_0 a_1 b_2 =
-//     foo_c1m488_1237_3: fn a_1 [Ptr Unit] -> b_2
+// type Foo_c1m488_1237_0 a_1 b_2 ($impl_8 = _) =
+//     foo_c1m488_1237_3: fn a_1 -> b_2
 //     bar_c1m488_1237_6: a_1
 // 
-// // id = c1m488_400
-// implicit foo_i32_string_c1m488_400_0: Foo_c1m488_1237_0 I32 String_c0m703_9662_0 =
-//     Foo_c1m488_1237_0 (fn _x_1 -> "test") 2
+// // id = c1m488_1458
+// implicit foo_i32_string_c1m488_1458_0: Foo_c1m488_1237_0 I32 String_c0m703_9662_0 = Foo_c1m488_1237_0 I32 String_c0m703_9662_0 with
+//     foo_? = fn _x_2 -> "test"
+//     bar_? = 2
 // 
 // // id = c1m488_1944
 // main_c1m488_1944_0 () =

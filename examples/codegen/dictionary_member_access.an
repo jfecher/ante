@@ -1,0 +1,43 @@
+// A dictionary's methods can be called or used as values through `dictionary.method`
+trait Named t =
+    name: fn t -> String
+
+impl named_i32: Named I32 with
+    name _ = "i32"
+
+impl named_pair {Named a} (suffix: Char): Named (a, a) with
+    name p = name p.first ++ cast suffix
+
+use_name {d: Named t} (x: t): String =
+    d.name x
+
+use_ref (d: ref Named t) (x: t): String =
+    d.name x
+
+apply (f: fn I32 => String) (x: I32): String = f x
+
+// `Num` stores other trait dictionaries, naming which impl each one is from
+sum_squares (x: t) (y: t) {n: Num t} {Copy t}: t =
+    implicit add = n.add
+    implicit mul = n.mul
+    n.zero + x * x + y * y
+
+main () =
+    print_to_stdout do
+    println (use_name {named_i32} 1i32)
+    pair = named_pair '!'
+    println (pair.name (2i32, 3i32))
+    println (use_ref (ref pair) (4i32, 5i32))
+    println (apply named_i32.name 7)
+    g = pair.name
+    println (g (8i32, 9i32))
+    println (sum_squares 2i32 3)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// i32
+// i32!
+// i32!
+// i32
+// i32!
+// 13

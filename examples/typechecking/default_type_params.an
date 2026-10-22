@@ -69,7 +69,7 @@ type BadKind (n: U32 = I32) = x: Array n I32
 // 
 // (sized: fn (Sized 4 I32) -> Array 4 I32 is pure) (s: Sized 4 I32) = (s: Sized 4 I32).storage
 // 
-// (bar_param: fn (Bar _) -> _ is pure) (b: Bar _) = (b: Bar _).value
+// (bar_param: fn Bar -> _ is pure) (b: Bar) = (b: Bar).value
 // 
 // (bar_constructed: fn Unit -> Bar String is pure) () = Bar with
 //     (value: String) = "hi"
@@ -118,3 +118,4 @@ type BadKind (n: U32 = I32) = x: Array n I32
 //    |                        ^^^
 // 
 // Found 5 errors and 0 warnings
+
