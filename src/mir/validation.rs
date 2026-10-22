@@ -263,7 +263,9 @@ impl Definition {
                 | Instruction::MulInt(a, b)
                 | Instruction::BitwiseAnd(a, b)
                 | Instruction::BitwiseOr(a, b)
-                | Instruction::BitwiseXor(a, b) => {
+                | Instruction::BitwiseXor(a, b)
+                | Instruction::BitwiseShl(a, b)
+                | Instruction::BitwiseShr(a, b) => {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_int(), self, id, mir, "Argument type is not an integer");

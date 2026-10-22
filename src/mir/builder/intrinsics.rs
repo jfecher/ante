@@ -94,6 +94,8 @@ where
             "BitwiseOr" => push_2arg_ins(self, Instruction::BitwiseOr),
             "BitwiseXor" => push_2arg_ins(self, Instruction::BitwiseXor),
             "BitwiseNot" => push_1arg_ins(self, Instruction::BitwiseNot),
+            "BitwiseShl" => push_2arg_ins(self, Instruction::BitwiseShl),
+            "BitwiseShr" => push_2arg_ins(self, Instruction::BitwiseShr),
 
             "Truncate" => push_1arg_ins(self, Instruction::Truncate),
 

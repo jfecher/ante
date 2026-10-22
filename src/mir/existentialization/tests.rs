@@ -71,6 +71,8 @@ fn evaluate(definition: &crate::mir::Definition, value: &Value, parameter: &Cons
             Instruction::BitwiseAnd(a, b) => binary(a, b, |a, b| a & b),
             Instruction::BitwiseOr(a, b) => binary(a, b, |a, b| a | b),
             Instruction::BitwiseXor(a, b) => binary(a, b, |a, b| a ^ b),
+            Instruction::BitwiseShl(a, b) => binary(a, b, |a, b| a.wrapping_shl(b as u32)),
+            Instruction::BitwiseShr(a, b) => binary(a, b, |a, b| a.wrapping_shr(b as u32)),
             Instruction::LessUnsigned(a, b) => binary(a, b, |a, b| (a < b) as u64),
             Instruction::BitwiseNot(a) => Constant::Int(!get(a).int()),
             Instruction::ZeroExtend(a) => get(a),

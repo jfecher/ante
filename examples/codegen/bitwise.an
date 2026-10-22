@@ -7,6 +7,11 @@ main () =
     println (Bitwise.bor x y)
     println (Bitwise.bxor x y)
     println (not x)
+    println (Bitwise.shl x y)
+    println (Bitwise.shr x y)
+    println (Bitwise.shr (-8) 1)
+    println (Bitwise.shl (-8) 1)
+    println (Bitwise.shr 0x8000_0000_0000_0000u64 1u64)
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -14,4 +19,9 @@ main () =
 // 7
 // 6
 // -4
+// 96
+// 0
+// -4
+// -16
+// 4611686018427387904
 

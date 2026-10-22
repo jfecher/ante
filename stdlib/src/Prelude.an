@@ -33,7 +33,7 @@ export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwr
     Extract, (.[]), extract_ptr_usz, extract_string, extract_array, extract_array_move, extract_array_mut,
     Insert, (.[]:=), insert_ptr_usz, insert_array,
     array_len, array_get, array_get_mut, array_set, array_get_unchecked, array_set_unchecked,
-    Bitwise, band, bor, bxor, bitwise_i32, bitwise_u64,
+    Bitwise, band, bor, bxor, shl, shr, bitwise_i32, bitwise_u64,
     Type, Type.MkType, size_of,
     offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut,
     Clone, clone, Drop, drop, drop_string,
@@ -698,16 +698,22 @@ trait Bitwise t =
     band: fn t t -> t
     bor: fn t t -> t
     bxor: fn t t -> t
+    shl: fn t t -> t
+    shr: fn t t -> t
 
 impl bitwise_i32: Bitwise I32 with
     band x y = intrinsic "BitwiseAnd" x y
     bor x y = intrinsic "BitwiseOr" x y
     bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
 
 impl bitwise_u64: Bitwise U64 with
     band x y = intrinsic "BitwiseAnd" x y
     bor x y = intrinsic "BitwiseOr" x y
     bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
 
 
 type Type t = | MkType
