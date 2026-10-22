@@ -1,0 +1,133 @@
+import Std.Vec.Vec, of, get_mut_unchecked, push
+import Std.Stream.stream_array
+
+consume (_: Vec I32): Unit = ()
+use (_: mut I32): Unit = ()
+cond (): Bool = true
+
+mutate_then_break (): Unit can Panic =
+    var v = Vec.of [1, 2]
+    elem = v.get_mut_unchecked 0
+    while cond () do
+        if cond () then
+            // The borrow checker used to not count invalidations before a break/return
+            v.push 3
+            break
+    use elem
+
+mutate_then_continue (): Unit can Panic =
+    var v = Vec.of [1, 2]
+    elem = v.get_mut_unchecked 0
+    while cond () do
+        use elem
+        if cond () then
+            v.push 3
+            continue
+
+move_then_continue (): Unit can Panic =
+    v = Vec.of [1, 2]
+    while cond () do
+        if cond () then
+            consume v
+            continue
+
+move_then_break (): Unit can Panic =
+    v = Vec.of [1, 2]
+    while cond () do
+        if cond () then
+            consume v
+            break
+
+inner_loop_break (): Unit can Panic =
+    var v = Vec.of [1, 2]
+    elem = v.get_mut_unchecked 0
+    for _i in 0 .. 3 do
+        while cond () do
+            if cond () then
+                v.push 3
+                break
+        use elem
+
+break_before_return (): Unit can Panic =
+    var v = Vec.of [1, 2]
+    elem = v.get_mut_unchecked 0
+    while cond () do
+        if cond () then
+            v.push 3
+            if cond () then break
+            return ()
+    use elem
+
+mutate_then_return (): Unit can Panic =
+    var v = Vec.of [1, 2]
+    elem = v.get_mut_unchecked 0
+    while cond () do
+        use elem
+        if cond () then
+            v.push 3
+            return ()
+
+move_then_return (): Unit can Panic =
+    v = Vec.of [1, 2]
+    while cond () do
+        if cond () then
+            consume v
+            return ()
+    consume v
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/break_continue_in_branch.an:16:9
+// 13 |         if cond () then
+// 14 |             v.push 3	// note: elem may be invalidated by this mutation
+//    |              -------
+// 15 |             break
+// 16 |     use elem	// error: elem may have been invalidated by an earlier mutation
+//    |         ^^^^
+// 
+// examples/typechecking/borrows/break_continue_in_branch.an:22:13
+// 21 |     while cond () do
+//    |         // error: elem may be invalidated by a later mutation in a while loop, which may run again
+// 22 |         use elem
+//    |             ^^^^
+// 23 |         if cond () then
+// 24 |             v.push 3	// note: elem may be invalidated by this mutation
+//    |              -------
+// 25 |             continue
+// 
+// examples/typechecking/borrows/break_continue_in_branch.an:31:21
+// 30 |         if cond () then
+//    |             // error: Cannot move v in a while loop because it may be executed multiple times
+// 31 |             consume v
+//    |                     ^
+// 32 |             continue
+// 
+// examples/typechecking/borrows/break_continue_in_branch.an:38:21
+// 37 |         if cond () then
+//    |             // error: Cannot move v in a while loop because it may be executed multiple times
+// 38 |             consume v
+//    |                     ^
+// 39 |             break
+// 
+// examples/typechecking/borrows/break_continue_in_branch.an:49:13
+// 46 |             if cond () then
+// 47 |                 v.push 3	// note: elem may be invalidated by this mutation
+//    |                  -------
+// 48 |                 break
+// 49 |         use elem	// error: elem may have been invalidated by an earlier mutation
+//    |             ^^^^
+// 
+// examples/typechecking/borrows/break_continue_in_branch.an:59:9
+// 55 |         if cond () then
+// 56 |             v.push 3	// note: elem may be invalidated by this mutation
+//    |              -------
+// 57 |             if cond () then break
+// 58 |             return ()
+// 59 |     use elem	// error: elem may have been invalidated by an earlier mutation
+//    |         ^^^^
+// 
+// Found 6 errors and 0 warnings
+

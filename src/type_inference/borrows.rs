@@ -480,6 +480,17 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
+    /// True if `expr` may `break` or `continue` out of the loop enclosing it
+    fn may_jump_to_loop(&self, expr: ExprId) -> bool {
+        match self.tc.resolved_expr(expr).as_ref() {
+            Expr::Break | Expr::Continue => true,
+            // Jumps in a nested loop's body target that loop, and a lambda's body runs elsewhere
+            Expr::While(_) | Expr::Lambda(_) => false,
+            Expr::For(for_) => self.may_jump_to_loop(for_.start) || self.may_jump_to_loop(for_.end),
+            _ => self.child_exprs(expr).into_iter().any(|child| self.may_jump_to_loop(child)),
+        }
+    }
+
     /// Issue an escaping reference error for `atom`, avoiding multiple errors for the same place
     fn report_escape(&mut self, atom: Place, location: impl Locateable) {
         if !self.reported_escapes.insert(atom.clone()) {
@@ -851,22 +862,25 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.moves.push_scope();
         self.walk_and_check_escapes(if_.then, new_depth, check_move, record_move);
         let then_scope = self.moves.pop_scope();
-        let then_type = self.tc.expr_types[&if_.then].clone();
-        let then_scope = (!self.tc.diverges(&then_type)).then_some(then_scope);
+        let then_scope = self.reaches_join(if_.then).then_some(then_scope);
 
         let else_scope = match if_.else_ {
             Some(else_) => {
                 self.moves.push_scope();
                 self.walk_and_check_escapes(else_, new_depth, check_move, record_move);
                 let else_scope = self.moves.pop_scope();
-                let else_type = self.tc.expr_types[&else_].clone();
-                (!self.tc.diverges(&else_type)).then_some(else_scope)
+                self.reaches_join(else_).then_some(else_scope)
             },
             None => Some(MoveScope::default()),
         };
 
         let branches = then_scope.into_iter().chain(else_scope).collect();
         self.moves.merge_branches_into_parent(branches);
+    }
+
+    /// False if `branch` diverges without a `break` or `continue` reaching its loop's end
+    fn reaches_join(&self, branch: ExprId) -> bool {
+        !self.tc.diverges(&self.tc.expr_types[&branch]) || self.may_jump_to_loop(branch)
     }
 
     fn walk_match(&mut self, match_: &cst::Match, depth: ScopeDepth, check_move: bool, record_move: bool) {
