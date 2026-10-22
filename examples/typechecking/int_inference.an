@@ -6,5 +6,5 @@ main () =
 // expected stdout:
 // (main: fn Unit -> Unit can Fs) () =
 //     (print_to_stdout: fn (fn Unit -> Unit can Print) -> Unit can Fs) (move fn (_: Unit) ->
-//         (print_i32: Display I32 pure).print (ref 2))
+//         (print_i32: Display I32 pure print_i32).print (ref 2))
 

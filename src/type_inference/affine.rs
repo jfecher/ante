@@ -1,12 +1,14 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    diagnostics::Location,
+    diagnostics::{Diagnostic, Location},
     incremental::{GetItemRaw, RawItem},
+    iterator_extensions::mapvec,
     name_resolution::Origin,
     parser::{
         cst::{Expr, ReferenceKind, TopLevelItemKind},
-        ids::{ExprId, NameId, TopLevelName},
+        get_item::TraitDefinition,
+        ids::{ExprId, NameId, PatternId, TopLevelName},
     },
     shared_arc::Shared,
     type_inference::{
@@ -254,19 +256,23 @@ impl MoveTracker {
 }
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    /// Returns the TopLevelName for the Prelude's `Copy` type, caching it.
-    fn get_copy_type_name(&mut self) -> TopLevelName {
-        if let Some(name) = self.copy_type_name {
-            return name;
+    /// The Prelude's `Copy` trait and its number of generics, caching them
+    fn copy_trait(&mut self) -> (TopLevelName, usize) {
+        if let Some(copy) = self.copy_trait {
+            return copy;
         }
         let name = prelude_type_name(self.compiler, "Copy");
-        self.copy_type_name = Some(name);
-        name
+        let generic_count =
+            TraitDefinition::get(name, self.compiler).map_or(1, |copy| copy.definition().generics.len());
+        self.copy_trait = Some((name, generic_count));
+        (name, generic_count)
     }
 
     /// Types that are `Copy` without needing to find a `Copy` impl
-    fn is_trivially_copy(&self, typ: &Type) -> bool {
+    pub(super) fn is_trivially_copy(&self, typ: &Type) -> bool {
         match typ.follow(&self.bindings) {
+            // TODO: Remove once traits are no longer passed by value
+            typ if typ.impl_data_name(&self.bindings).is_some() => true,
             Type::Primitive(_) => true,
             // TODO: This isn't always true, but we also can't define the proper Copy impls
             // for functions in the stdlib because we can't manually access a closure's environment
@@ -284,17 +290,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 true
             },
             // TODO: Actually require abilities only capture `Copy` types
-            typ if self.is_ability(typ) => true,
+            typ if self.is_trait_or_effect(typ) => true,
             // `shared` types are pointer-wrapped in MIR and are always Copy.
             typ => self.is_shared_user_defined(typ),
         }
     }
 
-    /// The type `Copy typ`
+    /// The type `Copy typ`, with a fresh type variable for each of its omitted optional arguments
     fn copy_type(&mut self, typ: Type) -> Type {
-        let copy_name = self.get_copy_type_name();
+        let (copy_name, generic_count) = self.copy_trait();
+        let mut args = vec![typ];
+        args.resize_with(generic_count, || self.next_type_variable());
         let copy_constructor = Type::UserDefined(Origin::TopLevelDefinition(copy_name));
-        Type::Application(Shared::new(copy_constructor), Shared::new(vec![typ]))
+        Type::Application(Shared::new(copy_constructor), Shared::new(args))
     }
 
     /// Returns true if `typ` is known to implement `Copy`.
@@ -311,25 +319,51 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// TODO: Use the found impl to write the actual `Copy` call when a copy variable is used.
     pub(super) fn request_copy_witness(&mut self, expr: ExprId, typ: &Type) {
-        if self.copy_witnesses.contains_key(&expr) || self.is_trivially_copy(typ) {
+        if self.item.copy_witnesses.contains_key(&expr) || self.is_trivially_copy(typ) {
             return;
         }
         let copy = self.copy_type(typ.clone());
         let witness = self.request_optional_implicit(copy, expr.locate(self));
-        self.copy_witnesses.insert(expr, witness);
+        self.item.copy_witnesses.insert(expr, witness);
+    }
+
+    /// Request a `Copy` impl for each of an impl's `parameter_types`
+    pub(super) fn request_impl_parameter_copy_witnesses(
+        &mut self, parameters: &[PatternId], parameter_types: &[Type],
+    ) -> Vec<(PatternId, ExprId)> {
+        let unresolved = |typ: &Type| matches!(typ.follow(&self.bindings), Type::Application(constructor, _) if constructor.follow(&self.bindings).is_error());
+        let parameters = parameters.iter().zip(parameter_types);
+        let needed = parameters.filter(|(_, typ)| !unresolved(typ) && !self.is_trivially_copy(typ)).collect::<Vec<_>>();
+        mapvec(needed, |(pattern, typ)| {
+            let copy = self.copy_type(typ.clone());
+            (*pattern, self.request_optional_implicit(copy, pattern.locate(self)))
+        })
+    }
+
+    /// Report each parameter of the impl being checked which isn't `Copy`.
+    /// Its implicits must already be resolved.
+    pub(super) fn check_impl_parameters_are_copy(&mut self) {
+        let Some(impl_) = &self.item.impl_ else { return };
+        for (pattern, witness) in impl_.copy_witnesses.clone() {
+            if !self.implicit_was_found(witness) {
+                let typ = self.type_to_string(&self.pattern_types[&pattern]);
+                let location = pattern.locate(self);
+                self.compiler.accumulate(Diagnostic::ImplParameterNotCopy { typ, location });
+            }
+        }
     }
 
     /// Whether evaluating `expr` of type `typ` copies rather than moves.
     pub(super) fn expr_is_copy(&self, expr: ExprId, typ: &Type) -> bool {
         self.is_trivially_copy(typ)
-            || self.copy_witnesses.get(&expr).is_some_and(|witness| self.implicit_was_found(*witness))
+            || self.item.copy_witnesses.get(&expr).is_some_and(|witness| self.implicit_was_found(*witness))
     }
 
-    fn is_ability(&self, typ: &Type) -> bool {
+    fn is_trait_or_effect(&self, typ: &Type) -> bool {
         match typ.follow(&self.bindings) {
             // Type aliases are expanded away during `from_cst_type`, so no `UserDefined`
             // here can refer to an alias
-            Type::Application(constructor, _) => self.is_ability(constructor),
+            Type::Application(constructor, _) => self.is_trait_or_effect(constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
                     let RawItem(item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
@@ -366,7 +400,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// The place a binding denotes: a recorded sub-place, or its own variable by default.
     pub(super) fn binding_place(&self, name: NameId) -> Place {
-        self.binding_places.get(&name).cloned().unwrap_or_else(|| Place::variable(name))
+        self.item.binding_places.get(&name).cloned().unwrap_or_else(|| Place::variable(name))
     }
 
     /// Try to build a Place from an expression by walking through

@@ -103,32 +103,7 @@ fn is_no_closure_env(typ: &Type) -> bool {
 fn eliminate_redundant_closures(definition: &mut Definition, definition_types: &FxHashMap<DefinitionId, Type>) {
     remove_no_closure_env_parameter_references(definition);
 
-    // A result produced by `instantiate d` / `Id(Definition)` (or an `Id` chain of one) is a bare
-    // function pointer at runtime, even when its recorded value type is closure-shaped. This
-    // happens for ability methods used as first-class values: e.g. `(+)` is bound with type
-    // `fn I32 I32 {Add I32} [Ptr Unit] -> I32` (the `Ptr Unit` env is spurious uniform-representation
-    // overhead; the dictionary is passed as an ordinary argument), and lowers to `instantiate d`
-    // where `d` takes the dictionary as a plain parameter and has no runtime environment.
-    //
-    // When such a raw fn-ptr is the *operand of a `CallClosure`*, the call is really a direct call
-    // (its arguments already match the function's parameters, with no environment to extract). Strip
-    // the spurious environment from the operand's type so it becomes a raw function: the conversion
-    // loop below then rewrites the `CallClosure` into a direct `Call`, and the operand's arity stays
-    // consistent with the underlying function for codegen (the LLVM backend derives the call
-    // signature from this type). We key off the `CallClosure` use specifically so we don't disturb
-    // raw fn-ptrs that are packed into closure tuples (e.g. a lambda placed into an ability
-    // dictionary), whose environment is genuine and is handled by `fix_fn_ptr_id_chains`.
-    let mut fn_ptr_results: FxHashSet<InstructionId> = FxHashSet::default();
-    for (id, instr) in definition.instructions.iter() {
-        let is_fn_ptr = match instr {
-            Instruction::Instantiate(_, _) | Instruction::Id(Value::Definition(_)) => true,
-            Instruction::Id(Value::InstructionResult(prev)) => fn_ptr_results.contains(prev),
-            _ => false,
-        };
-        if is_fn_ptr {
-            fn_ptr_results.insert(id);
-        }
-    }
+    let fn_ptr_results = closure_typed_fn_ptr_chains(definition);
     let called_fn_ptrs: Vec<InstructionId> = definition
         .instructions
         .values()
@@ -139,11 +114,9 @@ fn eliminate_redundant_closures(definition: &mut Definition, definition_types: &
             _ => None,
         })
         .collect();
+
     for id in called_fn_ptrs {
         let Type::Function(f) = &definition.instruction_result_types[id] else { continue };
-        if is_no_closure_env(&f.environment) {
-            continue;
-        }
         let stripped = Type::Function(Arc::new(FunctionType {
             parameters: f.parameters.clone(),
             environment: Type::NO_CLOSURE_ENV,
@@ -249,6 +222,8 @@ fn rewrite_definition_signature(typ: &Type) -> Type {
 }
 
 fn rewrite_types_in_definition(definition: &mut Definition) {
+    let fn_ptr_results = closure_typed_fn_ptr_chains(definition);
+
     definition.typ = if definition.is_global() {
         rewrite_value_type(&definition.typ)
     } else {
@@ -256,13 +231,19 @@ fn rewrite_types_in_definition(definition: &mut Definition) {
     };
 
     definition.for_each_type_mut(|typ| *typ = rewrite_value_type(typ));
-    fix_fn_ptr_id_chains(definition);
+
+    // The block above rewrote recorded result types from functions to tuples
+    // but the initial Id/definition instructions should just be functions, not tuples.
+    for id in fn_ptr_results {
+        if let Type::Tuple(fields) = &definition.instruction_result_types[id] {
+            definition.instruction_result_types[id] = fields[0].clone();
+        }
+    }
 }
 
-/// The block above indiscriminately rewrote recorded result types from `Type::Function(env)` to
-/// `Tuple [raw_fn_ptr, env]` but the initial Id/definition instructions should just be
-/// functions, not tuples.
-fn fix_fn_ptr_id_chains(definition: &mut Definition) {
+/// Collect each Instantiate/Id instruction referring directly to a definition (possibly through
+/// a chain of Ids) whose result type is a closure type. These refer to the raw function itself.
+fn closure_typed_fn_ptr_chains(definition: &Definition) -> FxHashSet<InstructionId> {
     let mut fn_ptr_results: FxHashSet<InstructionId> = FxHashSet::default();
     for (id, instr) in definition.instructions.iter() {
         let is_fn_ptr = match instr {
@@ -275,18 +256,10 @@ fn fix_fn_ptr_id_chains(definition: &mut Definition) {
             fn_ptr_results.insert(id);
         }
     }
-    for id in fn_ptr_results {
-        // If the original type was already a raw fn ptr, it was left untouched
-        // by the rewrite, leave it alone here too.
-        let typ = &definition.instruction_result_types[id];
-        if let Type::Tuple(fields) = typ
-            && fields.len() == 2
-            && matches!(&fields[0], Type::Function(_))
-            && !matches!(&fields[1], Type::Function(_))
-        {
-            definition.instruction_result_types[id] = fields[0].clone();
-        }
-    }
+    fn_ptr_results.retain(|id| {
+        matches!(&definition.instruction_result_types[*id], Type::Function(f) if !is_no_closure_env(&f.environment))
+    });
+    fn_ptr_results
 }
 
 fn lower_closure_instructions(mir: &mut Mir) {

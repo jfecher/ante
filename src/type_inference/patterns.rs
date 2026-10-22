@@ -372,7 +372,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let pattern = cst::Pattern::Variable(variable);
         let pattern = self.push_pattern(pattern, location.clone());
 
-        let definition = cst::Expr::Definition(cst::Definition { implicit: false, mutable: false, pattern, rhs });
+        let definition = cst::Expr::Definition(cst::Definition::new(false, false, pattern, rhs));
         self.push_expr(definition, Type::UNIT, location.clone())
     }
 }

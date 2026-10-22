@@ -62,7 +62,7 @@ main () =
 //     len: Usz
 // 
 // (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) (i: Usz): ref 'v! t =
-//     (transmute: fn (Ptr t) -> ref 'v! t is pure) ((offset: fn (Ptr t) Usz -> Ptr t is pure) ((copy_ptr: Copy (Ptr t))..* (v: ref 'v (MyVec t)).data) (i: Usz))
+//     (transmute: fn (Ptr t) -> ref 'v! t is pure) ((offset: fn (Ptr t) Usz -> Ptr t is pure) ((copy_ptr: Copy (Ptr t) copy_ptr)..* (v: ref 'v (MyVec t)).data) (i: Usz))
 // 
 // (get_nested: fn (ref 'v (MyVec (MyVec t))) Usz -> ref 'v!! t is pure) (v: ref 'v (MyVec (MyVec t))) (i: Usz): ref 'v!! t =
 //     (inner: ref 'v! (MyVec t)) = (get: fn (ref 'v (MyVec (MyVec t))) Usz -> ref 'v! (MyVec t) is pure) (v: ref 'v (MyVec (MyVec t))) (i: Usz)
@@ -94,7 +94,7 @@ main () =
 // type Rc 'p t =
 //     ptr: Ptr t
 // 
-// (rc_get: fn (ref 'outer (Rc 'inner t)) -> ref '(inner, outer!) t is pure) (rc: ref 'outer (Rc 'inner t)): ref '(outer!, inner) t = (transmute: fn (Ptr t) -> ref '(inner, outer!) t is pure) ((copy_ptr: Copy (Ptr t))..* (rc: ref 'outer (Rc 'inner t)).ptr)
+// (rc_get: fn (ref 'outer (Rc 'inner t)) -> ref '(inner, outer!) t is pure) (rc: ref 'outer (Rc 'inner t)): ref '(outer!, inner) t = (transmute: fn (Ptr t) -> ref '(inner, outer!) t is pure) ((copy_ptr: Copy (Ptr t) copy_ptr)..* (rc: ref 'outer (Rc 'inner t)).ptr)
 // 
 // type L 'q t =
 //     value: ref 'q t

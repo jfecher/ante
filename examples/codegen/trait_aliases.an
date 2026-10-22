@@ -1,0 +1,25 @@
+// A trait member whose type is a function once its type aliases are expanded is a method,
+// so it may read the impl's parameters
+type Describe t = fn t -> String
+
+trait Named t =
+    name: Describe t
+
+// An alias of a trait passes the impl argument along
+type NamedI32 (i = _) = Named I32 i
+
+impl named_i32: NamedI32 with
+    name _ = "i32"
+
+impl named_pair {Named a} (suffix: Char): Named (a, a) with
+    name p = name p.first ++ cast suffix
+
+main () =
+    print_to_stdout do
+    println (name 3i32)
+    println (name (1i32, 2i32) {named_pair '!'})
+
+// args: --delete-binary --no-color
+// expected stdout:
+// i32
+// i32!

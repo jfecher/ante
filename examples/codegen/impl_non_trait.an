@@ -1,0 +1,37 @@
+// An impl of a type other than a trait is an ordinary constant with no impl data
+type Pair =
+    a: I32
+    b: Bool
+
+impl pair: Pair with
+    a = 1
+    b = true
+
+type Box a =
+    value: a
+
+impl boxed: Box I32 with
+    value = 3
+
+// Constructors may also be written through a type alias, generic or not
+type BoxAlias a = Box a
+type BoxI32 = Box I32
+
+main () =
+    print_to_stdout do
+    println pair.a
+    println pair.b
+    println boxed.value
+    aliased = BoxAlias with value = 4i32
+    println aliased.value
+    concrete = BoxI32 with value = 5
+    println concrete.value
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1
+// true
+// 3
+// 4
+// 5
+

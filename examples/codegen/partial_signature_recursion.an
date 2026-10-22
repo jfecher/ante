@@ -1,0 +1,30 @@
+// `n` is unannotated so each signature is only partially declared, and each pair is inferred
+// together. The parts left out of their parameters are inferred rather than rigid so the two
+// functions in each pair can pass them to one another.
+
+// A function parameter without a `can` clause
+ping (f: fn I32 -> I32) n =
+    if n > 0 then pong f (n - 1) else f n
+
+pong (f: fn I32 -> I32) n =
+    if n > 0 then ping f (n - 1) else f n
+
+// The inner place of `ref (ref I32)`
+deref_ping (x: ref (ref I32)) n =
+    if n > 0 then deref_pong x (n - 1) else x.*.*
+
+deref_pong (x: ref (ref I32)) n =
+    if n > 0 then deref_ping x (n - 1) else x.*.*
+
+main () =
+    print_to_stdout do
+    println (ping (fn x -> x + 1) 4)
+    y = 3i32
+    r = ref y
+    println (deref_ping (ref r) 4)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1
+// 3
+

@@ -12,20 +12,9 @@ use crate::{
     type_inference::{
         TypeChecker,
         errors::TypeErrorKind,
-        types::{PrimitiveType, Type, TypeBindings},
+        types::{PrimitiveType, Type},
     },
 };
-
-/// True if `typ` is a pointer type
-pub(super) fn is_pointer(typ: &Type, bindings: &TypeBindings) -> bool {
-    match typ.follow(bindings) {
-        Type::Primitive(PrimitiveType::Pointer) => true,
-        Type::Application(constructor, _) => {
-            matches!(constructor.follow(bindings), Type::Primitive(PrimitiveType::Pointer))
-        },
-        _ => false,
-    }
-}
 
 impl TypeChecker<'_, '_> {
     /// Finds the environment type for the given lambda. This involves finding the free variables
@@ -35,16 +24,14 @@ impl TypeChecker<'_, '_> {
     pub(super) fn check_for_closure(
         &mut self, id: ExprId, expected_environment_type: &Type, self_name: Option<NameId>, is_move: bool,
     ) {
-        let mut context = FreeVars::default();
+        let mut context = self.lambda_free_vars_context(id);
         if let Some(name) = self_name {
             context.defined_in_fn.insert(name);
         }
         context.find_free_variables(id, self);
 
-        if !is_pointer(expected_environment_type, &self.bindings) {
-            let env_type = make_env_type_with_names(&context.free_vars, self, is_move);
-            self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
-        }
+        let env_type = make_env_type_with_names(&context.free_vars, self, is_move);
+        self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
 
         if !context.free_vars.is_empty() {
             if is_move {
@@ -52,6 +39,18 @@ impl TypeChecker<'_, '_> {
             }
             self.current_extended_context_mut().insert_closure_environment(id, context.free_vars);
         }
+    }
+
+    /// An empty [FreeVars] context for finding the free variables of the lambda `id`. An impl's
+    /// method reads the impl's parameters from the impl's data instead of capturing them.
+    pub(super) fn lambda_free_vars_context(&self, id: ExprId) -> FreeVars {
+        let mut context = FreeVars::default();
+        if self.item.impl_.as_ref().is_some_and(|impl_| impl_.methods.contains(&id)) {
+            for parameter in self.current_impl_parameters() {
+                context.declare_pattern(parameter.pattern, self);
+            }
+        }
+        context
     }
 
     /// True if the given branch of a Handle expression references its `resume` variable.
@@ -236,7 +235,7 @@ fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker,
         // - Capture mutable variables by reference (so we wrap in a Mut ref here)
         // - Capture immutable variables by value (FIXME)
         // - Capture everything by move if it is a `move` closure
-        if !is_move && checker.mutable_definitions.contains(name) {
+        if !is_move && checker.item.mutable_definitions.contains(name) {
             let place = checker.open_place(checker.binding_place(*name));
             Type::Application(Shared::new(Type::MUT), Shared::new(vec![place, typ]))
         } else {

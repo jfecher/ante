@@ -80,6 +80,7 @@ dependencies = [
  "rayon",
  "rustc-hash",
  "serde",
+ "smallbitvec",
  "tempfile",
  "toml",
 ]
@@ -705,9 +706,9 @@ dependencies = [
 
 [[package]]
 name = "inc-complete"
-version = "0.11.2"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ba90723f87abaaf6028a73826990273bcce7ebe8097711bb39359c1bf499e10"
+checksum = "114681701e21ad7962981d25825ddd001c0d7e7bc9826b784e3a420a88eb9270"
 dependencies = [
  "dashmap 6.2.1",
  "inc-complete-derive",
@@ -1224,6 +1225,12 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+
+[[package]]
+name = "smallbitvec"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b0e903ee191d8f7a8fbf0d712c3a1699d19e04ceba5ad1eb673053c7d938a09"
 
 [[package]]
 name = "smallvec"

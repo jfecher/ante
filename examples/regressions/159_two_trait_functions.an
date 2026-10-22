@@ -2,10 +2,9 @@ trait MultiTrait a =
     one: fn Unit -> Unit
     two: fn Unit -> Unit
 
-implicit multitrait_unit: MultiTrait Unit =
-    MultiTrait
-        (fn _ -> ())
-        (fn _ -> ())
+impl multitrait_unit: MultiTrait Unit with
+    one _ = ()
+    two _ = ()
 
 main () = one ()
 

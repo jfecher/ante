@@ -10,11 +10,11 @@ main () =
 
 // Two competing non-capturing impls for `Foo Thing` produce values with the same env shape,
 // so implicit resolution genuinely can't pick one.
-implicit candidate1: Foo Thing =
-    Foo fn _ -> ()
+impl candidate1: Foo Thing with
+    foo _ = ()
 
-implicit candidate2: Foo Thing =
-    Foo fn _ -> ()
+impl candidate2: Foo Thing with
+    foo _ = ()
 
 // args: --delete-binary --no-color
 // expected exit status: 1

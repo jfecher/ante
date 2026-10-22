@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use inc_complete::DbGet;
+use smallbitvec::SmallBitVec;
+
 use crate::{
     diagnostics::Location,
     incremental::{self, DbHandle, GetItem, GetItemRaw, RawItem},
@@ -7,14 +10,21 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal, Parameter, Path, Pattern, SequenceItem,
-            TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition, Type, TypeDefinitionBody, TypeKind,
+            self, Argument, Constructor, Definition, Expr, GenericParam, If, Lambda, Literal, Parameter, Path, Pattern,
+            SequenceItem, TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition, Type, TypeDefinitionBody,
+            TypeKind,
         },
         desugar_context::DesugarContext,
-        ids::{ExprId, PathId, PatternId},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     shared_arc::Shared,
 };
+
+/// Unspellable name for a trait's impl data generic
+const IMPL_GENERIC_NAME: &str = "$impl";
+
+/// The name error messages use for the impl generic, since [IMPL_GENERIC_NAME] can't be written
+pub const IMPL_GENERIC_DISPLAY_NAME: &str = "i";
 
 pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Shared<TopLevelItem>, Shared<DesugarContext>) {
     incremental::enter_query();
@@ -37,7 +47,8 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Shared<TopLevelItem>,
         },
         TopLevelItemKind::TraitImpl(trait_impl) => {
             let mut new_context = DesugarContext::new(context);
-            let new_definition = desugar_trait_impl(trait_impl, &mut new_context);
+            let impl_name = TopLevelName::new(item.id, trait_impl.name);
+            let new_definition = desugar_trait_impl(trait_impl, impl_name, &mut new_context);
             desugar_expression(new_definition.rhs, &mut new_context);
             let kind = TopLevelItemKind::Definition(new_definition);
             let new_item = Shared::new(TopLevelItem {
@@ -65,17 +76,17 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Shared<TopLevelItem>,
 
 /// Desugars
 /// ```ante
-/// impl name {Parameter}: Ability AbilityArgs with
+/// impl name {Parameter}: Trait TraitArgs with
 ///     method1 = ...
 ///     method2 = ...
 /// ```
 /// Into
 /// ```ante
-/// implicit name {Parameter}: Ability AbilityArgs = Ability With
+/// implicit name {Parameter}: Trait TraitArgs = Trait TraitArgs with
 ///     method1 = ...
 ///     method2 = ...
 /// ```
-fn desugar_trait_impl(impl_: &TraitImpl, context: &mut DesugarContext) -> Definition {
+fn desugar_trait_impl(impl_: &TraitImpl, impl_name: TopLevelName, context: &mut DesugarContext) -> Definition {
     let location = context.name_location(impl_.name).clone();
     let variable = context.push_pattern(Pattern::Variable(impl_.name), location.clone());
 
@@ -111,57 +122,110 @@ fn desugar_trait_impl(impl_: &TraitImpl, context: &mut DesugarContext) -> Defini
         context.push_expr(lambda, location)
     };
 
-    Definition { implicit: true, mutable: false, pattern, rhs }
+    let impl_info = Some(Box::new(cst::ImplInfo { name: impl_name, constructor }));
+    Definition { impl_info, ..Definition::new(true, false, pattern, rhs) }
 }
 
 /// Desugars
 /// ```ante
-/// ability Foo args =
-///     declaration1: fn Arg1_1 ... ArgN_1 -> Ret_1
-///     ...
-///     declarationN: fn Arg1_N ... ArgN_N -> Ret_N
+/// trait Foo args =
+///     method: fn Arg1 ... ArgN -> Ret
+///     constant: T
 /// ```
 /// Into
 /// ```ante
-/// type Foo args =
-///     declaration1: fn Arg1_1 ... ArgN_1 [Pointer] -> Ret_1
-///     ...
-///     declarationN: fn Arg1_N ... ArgN_N [Pointer] -> Ret_N
+/// type Foo args (i = _) =
+///     method: fn Arg1 ... ArgN -> Ret
+///     constant: T
 /// ```
 fn desugar_trait_or_effect(
     ability: &TraitOrEffectDefinition, is_effect: bool, context: &mut DesugarContext,
 ) -> TopLevelItemKind {
-    let name_location = context.name_location(ability.name).clone();
+    let mut generics = ability.generics.clone();
+    let fields = mapvec(&ability.body, |decl| (decl.name, decl.typ.clone()));
 
-    // Set every function-typed field's closure environment to `Ptr Unit` so each ability value
-    // has a uniform `(fn_ptr, env_ptr)` size regardless of captures. The actual captures (if any)
-    // are heap-allocated by the MIR builder and reached via this pointer.
-    let ptr_unit = || {
-        let ptr = Type::new(TypeKind::Pointer, name_location.clone());
-        let unit = Type::new(TypeKind::Unit, name_location.clone());
-        Type::new(TypeKind::Application(Box::new(ptr), vec![unit]), name_location.clone())
+    let kind = if is_effect {
+        cst::TypeDefinitionKind::Effect
+    } else {
+        let location = context.name_location(ability.name).clone();
+        let impl_generic = context.push_name(Arc::new(IMPL_GENERIC_NAME.to_string()), location.clone());
+        let default = Some(Type::new(TypeKind::Hole, location));
+        generics.push(GenericParam { name: impl_generic, kind: None, default });
+        cst::TypeDefinitionKind::Trait
     };
-    let fields = mapvec(&ability.body, |decl| {
-        let typ = match &decl.typ.kind {
-            cst::TypeKind::Function(f) if f.environment.is_none() && !is_effect => {
-                let mut f = f.clone();
-                f.environment = Some(Box::new(ptr_unit()));
-                Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
-            },
-            _ => decl.typ.clone(),
-        };
-        (decl.name, typ)
-    });
 
-    let kind = if is_effect { cst::TypeDefinitionKind::Effect } else { cst::TypeDefinitionKind::Trait };
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
         mutable: false,
         kind,
         name: ability.name,
-        generics: ability.generics.clone(),
+        generics,
         body: TypeDefinitionBody::Struct(fields),
     })
+}
+
+/// The desugared type definition of a trait, see [desugar_trait_or_effect]. Whether each of its
+/// members is a method is only known once the trait is type checked, see
+/// [TraitDefinition::is_method].
+#[derive(Clone)]
+pub struct TraitDefinition {
+    item: Shared<TopLevelItem>,
+    context: Shared<DesugarContext>,
+}
+
+impl TraitDefinition {
+    /// Returns the trait whose type is named `name`, or `None` if `name` does not name a trait.
+    /// Since a trait's constructor shares its type's name, this also recognizes the constructor.
+    pub fn get(name: TopLevelName, db: &impl DbGet<GetItem>) -> Option<Self> {
+        let (item, context) = GetItem(name.top_level_item).get(db);
+        match &item.kind {
+            TopLevelItemKind::TypeDefinition(definition)
+                if definition.name == name.local_name_id && definition.kind.is_trait() =>
+            {
+                Some(Self { item, context })
+            },
+            _ => None,
+        }
+    }
+
+    /// The top-level item defining this trait
+    pub fn id(&self) -> TopLevelId {
+        self.item.id
+    }
+
+    /// The name of this trait's type, which [Self::get] accepts
+    pub fn type_name(&self) -> TopLevelName {
+        TopLevelName::new(self.id(), self.definition().name)
+    }
+
+    pub fn definition(&self) -> &cst::TypeDefinition {
+        match &self.item.kind {
+            TopLevelItemKind::TypeDefinition(definition) => definition,
+            _ => unreachable!("TraitDefinition always holds a type definition"),
+        }
+    }
+
+    pub fn name(&self) -> &cst::Name {
+        &self.context[self.definition().name]
+    }
+
+    /// Each member of the trait, in the order they were declared
+    pub fn members(&self) -> &[(NameId, Type)] {
+        match &self.definition().body {
+            TypeDefinitionBody::Struct(fields) => fields,
+            _ => unreachable!("TraitDefinition always holds a struct"),
+        }
+    }
+
+    /// The index of the trait's impl generic, see [cst::TypeDefinitionKind::Trait]
+    pub fn impl_generic_index(&self) -> usize {
+        self.definition().impl_generic_index().expect("TraitDefinition always holds a trait")
+    }
+
+    /// Whether each of the trait's generics is an effect row
+    pub fn effect_generics(&self) -> SmallBitVec {
+        self.definition().generics.iter().map(GenericParam::is_effect).collect()
+    }
 }
 
 /// Traverse the expression recursively, desugaring along the way looking for
@@ -329,8 +393,7 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
     let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false, effects: None });
     let lambda = context.push_expr(lambda, location.clone());
 
-    let definition =
-        cst::Expr::Definition(cst::Definition { implicit: false, mutable: false, pattern: recur, rhs: lambda });
+    let definition = cst::Expr::Definition(cst::Definition::new(false, false, recur, lambda));
     let definition = context.push_expr(definition, location.clone());
 
     // Create `recur args...`

@@ -1,0 +1,108 @@
+type Tagged a (tag = _) =
+    value: a
+
+// Omitting an argument defaulting to `_` within an effect is an error, as in a type definition
+effect Logger =
+    log_value: fn I32 {Display I32 pure} -> Unit
+
+// Explicitly giving it is fine
+effect Logger2 i =
+    log_value2: fn I32 {Display I32 pure i} -> Unit
+
+too_few (_: Tagged): Unit = ()
+
+// Omitted `_` arguments in a declared signature are independent rigid generics so these may
+// have different tags, and the body can't make them the same. Naming the tag does.
+mismatched (x: Tagged I32) (y: Tagged I32 t): Tagged I32 t = if true then x else y
+matched (x: Tagged I32 t) (y: Tagged I32 t): Tagged I32 t = if true then x else y
+
+// An omitted `_` argument in a return type is inferred from the body instead
+inferred (x: Tagged I32 U8): Tagged I32 = x
+use_inferred (): Tagged I32 U8 = inferred (Tagged 3)
+
+// Omitted arguments are left out of errors as they are in the source
+retag (x: Tagged I32): Tagged I32 U8 = x
+
+// Unless they are all that differs
+mix (x: Tagged I32) (y: Tagged I32): Unit = ignore (if true then x else y)
+
+// Elsewhere an omitted `_` argument is a fresh type variable
+local (): Tagged I32 U8 =
+    x: Tagged I32 = Tagged 3
+    x
+
+trait Show t =
+    show: fn t -> String
+
+impl show_i32: Show I32 with
+    show _ = "i32"
+
+impl show_i32_alt: Show I32 with
+    show _ = "alt"
+
+// An impl's name in a type position refers to its data type
+use_alt (x: I32) {s: Show I32 show_i32_alt}: String = Show.show x {s}
+call_alt (): String = use_alt 3
+
+// A known impl argument is shown when no implicit is found, since it is why none matched
+wrong_impl (): String = use_bool true
+use_bool (x: Bool) {s: Show Bool show_i32_alt}: String = Show.show x {s}
+
+// The data type of an impl without parameters takes no arguments
+bad_impl_type {_: Show I32 (show_i32 I32)}: Unit = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/hole_defaults.an:6:24
+// 5 | effect Logger =
+//   |     // error: Display's omitted parameter i defaults to `_`, which can't be used in this position
+// 6 |     log_value: fn I32 {Display I32 pure} -> Unit
+//   |                        ^^^^^^^^^^^^^^^^
+// 
+// examples/typechecking/hole_defaults.an:12:13
+//    | // error: Expected a type here, this type constructor is missing 2 arguments
+// 12 | too_few (_: Tagged): Unit = ()
+//    |             ^^^^^^
+// 
+// examples/typechecking/hole_defaults.an:16:62
+// 15 | // have different tags, and the body can't make them the same. Naming the tag does.
+//    | // error: The body of this function has type Tagged I32 but it is expected to return Tagged I32 t
+// 16 | mismatched (x: Tagged I32) (y: Tagged I32 t): Tagged I32 t = if true then x else y
+//    |                                                              ^^^^^^^^^^^^^^^^^^^^^
+// 17 | matched (x: Tagged I32 t) (y: Tagged I32 t): Tagged I32 t = if true then x else y
+// 
+// examples/typechecking/hole_defaults.an:16:82
+// 15 | // have different tags, and the body can't make them the same. Naming the tag does.
+//    | // error: Then branch's type of Tagged I32 does not match the else branch's type Tagged I32 t
+// 16 | mismatched (x: Tagged I32) (y: Tagged I32 t): Tagged I32 t = if true then x else y
+//    |                                                                                  ^
+// 17 | matched (x: Tagged I32 t) (y: Tagged I32 t): Tagged I32 t = if true then x else y
+// 
+// examples/typechecking/hole_defaults.an:24:40
+// 23 | // Omitted arguments are left out of errors as they are in the source
+//    | // error: The body of this function has type Tagged I32 but it is expected to return Tagged I32 U8
+// 24 | retag (x: Tagged I32): Tagged I32 U8 = x
+//    |                                        ^
+// 
+// examples/typechecking/hole_defaults.an:27:73
+// 26 | // Unless they are all that differs
+//    | // error: Then branch's type of Tagged I32 _e0 does not match the else branch's type Tagged I32 _e1
+// 27 | mix (x: Tagged I32) (y: Tagged I32): Unit = ignore (if true then x else y)
+//    |                                                                         ^
+// 
+// examples/typechecking/hole_defaults.an:48:25
+// 47 | // A known impl argument is shown when no implicit is found, since it is why none matched
+//    | // error: No implicit found for type Show Bool show_i32_alt required by use_bool
+// 48 | wrong_impl (): String = use_bool true
+//    |                         ^^^^^^^^
+// 49 | use_bool (x: Bool) {s: Show Bool show_i32_alt}: String = Show.show x {s}
+// 
+// examples/typechecking/hole_defaults.an:52:28
+// 51 | // The data type of an impl without parameters takes no arguments
+//    | // error: Expected 0 arguments but found 1
+// 52 | bad_impl_type {_: Show I32 (show_i32 I32)}: Unit = ()
+//    |                            ^^^^^^^^^^^^^^
+// 
+// Found 8 errors and 0 warnings
+

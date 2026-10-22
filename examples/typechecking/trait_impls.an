@@ -3,14 +3,14 @@ trait Bar a b =
     bar: fn a a -> b
 
 
-implicit bar1: Bar I32 String =
-    Bar fn _ _ -> "good"
+impl bar1: Bar I32 String with
+    bar _ _ = "good"
 
-implicit bar2: Bar I32 I32 =
-    Bar fn _ _ -> 0
+impl bar2: Bar I32 I32 with
+    bar _ _ = 0
 
-implicit bar4: Bar I32 F64 =
-    Bar fn _ _ -> 23.2 // Multiple matching impls when used at I32
+impl bar4: Bar I32 F64 with
+    bar _ _ = 23.2 // Multiple matching impls when used at I32
 
 foo a b = bar a b
 
@@ -22,17 +22,17 @@ _ = bar "four" "five"
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// type Bar a b =
-//     bar: fn a a [Ptr Unit] -> b
+// type Bar a b ($impl = _) =
+//     bar: fn a a -> b
 // 
-// implicit (bar1: Bar I32 String) =
-//     (Bar: fn (fn I32 I32 [Ptr Unit] -> String is pure) -> Bar I32 String is pure) (fn (_: I32) (_: I32) -> "good")
+// implicit (bar1: Bar I32 String bar1) = Bar I32 String with
+//     (bar: fn I32 I32 -> String is pure) = fn (_: I32) (_: I32) -> "good"
 // 
-// implicit (bar2: Bar I32 I32) =
-//     (Bar: fn (fn I32 I32 [Ptr Unit] -> I32 is pure) -> Bar I32 I32 is pure) (fn (_: I32) (_: I32) -> 0)
+// implicit (bar2: Bar I32 I32 bar2) = Bar I32 I32 with
+//     (bar: fn I32 I32 -> I32 is pure) = fn (_: I32) (_: I32) -> 0
 // 
-// implicit (bar4: Bar I32 F64) =
-//     (Bar: fn (fn I32 I32 [Ptr Unit] -> F64 is pure) -> Bar I32 F64 is pure) (fn (_: I32) (_: I32) -> 23.2)
+// implicit (bar4: Bar I32 F64 bar4) = Bar I32 F64 with
+//     (bar: fn I32 I32 -> F64 is pure) = fn (_: I32) (_: I32) -> 23.2
 // 
 // (foo: fn _ _ -> _ is pure) (a: _) (b: _) = (error).bar (a: _) (b: _)
 // 

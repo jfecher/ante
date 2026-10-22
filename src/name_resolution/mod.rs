@@ -25,6 +25,7 @@ use crate::{
             Type, TypeDefinition, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
+        get_item::TraitDefinition,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     project::SRC_FOLDER,
@@ -46,6 +47,9 @@ pub struct ResolutionResult {
     /// visible in any namespace exported by this item, such as `Foo` and `Bar` in
     /// `type Union = | Foo | Bar` which are normally accessed via `Union.Foo` and `Union.Bar`.
     pub top_level_names: Vec<NameId>,
+
+    /// True if this item constructs a trait outside of an impl, which is an error
+    pub constructs_trait_outside_impl: bool,
 }
 
 struct Resolver<'local, 'inner> {
@@ -70,6 +74,12 @@ struct Resolver<'local, 'inner> {
 
     /// Nesting depth of enclosing `while`/`for` loops. Used to reject `break`/`continue` outside of loops.
     loop_depth: u32,
+
+    /// If this item is an impl, the constructor creating its value.
+    impl_constructor: Option<ExprId>,
+
+    /// See [ResolutionResult::constructs_trait_outside_impl]
+    constructs_trait_outside_impl: bool,
 }
 
 /// Where was this variable defined?
@@ -99,7 +109,13 @@ pub struct TraitMember {
     /// The field index in the trait's dictionary
     pub index: u32,
     pub generic_count: u32,
-    pub is_function: bool,
+}
+
+impl TraitMember {
+    /// The name of the type of the trait this member belongs to
+    pub fn trait_type_name(self) -> TopLevelName {
+        TopLevelName::new(self.name.top_level_item, self.trait_name)
+    }
 }
 
 impl Origin {
@@ -172,10 +188,9 @@ pub fn origin_of_top_level_definition(name: TopLevelName, item: &TopLevelItemKin
         if definition.kind.is_effect() {
             return Origin::EffectOperation { name, index: index as u32 };
         }
-        let is_function = matches!(fields[index].1.kind, TypeKind::Function(_));
         let generic_count = definition.generics.len() as u32;
         let trait_name = definition.name;
-        return Origin::TraitMember(TraitMember { name, trait_name, index: index as u32, generic_count, is_function });
+        return Origin::TraitMember(TraitMember { name, trait_name, index: index as u32, generic_count });
     }
     Origin::TopLevelDefinition(name)
 }
@@ -195,11 +210,56 @@ fn alias_body_fields(
 /// a body like `Vec a` resolves `Vec`. The outer `None` is returned when the body is not a
 /// name at all, such as a tuple or function type, while `Some(None)` is a name that failed to resolve.
 fn alias_body_head_origin(alias_item: TopLevelId, body: &Type, db: &DbHandle) -> Option<Option<Origin>> {
-    match &body.kind {
-        TypeKind::Named(path) => Some(Resolve(alias_item).get(db).path_origins.get(path).copied()),
-        TypeKind::Application(f, _) => alias_body_head_origin(alias_item, f, db),
-        _ => None,
+    let path = body.head_path()?;
+    Some(Resolve(alias_item).get(db).path_origins.get(&path).copied())
+}
+
+/// If `alias` is a type alias whose underlying type is a struct, return the struct's constructor [Origin].
+/// Returns `None` if `alias` is not an alias, or its body is not a struct that can be used as a constructor.
+pub fn follow_alias_to_constructor(
+    alias: TopLevelName, db: &DbHandle, visited: &mut Vec<TopLevelName>,
+) -> Option<Origin> {
+    if visited.contains(&alias) {
+        return None;
     }
+    let (item, _) = GetItem(alias.top_level_item).get(db);
+    let TopLevelItemKind::TypeDefinition(def) = &item.kind else {
+        return None;
+    };
+    let TypeDefinitionBody::Alias(body) = &def.body else {
+        return None;
+    };
+    visited.push(alias);
+    follow_alias_body_to_constructor(alias.top_level_item, body, db, visited)
+}
+
+/// Follow the head of an alias body to the constructor of the struct it ultimately names.
+fn follow_alias_body_to_constructor(
+    alias_item: TopLevelId, body: &Type, db: &DbHandle, visited: &mut Vec<TopLevelName>,
+) -> Option<Origin> {
+    let Some(Some(Origin::TopLevelDefinition(target))) = alias_body_head_origin(alias_item, body, db) else {
+        return None;
+    };
+    let (target_item, _) = GetItem(target.top_level_item).get(db);
+    let TopLevelItemKind::TypeDefinition(target_def) = &target_item.kind else {
+        return None;
+    };
+    match &target_def.body {
+        TypeDefinitionBody::Struct(_) => Some(Origin::TopLevelDefinition(target)),
+        TypeDefinitionBody::Alias(_) => follow_alias_to_constructor(target, db, visited),
+        TypeDefinitionBody::Enum(_, _) | TypeDefinitionBody::EffectAlias(_) | TypeDefinitionBody::Error => None,
+    }
+}
+
+/// If the head of `typ` names a trait, possibly through type aliases, return the trait.
+/// `path_origins` are the origins of the paths within `typ`.
+pub fn trait_of_type(typ: &Type, path_origins: &BTreeMap<PathId, Origin>, db: &DbHandle) -> Option<TraitDefinition> {
+    let Origin::TopLevelDefinition(name) = *path_origins.get(&typ.head_path()?)? else { return None };
+    let name = match follow_alias_to_constructor(name, db, &mut Vec::new()) {
+        Some(Origin::TopLevelDefinition(target)) => target,
+        _ => name,
+    };
+    TraitDefinition::get(name, db)
 }
 
 pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> Arc<ResolutionResult> {
@@ -220,7 +280,10 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> Arc<ResolutionRes
     }
 
     match &statement.kind {
-        TopLevelItemKind::Definition(definition) => resolver.resolve_expr(definition.rhs),
+        TopLevelItemKind::Definition(definition) => {
+            resolver.impl_constructor = definition.impl_info.as_ref().map(|impl_info| impl_info.constructor);
+            resolver.resolve_expr(definition.rhs);
+        },
         TopLevelItemKind::TypeDefinition(type_definition) => resolver.resolve_type_definition(type_definition),
         TopLevelItemKind::Comptime(comptime_) => resolver.resolve_comptime(comptime_),
         TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
@@ -251,6 +314,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             checked_locals: Default::default(),
             type_variables: Default::default(),
             loop_depth: 0,
+            impl_constructor: None,
+            constructs_trait_outside_impl: false,
             context,
         }
     }
@@ -261,6 +326,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             name_origins: self.name_links,
             referenced_items: self.referenced_items,
             top_level_names: self.top_level_names,
+            constructs_trait_outside_impl: self.constructs_trait_outside_impl,
         }
     }
 
@@ -468,7 +534,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 // Handle type aliases in an expression position
                 if !is_type
                     && let Origin::TopLevelDefinition(name) = origin
-                    && let Some(followed) = self.follow_alias_to_constructor(name, &mut Vec::new())
+                    && let Some(followed) = follow_alias_to_constructor(name, self.compiler, &mut Vec::new())
                 {
                     origin = followed;
                 }
@@ -568,40 +634,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         self.compiler.accumulate(diagnostic);
     }
 
-    /// If `alias` is a type alias whose underlying type is a struct, return the struct's constructor [Origin].
-    /// Returns `None` if `alias` is not an alias, or its body is not a struct that can be used as a constructor.
-    fn follow_alias_to_constructor(&self, alias: TopLevelName, visited: &mut Vec<TopLevelName>) -> Option<Origin> {
-        if visited.contains(&alias) {
-            return None;
-        }
-        let (item, _) = GetItem(alias.top_level_item).get(self.compiler);
-        let TopLevelItemKind::TypeDefinition(def) = &item.kind else {
-            return None;
-        };
-        let TypeDefinitionBody::Alias(body) = &def.body else {
-            return None;
-        };
-        visited.push(alias);
-        self.follow_alias_body_to_constructor(alias.top_level_item, body, visited)
-    }
-
-    /// Follow the head of an alias body to the constructor of the struct it ultimately names.
-    fn follow_alias_body_to_constructor(
-        &self, alias_item: TopLevelId, body: &Type, visited: &mut Vec<TopLevelName>,
-    ) -> Option<Origin> {
-        let Some(Some(Origin::TopLevelDefinition(target))) = alias_body_head_origin(alias_item, body, self.compiler)
-        else {
-            return None;
-        };
-        let (target_item, _) = GetItem(target.top_level_item).get(self.compiler);
-        let TopLevelItemKind::TypeDefinition(target_def) = &target_item.kind else {
-            return None;
-        };
-        match &target_def.body {
-            TypeDefinitionBody::Struct(_) => Some(Origin::TopLevelDefinition(target)),
-            TypeDefinitionBody::Alias(_) => self.follow_alias_to_constructor(target, visited),
-            TypeDefinitionBody::Enum(_, _) | TypeDefinitionBody::EffectAlias(_) | TypeDefinitionBody::Error => None,
-        }
+    fn trait_constructed_outside_impl(&mut self, trait_name: Name, location: Location) {
+        self.constructs_trait_outside_impl = true;
+        self.emit_diagnostic(Diagnostic::TraitConstructedOutsideImpl { trait_name, location });
     }
 
     fn is_valid_for_position(&self, origin: Origin, is_type: bool) -> bool {
@@ -645,7 +680,15 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn resolve_expr(&mut self, expr: ExprId) {
         match &self.context[expr] {
             Expr::Literal(_literal) => (),
-            Expr::Variable(path) => self.link(*path, true, false),
+            Expr::Variable(path) => {
+                self.link(*path, true, false);
+                if let Some(trait_name) =
+                    self.path_links.get(path).and_then(|origin| self.trait_constructor_name(*origin))
+                {
+                    let location = self.context.path_location(*path).clone();
+                    self.trait_constructed_outside_impl(trait_name, location);
+                }
+            },
             Expr::Call(call) => {
                 self.resolve_expr(call.function);
                 for arg in &call.arguments {
@@ -792,6 +835,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn resolve_constructor(&mut self, constructor: &Constructor, id: ExprId) {
         self.resolve_type(&constructor.typ, false);
 
+        // Only an impl may construct a trait
+        if self.impl_constructor != Some(id)
+            && let Some(trait_) = trait_of_type(&constructor.typ, &self.path_links, self.compiler)
+        {
+            let location = self.context.expr_location(id).clone();
+            self.trait_constructed_outside_impl(trait_.name().clone(), location);
+        }
+
         // Ensure all fields of the type are used exactly once
         match self.get_fields_of_type(&constructor.typ) {
             FieldsResult::Fields(names) => {
@@ -839,17 +890,20 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         }
     }
 
+    /// If `origin` is the constructor of a trait, return the trait's name
+    fn trait_constructor_name(&self, origin: Origin) -> Option<Name> {
+        let Origin::TopLevelDefinition(name) = origin else { return None };
+        TraitDefinition::get(name, self.compiler).map(|definition| definition.name().clone())
+    }
+
     /// If the given type is a struct type, return its fields. Otherwise return None.
     fn get_fields_of_type(&self, typ: &Type) -> FieldsResult {
-        match &typ.kind {
-            TypeKind::Named(path) => match self.path_links.get(path) {
-                Some(origin) => origin.get_fields_of_type(self.compiler),
-                None => FieldsResult::PriorError,
-            },
-            // NOTE: Once type aliases are added, the fields of an alias may depend
-            // on its generic arguments
-            TypeKind::Application(typ, _) => self.get_fields_of_type(typ),
-            _ => FieldsResult::NotAStruct,
+        // NOTE: Once type aliases are added, the fields of an alias may depend
+        // on its generic arguments
+        let Some(path) = typ.head_path() else { return FieldsResult::NotAStruct };
+        match self.path_links.get(&path) {
+            Some(origin) => origin.get_fields_of_type(self.compiler),
+            None => FieldsResult::PriorError,
         }
     }
 
@@ -1018,8 +1072,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::Float(_)
             | TypeKind::Char
             | TypeKind::NoClosureEnv
-            | TypeKind::Pointer
             | TypeKind::Hole
+            | TypeKind::RigidHole
             | TypeKind::Reference(..)
             | TypeKind::ImplicitPlace
             | TypeKind::Pure

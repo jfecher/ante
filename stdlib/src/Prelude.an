@@ -475,17 +475,17 @@ max (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l > r then l else r
 min (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l < r then l else r
 
 
-trait Num a =
-    add: Add a
-    sub: Sub a
-    mul: Mul a
-    div: Div a
-    eq: Eq a pure
-    cmp: Cmp a
+trait Num a (ai = _) (si = _) (mi = _) (di = _) (ei = _) (ci = _) =
+    add: Add a ai
+    sub: Sub a si
+    mul: Mul a mi
+    div: Div a di
+    eq: Eq a pure ei
+    cmp: Cmp a ci
     zero: a
     one: a
 
-impl num_i8: Num I8 with
+impl num_i8: Num I8 add_i8 sub_i8 mul_i8 div_i8 eq_i8 cmp_i8 with
     add = add_i8
     sub = sub_i8
     mul = mul_i8
@@ -495,7 +495,7 @@ impl num_i8: Num I8 with
     zero = 0
     one = 1
 
-impl num_i16: Num I16 with
+impl num_i16: Num I16 add_i16 sub_i16 mul_i16 div_i16 eq_i16 cmp_i16 with
     add = add_i16
     sub = sub_i16
     mul = mul_i16
@@ -505,7 +505,7 @@ impl num_i16: Num I16 with
     zero = 0
     one = 1
 
-impl num_i32: Num I32 with
+impl num_i32: Num I32 add_i32 sub_i32 mul_i32 div_i32 eq_i32 cmp_i32 with
     add = add_i32
     sub = sub_i32
     mul = mul_i32
@@ -515,7 +515,7 @@ impl num_i32: Num I32 with
     zero = 0
     one = 1
 
-impl num_i64: Num I64 with
+impl num_i64: Num I64 add_i64 sub_i64 mul_i64 div_i64 eq_i64 cmp_i64 with
     add = add_i64
     sub = sub_i64
     mul = mul_i64
@@ -525,7 +525,7 @@ impl num_i64: Num I64 with
     zero = 0
     one = 1
 
-impl num_isz: Num Isz with
+impl num_isz: Num Isz add_isz sub_isz mul_isz div_isz eq_isz cmp_isz with
     add = add_isz
     sub = sub_isz
     mul = mul_isz
@@ -535,7 +535,7 @@ impl num_isz: Num Isz with
     zero = 0
     one = 1
 
-impl num_u8: Num U8 with
+impl num_u8: Num U8 add_u8 sub_u8 mul_u8 div_u8 eq_u8 cmp_u8 with
     add = add_u8
     sub = sub_u8
     mul = mul_u8
@@ -545,7 +545,7 @@ impl num_u8: Num U8 with
     zero = 0
     one = 1
 
-impl num_u16: Num U16 with
+impl num_u16: Num U16 add_u16 sub_u16 mul_u16 div_u16 eq_u16 cmp_u16 with
     add = add_u16
     sub = sub_u16
     mul = mul_u16
@@ -555,7 +555,7 @@ impl num_u16: Num U16 with
     zero = 0
     one = 1
 
-impl num_u32: Num U32 with
+impl num_u32: Num U32 add_u32 sub_u32 mul_u32 div_u32 eq_u32 cmp_u32 with
     add = add_u32
     sub = sub_u32
     mul = mul_u32
@@ -565,7 +565,7 @@ impl num_u32: Num U32 with
     zero = 0
     one = 1
 
-impl num_u64: Num U64 with
+impl num_u64: Num U64 add_u64 sub_u64 mul_u64 div_u64 eq_u64 cmp_u64 with
     add = add_u64
     sub = sub_u64
     mul = mul_u64
@@ -575,7 +575,7 @@ impl num_u64: Num U64 with
     zero = 0
     one = 1
 
-impl num_usz: Num Usz with
+impl num_usz: Num Usz add_usz sub_usz mul_usz div_usz eq_usz cmp_usz with
     add = add_usz
     sub = sub_usz
     mul = mul_usz
@@ -585,7 +585,7 @@ impl num_usz: Num Usz with
     zero = 0
     one = 1
 
-impl num_f32: Num F32 with
+impl num_f32: Num F32 add_f32 sub_f32 mul_f32 div_f32 eq_f32 cmp_f32 with
     add = add_f32
     sub = sub_f32
     mul = mul_f32
@@ -595,7 +595,7 @@ impl num_f32: Num F32 with
     zero = 0.0
     one = 1.0
 
-impl num_f64: Num F64 with
+impl num_f64: Num F64 add_f64 sub_f64 mul_f64 div_f64 eq_f64 cmp_f64 with
     add = add_f64
     sub = sub_f64
     mul = mul_f64
@@ -701,19 +701,19 @@ trait Bitwise t =
     shl: fn t t -> t
     shr: fn t t -> t
 
-implicit bitwise_i32: Bitwise I32 = Bitwise
-    (fn x y -> intrinsic "BitwiseAnd" x y)
-    (fn x y -> intrinsic "BitwiseOr" x y)
-    (fn x y -> intrinsic "BitwiseXor" x y)
-    (fn x y -> intrinsic "BitwiseShl" x y)
-    (fn x y -> intrinsic "BitwiseShr" x y)
+impl bitwise_i32: Bitwise I32 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
 
-implicit bitwise_u64: Bitwise U64 = Bitwise
-    (fn x y -> intrinsic "BitwiseAnd" x y)
-    (fn x y -> intrinsic "BitwiseOr" x y)
-    (fn x y -> intrinsic "BitwiseXor" x y)
-    (fn x y -> intrinsic "BitwiseShl" x y)
-    (fn x y -> intrinsic "BitwiseShr" x y)
+impl bitwise_u64: Bitwise U64 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
 
 
 type Type t = | MkType

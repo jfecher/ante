@@ -17,10 +17,8 @@ use crate::{
     shared_arc::Shared,
     type_inference::{
         Locateable, TypeChecker,
-        Variance::Covariant,
         errors::TypeErrorKind,
         places::ScopeDepth,
-        row::RowMode,
         types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
 };
@@ -84,6 +82,17 @@ struct DelayedImplicit {
 
     /// Optional implicits do not error when not found
     optional: bool,
+
+    /// True for the dictionary a trait method is called on. The method is called directly with evidence
+    /// for its own effects so this dictionary is never coerced to wider effect args.
+    method_dictionary: bool,
+}
+
+impl DelayedImplicit {
+    /// A required implicit which is not the dictionary of a trait method
+    fn new(source: ExprId, destination: ExprId, parameter_index: usize) -> Self {
+        Self { source, destination, parameter_index, optional: false, method_dictionary: false }
+    }
 }
 
 impl ImplicitsContext {
@@ -187,7 +196,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ) -> Option<(Type, Option<usize>)> {
         let &cst::Expr::Variable(path) = &self.current_extended_context()[function] else { return None };
         let Some(Origin::TraitMember(member)) = self.path_origin(path) else { return None };
-        if !member.is_function {
+        if !self.trait_member_is_method(member) {
             return None;
         }
 
@@ -209,7 +218,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.check_expr(object, &dictionary_type, TypeErrorKind::General);
                 object
             },
-            None => self.delay_find_implicit_value(&dictionary_type, 0, function, None),
+            None => self.delay_find_method_dictionary(&dictionary_type, function),
         };
 
         let member_name = self.trait_member_name(path);
@@ -513,7 +522,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let location = function.locate(self);
         let typ = target_type.clone();
         let fresh_id = self.push_expr(cst::Expr::Error, typ, location);
-        let delayed = DelayedImplicit { source: function, destination: fresh_id, parameter_index, optional: false };
+        let delayed = DelayedImplicit::new(function, fresh_id, parameter_index);
 
         if let Some(call_expr) = call
             && let cst::Expr::Call(mut existing) = self.current_extended_context()[call_expr].clone()
@@ -524,6 +533,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.try_or_delay(delayed);
         fresh_id
+    }
+
+    /// Like [Self::delay_find_implicit_value] for the dictionary the trait method `method` is called
+    /// on, see [DelayedImplicit::method_dictionary].
+    fn delay_find_method_dictionary(&mut self, target_type: &Type, method: ExprId) -> ExprId {
+        let location = method.locate(self);
+        let destination = self.push_expr(cst::Expr::Error, target_type.clone(), location);
+        self.try_or_delay(DelayedImplicit { method_dictionary: true, ..DelayedImplicit::new(method, destination, 0) });
+        destination
     }
 
     /// Try to resolve `delayed` immediately, queueing it on the current scope if it can't be yet.
@@ -541,7 +559,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// for error messages, which are never issued for optional implicits.
     fn new_optional_implicit(&mut self, target_type: Type, location: Location) -> DelayedImplicit {
         let destination = self.push_expr(cst::Expr::Error, target_type, location);
-        DelayedImplicit { source: destination, destination, parameter_index: 0, optional: true }
+        DelayedImplicit { optional: true, ..DelayedImplicit::new(destination, destination, 0) }
     }
 
     /// Request an optional implicit value of `target_type`.
@@ -675,7 +693,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Local implicits' types may still be refined, so only searches without them are cached
         let mut cacheable = implicits_in_local_scope.is_empty();
         if cacheable
-            && let Some(error) = self.failed_implicit_searches.get(&implicit.destination)
+            && let Some(error) = self.item.failed_implicit_searches.get(&implicit.destination)
             && error.target_type() == &self.expr_types[&implicit.destination].follow_all(&self.bindings)
         {
             return Err(error.clone());
@@ -693,7 +711,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             && cacheable
             && !matches!(error, ImplicitError::Multiple(..))
         {
-            self.failed_implicit_searches.insert(implicit.destination, error.clone());
+            self.item.failed_implicit_searches.insert(implicit.destination, error.clone());
         }
         result
     }
@@ -711,9 +729,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Searching with unbound type variables could bind them to whichever impl happens to
         // match, which can change the inferred type of types in optional implicits.
-        if implicit.optional && target_type.has_unbound_type_variables(&self.bindings) {
+        if implicit.optional && self.has_unbound_type_variables_besides_impl(&target_type) {
             return Err(ImplicitError::NotFound(target_type));
         }
+
+        // An unknown impl type argument of a dictionary which may be widened is left unlinked from that of the
+        // implicit found until it is known whether any effects are widened. See [Self::coerce_dictionary].
+        let may_widen = !implicit.method_dictionary && self.trait_has_effect_args(&target_type);
+        let search_type = may_widen.then(|| self.unlinked_dictionary_type(&target_type, &target_type)).flatten();
+        let search_type = search_type.as_ref().unwrap_or(&target_type);
 
         // If every argument of the target type is an unbound type variable, any implicit
         // of the same constructor will match. This happens often when types aren't known
@@ -737,7 +761,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.check_implicit_candidate(
                 name_type,
                 None,
-                &target_type,
+                search_type,
                 name,
                 origin,
                 &mut candidates,
@@ -777,7 +801,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.check_implicit_candidate(
                     name_type,
                     impl_bindings,
-                    &target_type,
+                    search_type,
                     name.clone(),
                     origin,
                     &mut candidates,
@@ -797,10 +821,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else if candidates.len() == 1 {
             let candidate = candidates.remove(0);
             let location = function.locate(self);
-            self.create_implicit_argument_expr(candidate, destination, location);
+            self.create_implicit_argument_expr(candidate, destination, may_widen, location);
             Ok(())
         } else {
             Err(ImplicitError::Multiple(candidates, target_type))
+        }
+    }
+
+    /// Like [Type::has_unbound_type_variables] but ignores the impl data argument of a trait type,
+    /// which is expected to be unbound until an impl is found.
+    fn has_unbound_type_variables_besides_impl(&self, target: &Type) -> bool {
+        match target.trait_application(&self.bindings, self.compiler) {
+            Some((trait_, Some(args))) => {
+                let impl_index = trait_.impl_generic_index();
+                let mut args = args.iter().enumerate();
+                args.any(|(i, arg)| i != impl_index && arg.has_unbound_type_variables(&self.bindings))
+            },
+            _ => target.has_unbound_type_variables(&self.bindings),
         }
     }
 
@@ -848,8 +885,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         let arg_location = function.locate(self);
                         let destination = self.push_expr(cst::Expr::Error, arg_type, arg_location);
 
-                        let implicit =
-                            DelayedImplicit { source: function, destination, parameter_index, optional: false };
+                        let implicit = DelayedImplicit::new(function, destination, parameter_index);
 
                         if self
                             .find_implicit_value_inner(
@@ -883,6 +919,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Given the type of an implicit value, and the target type to search for, return whether the
     /// given implicit is a match for the target type, whether it can produce such a type by
     /// calling it as a function, or whether there is no match.
+    ///
+    /// A dictionary with narrower effect args than the target type matches. Either it is coerced to
+    /// the target type, or it is a method's dictionary, whose call is passed evidence for the
+    /// dictionary's own effects.
     fn implicit_type_matches(
         &mut self, implicit_type: &Type, target_type: &Type, type_bindings: &TypeBindings,
     ) -> ImplicitMatch {
@@ -891,12 +931,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // every candidate. Reducing the number of candidates beforehand (e.g. keying them) would also help.
         let mut fresh_bindings = type_bindings.clone();
 
-        if self.subtype(implicit_type, target_type, Covariant, RowMode::Coercible, &mut fresh_bindings).is_ok() {
+        if self.subtype_widening(implicit_type, target_type, &mut fresh_bindings).is_ok() {
             ImplicitMatch::MatchedAsIs(fresh_bindings)
         } else if let Type::Function(f) = implicit_type {
             let mut fresh_bindings = type_bindings.clone();
 
-            if self.subtype(&f.return_type, target_type, Covariant, RowMode::Coercible, &mut fresh_bindings).is_ok() {
+            if self.subtype_widening(&f.return_type, target_type, &mut fresh_bindings).is_ok() {
                 ImplicitMatch::Call(f.clone(), fresh_bindings)
             } else {
                 ImplicitMatch::NoMatch
@@ -1129,7 +1169,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Creates a new expression referring to the given implicit value.
     /// - 0 arguments: The expression is a variable
     /// - 1+ arguments: The expression is a function call to the given name, using the given arguments.
-    fn create_implicit_argument_expr(&mut self, candidate: Candidate, destination: ExprId, location: Location) {
+    /// `may_widen` is true if the dictionary created may be coerced to the target type's wider effect args
+    fn create_implicit_argument_expr(
+        &mut self, candidate: Candidate, destination: ExprId, may_widen: bool, location: Location,
+    ) {
         let path = self.push_path(
             cst::Path::ident(candidate.name.clone(), location.clone()),
             candidate.typ.clone(),
@@ -1140,7 +1183,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Row subtyping may have accepted a dictionary whose trait effect args are narrower than
         // the parameter's. The mir builder should adapt the dictionary to the parameter's type.
         let target_type = &self.expr_types[&destination];
-        let dictionary_target = self.trait_has_effect_args(target_type).then(|| target_type.clone());
+        let dictionary_target = may_widen.then(|| target_type.clone());
 
         // Commit type bindings from the prior `try_unify` call(s) made to find this implicit
         self.bindings.extend(candidate.type_bindings);
@@ -1163,10 +1206,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             (call, return_type)
         };
 
-        let context = self.current_extended_context_mut();
-        context.insert_expr(destination, expr);
+        self.current_extended_context_mut().insert_expr(destination, expr);
         if let Some(target_type) = dictionary_target {
-            context.insert_function_coercion(destination, target_type);
+            self.record_dictionary_coercion(destination, &typ, &target_type);
         }
         self.expr_types.insert(destination, typ);
     }

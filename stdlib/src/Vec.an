@@ -261,13 +261,13 @@ impl insert_vec: Insert (mut Vec t) Usz t Panic with
         slot = v.get_mut i ~> panic_on_fail
         slot := e
 
-implicit stream_vec: Stream (Vec a) a pure =
-    Stream fn vec ->
+impl stream_vec: Stream (Vec a) a pure with
+    stream vec =
         for i in 0 .. vec.len do
             emit (deref (vec.get_unchecked i))
 
-implicit stream_ref_vec: Stream (ref Vec a) (ref a) pure =
-    Stream fn vec ->
+impl stream_ref_vec: Stream (ref Vec a) (ref a) pure with
+    stream vec =
         for i in 0 .. vec.len do
             emit (vec.get_unchecked i)
 

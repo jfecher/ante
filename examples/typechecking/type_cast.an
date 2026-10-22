@@ -15,12 +15,11 @@ main () =
 // expected exit status: 1
 // expected stdout:
 // (main: fn Unit -> Unit is pure) () =
-//     (_a: U32) = (cast_u8_u32: Cast U8 U32 pure).cast 42_U8: U32
-//     (_b: I64) = (cast_same: Cast I64 I64 pure).cast ((cast_i32_i64: Cast I32 I64 pure).cast 42: I64): I64
-//     (_c: I32) = (cast_u8_i32: Cast U8 I32 pure).cast 42_U8: I32
+//     (_a: U32) = (cast_u8_u32: Cast U8 U32 pure cast_u8_u32).cast 42_U8: U32
+//     (_b: I64) = (cast_same: Cast I64 I64 pure cast_same).cast ((cast_i32_i64: Cast I32 I64 pure cast_i32_i64).cast 42: I64): I64
+//     (_c: I32) = (cast_u8_i32: Cast U8 I32 pure cast_u8_i32).cast 42_U8: I32
 //     (_d: U8) = (error).cast "hello": U8
 //     (_e: U8) = (error).cast true: U8
-
 
 // expected stderr:
 // examples/typechecking/type_cast.an:9:10

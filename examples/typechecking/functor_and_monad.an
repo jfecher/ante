@@ -7,36 +7,41 @@ trait Monad m =
     bind: fn (m a) (fn a -> m b) -> m b
 
 
-implicit functor_maybe: Functor Maybe = Functor fn m f ->
-    match m
-    | Some x -> Some (f x)
-    | None -> None
+impl functor_maybe: Functor Maybe with
+    map m f =
+        match m
+        | Some x -> Some (f x)
+        | None -> None
 
-implicit monad_maybe: Monad Maybe =
-    Monad
-        (fn a -> Some a)
-        (fn m f ->
-            match m
-            | Some x -> f x
-            | None -> None)
+impl monad_maybe: Monad Maybe with
+    wrap a = Some a
+    bind m f =
+        match m
+        | Some x -> f x
+        | None -> None
 
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// type Functor f =
-//     map: fn (f a) (fn a -> b) [Ptr Unit] -> f b
+// type Functor f ($impl = _) =
+//     map: fn (f a) (fn a -> b) -> f b
 // 
-// type Monad m =
-//     wrap: fn a [Ptr Unit] -> m a
-//     bind: fn (m a) (fn a -> m b) [Ptr Unit] -> m b
+// type Monad m ($impl = _) =
+//     wrap: fn a -> m a
+//     bind: fn (m a) (fn a -> m b) -> m b
 // 
-// implicit (functor_maybe: Functor Maybe) = (Functor: fn (fn (error) (fn (error) -> (error) is pure) [Ptr Unit] -> (error) is pure) -> Functor Maybe is pure) (fn (m: (error)) (f: fn (error) -> (error) is pure) ->
-//     match (m: (error))
-//     | (Some: (error)) (x: (error)) -> (Some: (error)) ((f: fn (error) -> (error) is pure) (x: (error)))
-//     | (None: (error)) -> (None: (error)))
+// implicit (functor_maybe: Functor Maybe functor_maybe) = Functor Maybe with
+//     (map: fn (error) (fn (error) -> (error) is pure) -> (error) is pure) = fn (m: (error)) (f: fn (error) -> (error) is pure) ->
+//         match (m: (error))
+//         | (Some: (error)) (x: (error)) -> (Some: (error)) ((f: fn (error) -> (error) is pure) (x: (error)))
+//         | (None: (error)) -> (None: (error))
 // 
-// implicit (monad_maybe: Monad Maybe) =
-//     (Monad: fn (fn (error) [Ptr Unit] -> (error) is pure) (fn (error) (fn (error) -> (error) is pure) [Ptr Unit] -> (error) is pure) -> Monad _ is pure) (fn (a: _) -> (Some: (error)) (a: _))
+// implicit (monad_maybe: Monad Maybe monad_maybe) = Monad Maybe with
+//     (wrap: fn (error) -> (error) is pure) = fn (a: (error)) -> (Some: (error)) (a: (error))
+//     (bind: fn (error) (fn (error) -> (error) is pure) -> (error) is pure) = fn (m: (error)) (f: fn (error) -> (error) is pure) ->
+//         match (m: (error))
+//         | (Some: (error)) (x: (error)) -> (f: fn (error) -> (error) is pure) (x: (error))
+//         | (None: (error)) -> (None: (error))
 
 // expected stderr:
 // examples/typechecking/functor_and_monad.an:3:13
@@ -122,67 +127,61 @@ implicit monad_maybe: Monad Maybe =
 // 7 |     bind: fn (m a) (fn a -> m b) -> m b	// error: `b` not found in scope
 //   |                                       ^
 // 
-// examples/typechecking/functor_and_monad.an:10:33
+// examples/typechecking/functor_and_monad.an:10:29
 //    | // error: Expected a type here, this type constructor is missing 1 argument
-// 10 | implicit functor_maybe: Functor Maybe = Functor fn m f ->
-//    |                                 ^^^^^
-// 11 |     match m
-// 
-// examples/typechecking/functor_and_monad.an:12:7
-// 11 |     match m
-// 12 |     | Some x -> Some (f x)	// error: `Some` not found in scope
-//    |       ^^^^
-// 13 |     | None -> None
-// 
-// examples/typechecking/functor_and_monad.an:12:17
-// 11 |     match m
-// 12 |     | Some x -> Some (f x)	// error: `Some` not found in scope
-//    |                 ^^^^
-// 13 |     | None -> None
-// 
-// examples/typechecking/functor_and_monad.an:13:7
-// 12 |     | Some x -> Some (f x)
-// 13 |     | None -> None	// error: `None` not found in scope
-//    |       ^^^^
-// 
-// examples/typechecking/functor_and_monad.an:13:15
-// 12 |     | Some x -> Some (f x)
-// 13 |     | None -> None	// error: `None` not found in scope
-//    |               ^^^^
-// 
-// examples/typechecking/functor_and_monad.an:15:29
-//    | // error: Expected a type here, this type constructor is missing 1 argument
-// 15 | implicit monad_maybe: Monad Maybe =
+// 10 | impl functor_maybe: Functor Maybe with
 //    |                             ^^^^^
-// 16 |     Monad
+// 11 |     map m f =
 // 
-// examples/typechecking/functor_and_monad.an:16:5
-// 15 | implicit monad_maybe: Monad Maybe =
-//    |     // error: This is called as if it were a fn _ => _ can _ but it has type fn (fn (error) => (error) is pure) (fn (error) (fn (error) -> (error) is pure) => (error) is pure) -> Monad _ is pure
-// 16 |     Monad
-//    |     ^^^^^
-// 17 |         (fn a -> Some a)
+// examples/typechecking/functor_and_monad.an:13:11
+// 12 |         match m
+// 13 |         | Some x -> Some (f x)	// error: `Some` not found in scope
+//    |           ^^^^
+// 14 |         | None -> None
 // 
-// examples/typechecking/functor_and_monad.an:17:18
-// 16 |     Monad
-// 17 |         (fn a -> Some a)	// error: `Some` not found in scope
-//    |                  ^^^^
-// 18 |         (fn m f ->
+// examples/typechecking/functor_and_monad.an:13:21
+// 12 |         match m
+// 13 |         | Some x -> Some (f x)	// error: `Some` not found in scope
+//    |                     ^^^^
+// 14 |         | None -> None
 // 
-// examples/typechecking/functor_and_monad.an:18:9
-// 17 |         (fn a -> Some a)
-// 18 |         (fn m f ->	// error: Expected the end of this block but found `(`
-//    |         ^
-// 19 |             match m
+// examples/typechecking/functor_and_monad.an:14:11
+// 13 |         | Some x -> Some (f x)
+// 14 |         | None -> None	// error: `None` not found in scope
+//    |           ^^^^
 // 
-// examples/typechecking/functor_and_monad.an:21:27
-// 20 |             | Some x -> f x
-// 21 |             | None -> None)	// error: Expected the end of this block but found `)`
-//    |                           ^
+// examples/typechecking/functor_and_monad.an:14:19
+// 13 |         | Some x -> Some (f x)
+// 14 |         | None -> None	// error: `None` not found in scope
+//    |                   ^^^^
 // 
-// examples/typechecking/functor_and_monad.an:189:1
-// 189 | 	// error: Expected a top-level item but found an unindent
-//     | 
+// examples/typechecking/functor_and_monad.an:16:25
+//    | // error: Expected a type here, this type constructor is missing 1 argument
+// 16 | impl monad_maybe: Monad Maybe with
+//    |                         ^^^^^
+// 17 |     wrap a = Some a
 // 
-// Found 27 errors and 0 warnings
+// examples/typechecking/functor_and_monad.an:17:14
+// 16 | impl monad_maybe: Monad Maybe with
+// 17 |     wrap a = Some a	// error: `Some` not found in scope
+//    |              ^^^^
+// 18 |     bind m f =
+// 
+// examples/typechecking/functor_and_monad.an:20:11
+// 19 |         match m
+// 20 |         | Some x -> f x	// error: `Some` not found in scope
+//    |           ^^^^
+// 21 |         | None -> None
+// 
+// examples/typechecking/functor_and_monad.an:21:11
+// 20 |         | Some x -> f x
+// 21 |         | None -> None	// error: `None` not found in scope
+//    |           ^^^^
+// 
+// examples/typechecking/functor_and_monad.an:21:19
+// 20 |         | Some x -> f x
+// 21 |         | None -> None	// error: `None` not found in scope
+//    |                   ^^^^
+// 
+// Found 26 errors and 0 warnings
 

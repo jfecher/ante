@@ -13,17 +13,19 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
-        Block, BlockId, Definition, DefinitionId, EffectKey, FloatConstant, FunctionType, Generic, Instruction,
-        IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
+        Block, BlockId, Definition, DefinitionId, EffectKey, FloatConstant, FunctionType, Generic, GenericBindings,
+        Instruction, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
     },
     name_resolution::Origin,
     parser::{
         cst::{self, Literal, Name, SequenceItem},
+        get_item::TraitDefinition,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         self,
         dependency_graph::TypeCheckResult,
+        dictionary_coercions::{CoercionSource, DictionaryCoercion, MemberCoercion},
         fresh_expr::ExtendedTopLevelContext,
         patterns::{Case, Constructor, DecisionTree},
         types::Type as TCType,
@@ -35,15 +37,25 @@ mod types;
 
 use types::Effects;
 
-/// Maps each TopLevelName to a unique DefinitionId
-pub(crate) type SharedIdsMap = DashMap<TopLevelName, DefinitionId>;
+/// A key for a definition which may be referenced from multiple top-level items
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum DefinitionKey {
+    Name(TopLevelName),
+
+    /// The method at the given field index of the given impl's dictionary. These are referred to
+    /// outside of the impl when adapting a dictionary to wider effects.
+    ImplMethod(TopLevelName, u32),
+}
+
+/// Maps each [DefinitionKey] to a unique DefinitionId
+pub(crate) type SharedIdsMap = DashMap<DefinitionKey, DefinitionId>;
 
 /// Shared between concurrent calls of [build_initial_mir].
 static NAME_IDS: LazyLock<SharedIdsMap> = LazyLock::new(DashMap::new);
 
 /// Look up a MIR function by a [TopLevelName]
 pub(crate) fn lookup_definition_id(name: &TopLevelName) -> Option<DefinitionId> {
-    NAME_IDS.get(name).map(|entry| *entry.value())
+    NAME_IDS.get(&DefinitionKey::Name(*name)).map(|entry| *entry.value())
 }
 
 /// Builds the MIR with the default shared global [SharedIdsMap].
@@ -71,7 +83,12 @@ where
 
     match &item.kind {
         cst::TopLevelItemKind::Definition(definition) => {
-            context.definition(definition, true);
+            match definition.impl_info.as_deref().filter(|impl_info| context.impl_trait(impl_info).is_some()) {
+                Some(impl_info) => context.impl_definition(definition, impl_info),
+                None => {
+                    context.definition(definition, true);
+                },
+            }
             Some(context.finish())
         },
         cst::TopLevelItemKind::TypeDefinition(type_definition) => {
@@ -118,12 +135,51 @@ struct Matched {
     pointee: Option<Type>,
 }
 
+/// The impl of a trait whose methods are currently being lowered
+struct ImplContext<'a> {
+    info: &'a cst::ImplInfo,
+
+    /// See [cst::Definition::impl_parameters]
+    parameters: &'a [cst::Parameter],
+
+    /// The impl's data. See [types::ConvertTypeContext::impl_data_type].
+    data_type: Type,
+}
+
+/// The MIR signature of a lambda, see [Context::lambda_signature]
+struct LambdaSignature {
+    /// The effects of the lambda's type
+    effects: TCType,
+    own_row: Effects,
+    parameter_types: Vec<Type>,
+    evidence_type: Type,
+
+    /// A function taking each of `parameter_types`, followed by the evidence if it takes any
+    function_type: Type,
+}
+
+/// What an evidence adapter calls, see [Context::evidence_adapter_definition]
+enum AdaptedCallee {
+    /// The adapter's environment, a closure of the narrower row
+    Environment,
+
+    /// The definition `id`, instantiated with `bindings` if there are any, called with the adapter's
+    /// arguments. This is the method of a known impl, see [CoercionSource::Direct].
+    Definition { id: DefinitionId, bindings: Arc<GenericBindings> },
+
+    /// Method `index` of the dictionary of type `dictionary_type` which the adapter's first argument
+    /// points to. The method is passed a pointer to that dictionary's impl data in its place.
+    /// See [CoercionSource::Wrapped].
+    WrappedMethod { dictionary_type: Type, index: u32 },
+}
+
 /// Saved/restored around building a definition in isolation. See [Context::take_scope].
 struct SavedScope {
     local_variables: FxHashMap<NameId, Value>,
     mutable_locals: rustc_hash::FxHashSet<NameId>,
     capabilities: Vec<(EffectKey, Value)>,
     own_evidence: Option<Value>,
+    loop_targets: Vec<(BlockId, BlockId)>,
 }
 
 /// The per-[TopLevelId] context. Intended for each top-level item convert to MIR in parallel.
@@ -291,7 +347,16 @@ where
     /// Note that this uses a shared [DashMap] internally and the resulting id will be
     /// nondeterministic across multiple compiler runs.
     fn get_definition_id(&self, name: &TopLevelName) -> DefinitionId {
-        *self.name_to_id.entry(*name).or_insert_with(next_definition_id)
+        self.definition_id(DefinitionKey::Name(*name))
+    }
+
+    /// Retrieves the [DefinitionId] of the method at the given field index of the given impl
+    fn get_impl_method_id(&self, impl_name: TopLevelName, field_index: u32) -> DefinitionId {
+        self.definition_id(DefinitionKey::ImplMethod(impl_name, field_index))
+    }
+
+    fn definition_id(&self, key: DefinitionKey) -> DefinitionId {
+        *self.name_to_id.entry(key).or_insert_with(next_definition_id)
     }
 
     fn get_definition_name(&self, name: &TopLevelName) -> Name {
@@ -312,16 +377,15 @@ where
 
     fn expression(&mut self, expr: ExprId) -> Value {
         let value = self.expression_inner(expr);
-        match self.types.result.context.get_function_coercion(expr).cloned() {
-            Some(expected) => {
-                let target = self.convert_type(&expected, None);
-                match &target {
-                    Type::Function(_) => self.coerce_function_value(value, expr, target),
-                    Type::Tuple(_) => self.coerce_dictionary_value(value, expr, target),
-                    _ => value,
-                }
-            },
-            None => value,
+        if let Some(expected) = self.types.result.context.get_function_coercion(expr) {
+            let target = self.convert_type(expected, None);
+            self.coerce_function_value(value, expr, target)
+        } else if let Some((expected, coercion)) = self.context().get_dictionary_coercion(expr) {
+            let target = self.convert_type(expected, None);
+            let actual = &self.types.result.maps.expr_types[&expr];
+            self.coerce_dictionary(value, actual, target, coercion)
+        } else {
+            value
         }
     }
 
@@ -494,8 +558,7 @@ where
             && let Some(bindings) = self.types.result.context.get_instantiation(path_id)
         {
             let typ = self.convert_path_type(path_id);
-            let bindings = Arc::new(mapvec(bindings, |typ| self.convert_type(typ, None)));
-            let instruction = Instruction::Instantiate(id, bindings);
+            let instruction = Instruction::Instantiate(id, self.convert_bindings(bindings));
             value = self.push_instruction(instruction, typ);
         }
 
@@ -529,7 +592,7 @@ where
                 true => self.convert_context().convert_c_function_type(pattern_type),
                 false => self.convert_pattern_type(definition.pattern),
             };
-            self.start_global(name, name_id, generic_count, typ)
+            self.start_global(self.definition_id_for(name_id), name, generic_count, typ)
         });
 
         let value = match &self.context()[definition.rhs] {
@@ -577,7 +640,7 @@ where
         if let Some(element) = reference_element {
             let struct_ptr = self.expression(object_expr);
             let (struct_ptr, struct_type) = self.field_access_target(&element, struct_ptr);
-            self.push_instruction(Instruction::GetFieldPtr { struct_ptr, struct_type, index }, Type::POINTER)
+            self.field_pointer(struct_ptr, &struct_type, index)
         } else {
             let value = self.expression(object_expr);
             let tuple = self.deref_if_shared(value, object_type);
@@ -606,25 +669,119 @@ where
             return self.emit_effect_op_call(call.function, effect_op, op_index, arguments, result_type, diverges);
         }
 
-        let function = match self.direct_extern_callee(call.function) {
-            Some(function) => function,
-            None => self.expression(call.function),
+        let callee = match self.direct_extern_callee(call.function) {
+            Some(function) => (function, None, None),
+            None => self.callee(call.function),
         };
-        let mut arguments = mapvec(&call.arguments, |arg| self.expression(arg.expr));
-        self.append_evidence_argument(call.function, &function, &mut arguments);
+        let arguments = mapvec(&call.arguments, |arg| self.expression(arg.expr));
 
-        let function_type = self.type_of_value(&function);
-        let instruction = if function_type.is_closure() {
-            Instruction::CallClosure { closure: function, arguments }
-        } else {
-            Instruction::Call { function, arguments }
-        };
-
-        let value = self.push_instruction(instruction, result_type);
+        let value = self.emit_callee_call(call.function, callee, arguments, result_type);
         if diverges {
             self.terminate_block(TerminatorInstruction::Unreachable);
         }
         value
+    }
+
+    /// Call the callee `callee_expr` evaluated to, as returned by [Self::callee], with `arguments`.
+    /// Its impl data, if any, is passed before them and its evidence after.
+    fn emit_callee_call(
+        &mut self, callee_expr: ExprId, (function, impl_data, effects): (Value, Option<Value>, Option<TCType>),
+        arguments: Vec<Value>, result_type: Type,
+    ) -> Value {
+        let mut arguments: Vec<_> = impl_data.into_iter().chain(arguments).collect();
+        self.append_evidence_argument(callee_expr, &function, effects, &mut arguments);
+
+        let instruction = if self.type_of_value(&function).is_closure() {
+            Instruction::CallClosure { closure: function, arguments }
+        } else {
+            Instruction::Call { function, arguments }
+        };
+        self.push_instruction(instruction, result_type)
+    }
+
+    /// Evaluate a callee, returning it along with the reference to its impl data it must be called
+    /// with before the call's own arguments if it is a trait method, and the effects of the callee if
+    /// they differ from its type's.
+    ///
+    /// A trait method is called directly with evidence for the effects its dictionary's type gives
+    /// it, which may be narrower than the effects of the callee's type.
+    fn callee(&mut self, callee: ExprId) -> (Value, Option<Value>, Option<TCType>) {
+        let Some((object, index, dictionary_type, through_reference)) = self.dictionary_method_callee(callee) else {
+            return (self.expression(callee), None, None);
+        };
+        let members = self.convert_context().trait_members(&dictionary_type);
+        let effects = self.function_effects(&types::trait_fields(&members)[index as usize].1);
+
+        let (method, data) = self.trait_method(object, index, &dictionary_type, through_reference);
+        (method, Some(data), effects)
+    }
+
+    /// If `callee` is `dictionary.method`, a method of a trait dictionary or of a reference or pointer
+    /// to one which is called directly, return the dictionary's expression, the method's index, the
+    /// dictionary's type and whether it is accessed through a reference or pointer.
+    fn dictionary_method_callee(&self, callee: ExprId) -> Option<(ExprId, u32, TCType, bool)> {
+        let cst::Expr::MemberAccess(access) = &self.context()[callee] else { return None };
+        let index = self.context().member_access_index(callee)?;
+        let object_type = self.types.result.maps.expr_types.get(&access.object)?.follow(&self.types.bindings);
+        let reference_element = object_type.reference_or_pointer_element(&self.types.bindings);
+        let dictionary = reference_element.unwrap_or(object_type);
+        let (trait_, _) = dictionary.trait_application(&self.types.bindings, self.compiler)?;
+        if !trait_.is_method(index as usize, self.compiler) {
+            return None;
+        }
+        Some((access.object, index, dictionary.clone(), reference_element.is_some()))
+    }
+
+    /// Returns the method at the given index of the dictionary `object`, or of the dictionary of type
+    /// `dictionary_type` which `object` refers to if `through_reference` is set, and a reference to
+    /// its impl data
+    fn trait_method(
+        &mut self, object: ExprId, index: u32, dictionary_type: &TCType, through_reference: bool,
+    ) -> (Value, Value) {
+        let dictionary = self.expression(object);
+        if through_reference {
+            let (dictionary, dictionary_type) = self.field_access_target(dictionary_type, dictionary);
+            let method_type = Self::tuple_field_type(&dictionary_type, index as usize);
+            return self.method_through_pointer(dictionary, &dictionary_type, index, method_type);
+        }
+        let dictionary_type = self.type_of_value(&dictionary);
+        let method_type = Self::tuple_field_type(&dictionary_type, index as usize);
+
+        // Indexing the dictionary directly lets later passes see which method a global dictionary holds
+        let method = self.push_instruction(Instruction::IndexTuple { tuple: dictionary, index }, method_type);
+
+        // The impl data is copied to the stack so it can be passed to the method by reference
+        let impl_data_index = Self::impl_data_index(&dictionary_type);
+        let impl_data_type = Self::tuple_field_type(&dictionary_type, impl_data_index as usize);
+        let impl_data = Instruction::IndexTuple { tuple: dictionary, index: impl_data_index };
+        let impl_data = self.push_instruction(impl_data, impl_data_type);
+        (method, self.push_instruction(Instruction::StackAlloc(impl_data), Type::POINTER))
+    }
+
+    /// Returns the method at the given index of the dictionary of type `dictionary_type` which
+    /// `dictionary` points to, along with a reference to its impl data
+    fn method_through_pointer(
+        &mut self, dictionary: Value, dictionary_type: &Type, index: u32, method_type: Type,
+    ) -> (Value, Value) {
+        let method = self.load_field(dictionary, dictionary_type, index, method_type);
+        (method, self.impl_data_pointer(dictionary, dictionary_type))
+    }
+
+    /// Returns a pointer to the impl data of the dictionary of type `dictionary_type` which `dictionary` points to
+    fn impl_data_pointer(&mut self, dictionary: Value, dictionary_type: &Type) -> Value {
+        self.field_pointer(dictionary, dictionary_type, Self::impl_data_index(dictionary_type))
+    }
+
+    /// Returns a pointer to field `index` of the struct of type `struct_type` which `struct_ptr` points to
+    fn field_pointer(&mut self, struct_ptr: Value, struct_type: &Type, index: u32) -> Value {
+        let field = Instruction::GetFieldPtr { struct_ptr, struct_type: struct_type.clone(), index };
+        self.push_instruction(field, Type::POINTER)
+    }
+
+    /// Load field `index` of the struct of type `struct_type` which `struct_ptr` points to
+    fn load_field(&mut self, struct_ptr: Value, struct_type: &Type, index: u32, field_type: Type) -> Value {
+        let address = self.field_pointer(struct_ptr, struct_type, index);
+        self.push_instruction(Instruction::Deref(address), field_type)
     }
 
     /// A directly called extern is called as the C function itself rather than through its wrapper
@@ -653,7 +810,8 @@ where
 
         let generics_count = self.generics_in_scope.len() as u32;
         let name = Arc::new("effect_op".to_string());
-        let id = self.new_isolated_definition(name.clone(), generics_count, uniform_type.clone(), |this| {
+        let id = next_definition_id();
+        self.new_isolated_definition(id, name.clone(), generics_count, uniform_type.clone(), |this| {
             let params = this.push_capability_parameters(&parameters);
             let effect = this.effect_of_operation(&this.types.result.maps.path_types[&path_id]);
             let capability = this.lookup_capability(params[surface_count], &effect);
@@ -689,7 +847,8 @@ where
 
         let generics_count = self.generics_in_scope.len() as u32;
         let name = Arc::new(format!("{name}_wrapper"));
-        let id = self.new_isolated_definition(name.clone(), generics_count, uniform_type.clone(), |this| {
+        let id = next_definition_id();
+        self.new_isolated_definition(id, name.clone(), generics_count, uniform_type.clone(), |this| {
             let params = this.push_capability_parameters(&parameters);
             let arguments = params[..surface_count].to_vec();
             let function = Value::Definition(target_id);
@@ -735,9 +894,14 @@ where
 
     /// The callee's raw effects row.
     fn callee_effects(&self, callee_expr: ExprId) -> TCType {
-        match self.callee_tc_type(callee_expr).follow(&self.types.bindings) {
-            TCType::Function(function_type) => function_type.effects.clone(),
-            _ => TCType::pure(),
+        self.function_effects(self.callee_tc_type(callee_expr)).unwrap_or_else(TCType::pure)
+    }
+
+    /// The effects row of `typ` if it is a function type
+    fn function_effects(&self, typ: &TCType) -> Option<TCType> {
+        match typ.follow(&self.types.bindings) {
+            TCType::Function(function_type) => Some(function_type.effects.clone()),
+            _ => None,
         }
     }
 
@@ -755,13 +919,20 @@ where
         let Some(value_row) = self.function_row(actual) else { return value };
 
         // The value is the adapter's environment, so the callee is the environment parameter itself
-        self.evidence_adapter("evidence_adapter", target, value_type, &value_row, value, |_, env, _| env)
+        let name = Arc::new("evidence_adapter".to_string());
+        let callee = AdaptedCallee::Environment;
+        let id = self.evidence_adapter_definition(&name, &target, value_type, &value_row, callee);
+        let adapter = self.make_definition_value(id, name, target.clone());
+        self.push_instruction(Instruction::PackClosure { function: adapter, environment: value }, target)
     }
 
-    /// Rebuilds a trait dictionary whose effect args type inference widened, wrapping each method
-    /// whose row changed in a closure taking the wider evidence. For example, a `Stream s a e`
-    /// dictionary may be passed where `Stream s a (Fail, e)` is expected.
-    fn coerce_dictionary_value(&mut self, value: Value, expr: ExprId, target: Type) -> Value {
+    /// Rebuilds the trait dictionary `value` of the type `actual` whose effect args type inference
+    /// widened to the MIR type `target`, adapting each method whose row changed to take the wider
+    /// evidence as decided by `coercion`. For example, a `Stream s a e i` dictionary may be passed
+    /// where `Stream s a (Fail, e) i` is expected. See [DictionaryCoercion].
+    fn coerce_dictionary(
+        &mut self, value: Value, actual: &TCType, target: Type, coercion: &DictionaryCoercion,
+    ) -> Value {
         let value_type = self.type_of_value(&value);
         if target == value_type {
             return value;
@@ -769,50 +940,69 @@ where
         let (Type::Tuple(expected_fields), Type::Tuple(value_fields)) = (&target, &value_type) else {
             panic!("dictionary coercion from `{value_type}` to `{target}` is not between dictionaries");
         };
-        assert_eq!(expected_fields.len(), value_fields.len(), "dictionary coercion changes the method count");
+        assert_eq!(expected_fields.len(), value_fields.len(), "dictionary coercion changes the member count");
+        assert_eq!(coercion.members.len() + 1, value_fields.len(), "dictionary coercion of the wrong trait");
 
-        let actual_methods = self.convert_context().trait_method_types(&self.types.result.maps.expr_types[&expr]);
+        let actual_members = self.convert_context().trait_members(actual);
+        let actual_fields = types::trait_fields(&actual_members);
+        let bindings = match &coercion.source {
+            CoercionSource::Direct { bindings, .. } => self.convert_bindings(bindings),
+            CoercionSource::Wrapped => Arc::default(),
+        };
 
-        let fields = mapvec(expected_fields.iter().zip(value_fields.iter()).enumerate(), |(i, (expected, actual))| {
-            let field =
-                self.push_instruction(Instruction::IndexTuple { tuple: value, index: i as u32 }, actual.clone());
-            if expected == actual {
-                field
-            } else {
-                self.adapt_dictionary_method(field, &actual_methods[i], expected.clone())
+        // Each member is followed by the impl data, which isn't a member
+        let members = coercion.members.iter().map(Some).chain([None]);
+        let fields = expected_fields.iter().zip(value_fields.iter()).zip(members).enumerate();
+        let fields = mapvec(fields, |(i, ((expected, field), member))| {
+            let index = i as u32;
+            match (&coercion.source, member) {
+                (CoercionSource::Wrapped, None) => value,
+                (CoercionSource::Wrapped, Some(MemberCoercion::Method)) => {
+                    // Call the original dictionary's method with a reference to the original dictionary's impl data
+                    let callee = AdaptedCallee::WrappedMethod { dictionary_type: value_type.clone(), index };
+                    self.method_adapter(field.clone(), &actual_fields[i].1, expected.clone(), callee)
+                },
+                _ if expected == field => {
+                    self.push_instruction(Instruction::IndexTuple { tuple: value, index }, field.clone())
+                },
+                (CoercionSource::Direct { impl_name, .. }, Some(MemberCoercion::Method)) => {
+                    let method = self.get_impl_method_id(*impl_name, index);
+                    let method_name = actual_fields[i].0.clone();
+
+                    // Like any other reference to a definition of another item, its type is the type it is used at
+                    self.reference_definition(method, method_name, field.clone());
+                    let callee = AdaptedCallee::Definition { id: method, bindings: bindings.clone() };
+                    self.method_adapter(field.clone(), &actual_fields[i].1, expected.clone(), callee)
+                },
+                (_, Some(MemberCoercion::Nested(member_coercion))) => {
+                    let field = self.push_instruction(Instruction::IndexTuple { tuple: value, index }, field.clone());
+                    self.coerce_dictionary(field, &actual_fields[i].1, expected.clone(), member_coercion)
+                },
+                _ => panic!("dictionary coercion changes the type of constant field {i} to `{expected}`"),
             }
         });
         self.push_instruction(Instruction::MakeTuple(fields), target)
     }
 
-    /// Wraps the dictionary method `method` in a closure of the wider `target` type. The wrapper
-    /// keeps `method` in its environment and projects the evidence it needs out of
-    /// the evidence it is given.
-    fn adapt_dictionary_method(&mut self, method: Value, actual: &TCType, target: Type) -> Value {
-        let method_type = self.type_of_value(&method);
-        let (Type::Function(expected_ft), Type::Function(method_ft)) = (&target, &method_type) else {
-            panic!("dictionary method coercion from `{method_type}` to `{target}` is not between functions");
+    /// Builds a function of the wider `target` type calling `callee`, a method of the type
+    /// `method_type`, with the evidence it needs projected out of the evidence it is given.
+    /// See [Self::evidence_adapter_definition].
+    fn method_adapter(&mut self, method_type: Type, actual: &TCType, target: Type, callee: AdaptedCallee) -> Value {
+        let Some(method_row) = self.function_row(actual) else {
+            panic!("dictionary method coercion from `{method_type}` to `{target}` is not between functions")
         };
-        assert_eq!(
-            method_ft.environment, expected_ft.environment,
-            "dictionary method coercion changes the environment: `{method_type}` to `{target}`"
-        );
-        let Some(method_row) = self.function_row(actual) else { return method };
-
-        let environment = self.push_instruction(Instruction::AllocShared(method), Type::POINTER);
-        let load_method =
-            |this: &mut Self, env, typ: &Type| this.push_instruction(Instruction::Deref(env), typ.clone());
-        self.evidence_adapter("dictionary_adapter", target, method_type, &method_row, environment, load_method)
+        let name = Arc::new("dictionary_adapter".to_string());
+        let id = self.evidence_adapter_definition(&name, &target, method_type, &method_row, callee);
+        self.instantiate_in_scope(id, name, target)
     }
 
-    /// Builds a closure of the function type `target` around a callee of a narrower row. The closure's
-    /// body loads the callee out of `environment` with `load_callee` and calls
-    /// it with the evidence `callee_row` needs projected out of the evidence `target_row` provides.
-    fn evidence_adapter(
-        &mut self, name: &str, target: Type, callee_type: Type, callee_row: &Effects, environment: Value,
-        load_callee: impl FnOnce(&mut Self, Value, &Type) -> Value,
-    ) -> Value {
-        let (Type::Function(target_ft), Type::Function(callee_ft)) = (&target, &callee_type) else {
+    /// Builds a definition of the function type `target` around `callee`, of the narrower row
+    /// `callee_row`. It is called with the adapter's arguments and the evidence `callee_row` needs
+    /// projected out of the evidence `target` provides.
+    fn evidence_adapter_definition(
+        &mut self, name: &Name, target: &Type, callee_type: Type, callee_row: &Effects, callee: AdaptedCallee,
+    ) -> DefinitionId {
+        let (Type::Function(target_ft), Type::Function(callee_ft)) = (target, &callee_type) else {
             panic!("evidence adapter from `{callee_type}` to `{target}` is not between functions");
         };
         assert!(
@@ -823,18 +1013,31 @@ where
         let callee_is_closure = callee_ft.is_closure();
         let return_type = target_ft.return_type.clone();
         let parameters = target_ft.parameters.clone();
-        let environment_type = target_ft.environment.clone();
+        let environment_type = target_ft.environment().cloned();
         let surface_count = parameters.len() - 1;
 
         let generics_count = self.generics_in_scope.len() as u32;
-        let name = Arc::new(name.to_string());
-        let id = self.new_isolated_definition(name.clone(), generics_count, target.clone(), |this| {
+        let id = next_definition_id();
+        self.new_isolated_definition(id, name.clone(), generics_count, target.clone(), |this| {
             let params = this.push_capability_parameters(&parameters);
-            let env = this.push_capability_parameter(environment_type);
-            let callee = load_callee(this, env, &callee_type);
+            let env = environment_type.map(|environment_type| this.push_capability_parameter(environment_type));
+            let mut arguments: Vec<Value> = params[..surface_count].to_vec();
+            let callee = match callee {
+                AdaptedCallee::Environment => env.expect("an adapter calling its environment is a closure"),
+                AdaptedCallee::Definition { id, bindings } if bindings.is_empty() => Value::Definition(id),
+                AdaptedCallee::Definition { id, bindings } => {
+                    this.push_instruction(Instruction::Instantiate(id, bindings), callee_type.clone())
+                },
+                AdaptedCallee::WrappedMethod { dictionary_type, index } => {
+                    let dictionary = arguments[0];
+                    let (method, data) =
+                        this.method_through_pointer(dictionary, &dictionary_type, index, callee_type.clone());
+                    arguments[0] = data;
+                    method
+                },
+            };
 
             let evidence = this.project_evidence(params[surface_count], callee_row);
-            let mut arguments: Vec<Value> = params[..surface_count].to_vec();
             arguments.push(evidence);
             let instruction = if callee_is_closure {
                 Instruction::CallClosure { closure: callee, arguments }
@@ -844,9 +1047,13 @@ where
             let result = this.push_instruction(instruction, return_type);
             this.terminate_block(TerminatorInstruction::Return(result));
         });
+        id
+    }
 
-        let adapter = self.make_definition_value(id, name, target.clone());
-        self.push_instruction(Instruction::PackClosure { function: adapter, environment }, target)
+    /// Convert the type checker's instantiation `bindings` of a definition, which are in the order of
+    /// the generics of the definition's generalized type, to MIR types
+    fn convert_bindings(&self, bindings: &[TCType]) -> Arc<GenericBindings> {
+        Arc::new(mapvec(bindings, |binding| self.convert_type(binding, None)))
     }
 
     /// The row of a function value as type inference solved it, `None` unless it is a function type
@@ -872,15 +1079,18 @@ where
     }
 
     /// Appends the callee's evidence argument. A callee whose value type has no evidence
-    /// slot (externs, `resume`, effect operations) takes none.
-    fn append_evidence_argument(&mut self, callee_expr: ExprId, callee_value: &Value, arguments: &mut Vec<Value>) {
+    /// slot (externs, `resume`, effect operations) takes none. The evidence is built for the
+    /// callee's effects which are taken from its type unless `effects` is given.
+    fn append_evidence_argument(
+        &mut self, callee_expr: ExprId, callee_value: &Value, effects: Option<TCType>, arguments: &mut Vec<Value>,
+    ) {
         let callee_type = self.type_of_value(callee_value);
         let expected_evidence_type = match &callee_type {
             Type::Function(function_type) if function_type.parameters.len() <= arguments.len() => return,
             Type::Function(function_type) => function_type.parameters.last().cloned(),
             _ => None,
         };
-        let effects = self.callee_effects(callee_expr);
+        let effects = effects.unwrap_or_else(|| self.callee_effects(callee_expr));
         let evidence = self.build_evidence(&effects);
 
         if let Some(expected) = expected_evidence_type {
@@ -1103,26 +1313,24 @@ where
         }
     }
 
-    /// Save the current function state, create a new function,
-    /// run `f` to fill in the function's body, then restore the previous state
-    /// and return the new function value.
+    /// Save the current function state, create the new function `id`,
+    /// run `f` to fill in the function's body, then restore the previous state.
     fn new_definition(
-        &mut self, name: Name, name_id: Option<NameId>, generic_count: u32, typ: Type, f: impl FnOnce(&mut Self),
-    ) -> DefinitionId {
-        let state = self.start_global(name, name_id, generic_count, typ);
+        &mut self, id: DefinitionId, name: Name, generic_count: u32, typ: Type, f: impl FnOnce(&mut Self),
+    ) {
+        let state = self.start_global(id, name, generic_count, typ);
         f(self);
-        self.end_global(state)
+        self.end_global(state);
     }
 
     /// Builds a new isolated top-level definition, saving and restoring this builder's local
-    /// scope state (locals, mutability, capabilities) around it.
+    /// scope state (locals, mutability, capabilities, loops) around it.
     fn new_isolated_definition(
-        &mut self, name: Name, generic_count: u32, typ: Type, f: impl FnOnce(&mut Self),
-    ) -> DefinitionId {
+        &mut self, id: DefinitionId, name: Name, generic_count: u32, typ: Type, f: impl FnOnce(&mut Self),
+    ) {
         let saved = self.take_scope();
-        let id = self.new_definition(name, None, generic_count, typ, f);
+        self.new_definition(id, name, generic_count, typ, f);
         self.restore_scope(saved);
-        id
     }
 
     /// Takes this builder's local scope state, leaving it empty. Paired with [Self::restore_scope].
@@ -1132,6 +1340,7 @@ where
             mutable_locals: std::mem::take(&mut self.mutable_locals),
             capabilities: std::mem::take(&mut self.capabilities),
             own_evidence: self.own_evidence.take(),
+            loop_targets: std::mem::take(&mut self.loop_targets),
         }
     }
 
@@ -1141,22 +1350,26 @@ where
         self.mutable_locals = saved.mutable_locals;
         self.capabilities = saved.capabilities;
         self.own_evidence = saved.own_evidence;
+        self.loop_targets = saved.loop_targets;
+    }
+
+    /// The id of a new definition for the given name, or a fresh id if there is no name
+    fn definition_id_for(&self, name_id: Option<NameId>) -> DefinitionId {
+        match name_id {
+            Some(name_id) => self.get_definition_id(&TopLevelName::new(self.top_level_id, name_id)),
+            None => next_definition_id(),
+        }
     }
 
     fn start_global(
-        &mut self, name: Name, name_id: Option<NameId>, generic_count: u32, typ: Type,
+        &mut self, definition_id: DefinitionId, name: Name, generic_count: u32, typ: Type,
     ) -> (Option<Definition>, BlockId) {
         // Safety: This function must always be paired with [Self::end_global]
         let previous_function = self.current_function.take();
         let previous_block = std::mem::replace(&mut self.current_block, BlockId::ENTRY_BLOCK);
 
-        let definition_id = if let Some(name_id) = name_id {
-            let id = self.get_definition_id(&TopLevelName::new(self.top_level_id, name_id));
-            self.external.remove(&id);
-            id
-        } else {
-            next_definition_id()
-        };
+        // This definition may have been referenced before it was defined
+        self.external.remove(&definition_id);
 
         self.current_function = Some(Definition::new(name, definition_id, generic_count, typ));
         (previous_function, previous_block)
@@ -1190,16 +1403,14 @@ where
     ) -> Value {
         let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
         let suppress_capabilities = handle_body_handler_name.is_some() || is_handler_branch;
-        let tc_function_type = match self.types.result.maps.expr_types[&expr].follow(&self.types.bindings) {
-            TCType::Function(tc_function_type) => tc_function_type.clone(),
-            _ => unreachable!("Lambda does not have a function type"),
-        };
-        let tc_effects = tc_function_type.effects.clone();
-        let own_row = self.convert_context().split_row(&tc_effects);
+
+        // A suppressed lambda routes capabilities through the environment instead of an evidence parameter.
+        let signature = self.lambda_signature(expr, lambda, is_handler_branch, !suppress_capabilities);
+        let LambdaSignature { effects, own_row, parameter_types, evidence_type, function_type: full_type } = signature;
 
         // Resolved against the enclosing scope's still-current tables, before they're taken below.
         let needed_capabilities = if suppress_capabilities {
-            self.suppressed_lambda_needed_capabilities(&tc_effects, handle_body_handler_name)
+            self.suppressed_lambda_needed_capabilities(&effects, handle_body_handler_name)
         } else {
             Vec::new()
         };
@@ -1212,25 +1423,6 @@ where
             (suppress_capabilities && !own_row.generics.is_empty()).then(|| self.own_evidence_value());
         let forwarded_evidence_type = forwarded_evidence.map(|value| self.type_of_value(&value));
 
-        // A handler branch's trailing `resume` parameter is a coroutine primitive: C-shaped, no evidence.
-        let parameter_types: Vec<Type> = mapvec(lambda.parameters.iter().enumerate(), |(i, parameter)| {
-            let parameter_type = &self.types.result.maps.pattern_types[&parameter.pattern];
-            if is_handler_branch && i + 1 == lambda.parameters.len() {
-                self.convert_context().convert_c_function_type(parameter_type)
-            } else {
-                self.convert_type(parameter_type, None)
-            }
-        });
-        let evidence_type = self.convert_context().row_evidence_type(&own_row);
-
-        // A suppressed lambda routes capabilities through the environment instead of an evidence parameter.
-        let full_type = {
-            let mut parameters = parameter_types.clone();
-            if !suppress_capabilities {
-                parameters.push(evidence_type.clone());
-            }
-            self.convert_context().build_function_type(&tc_function_type, parameters)
-        };
         let full_type = self.extend_environment_with_capabilities(full_type, &needed_capability_values);
         let full_type = self.extend_environment_with_fields(full_type, forwarded_evidence_type.clone());
         let Type::Function(function_type) = &full_type else { unreachable!("Lambda does not have a function type") };
@@ -1249,67 +1441,43 @@ where
         // It also means we have to instantiate lambdas when they're used with the current generic
         // parameters.
         let generics_count = self.generics_in_scope.len() as u32;
-        let old_loop_targets = std::mem::take(&mut self.loop_targets);
         let saved_scope = self.take_scope();
 
         let mut captured_values = needed_capability_values.clone();
         captured_values.extend(forwarded_evidence);
 
-        let id = self.new_definition(name.clone(), name_id, generics_count, full_type.clone(), |this| {
-            for (i, parameter) in lambda.parameters.iter().enumerate() {
-                this.push_parameter(parameter_types[i].clone());
+        let id = self.definition_id_for(name_id);
+        self.new_definition(id, name.clone(), generics_count, full_type.clone(), |this| {
+            this.bind_lambda_parameters(&lambda.parameters, &parameter_types);
 
-                let parameter_value = Value::Parameter(this.current_block, i as u32);
-                this.bind_pattern(parameter.pattern, parameter_value);
-
-                if parameter.is_mutable
-                    && let Some((_, name_id)) = this.try_find_name(parameter.pattern)
-                {
-                    let alloc = this.push_instruction(Instruction::StackAlloc(parameter_value), Type::POINTER);
-                    this.local_variables.insert(name_id, alloc);
-                    this.mutable_locals.insert(name_id);
-                }
-            }
-
-            // Push the evidence parameter and register the capability of each effect within it
             if !suppress_capabilities {
-                let evidence = this.push_capability_parameter(evidence_type.clone());
-                for effect in own_row.entries.iter() {
-                    let capability = this.lookup_capability(evidence, effect);
-                    this.capabilities.push((this.convert_context().effect_key(effect), capability));
-                }
-                this.own_evidence = Some(evidence);
+                this.bind_own_evidence(evidence_type.clone(), &own_row);
             }
 
-            let env_is_pointer =
-                matches!(function_type.environment, Type::Primitive(crate::mir::PrimitiveType::Pointer));
             let free_vars = this.context().get_closure_environment(expr);
             let has_captures = free_vars.is_some() || !needed_capabilities.is_empty() || forwarded_evidence.is_some();
-            let needs_env_param = has_captures || env_is_pointer;
             let pushed_capability_count = if suppress_capabilities { 0 } else { 1 };
             let env_param_index = lambda.parameters.len() as u32 + pushed_capability_count;
-            if needs_env_param {
+            if has_captures {
                 if let Some(env) = function_type.environment() {
                     this.push_parameter(env.clone());
                 }
 
-                if has_captures {
-                    let empty_free_vars = BTreeSet::new();
-                    let free_vars = free_vars.unwrap_or(&empty_free_vars);
-                    let environment = Value::Parameter(this.current_block, env_param_index);
-                    this.unpack_closure_environment(
-                        free_vars.iter().copied(),
-                        &needed_capabilities,
-                        forwarded_evidence_type.as_ref(),
-                        environment,
-                    );
+                let empty_free_vars = BTreeSet::new();
+                let free_vars = free_vars.unwrap_or(&empty_free_vars);
+                let environment = Value::Parameter(this.current_block, env_param_index);
+                this.unpack_closure_environment(
+                    free_vars.iter().copied(),
+                    &needed_capabilities,
+                    forwarded_evidence_type.as_ref(),
+                    environment,
+                );
 
-                    // For regular closures, mutable captures are pointers (by reference).
-                    if !is_move {
-                        for var in free_vars.iter() {
-                            if mutable_captures.contains(var) {
-                                this.mutable_locals.insert(*var);
-                            }
+                // For regular closures, mutable captures are pointers (by reference).
+                if !is_move {
+                    for var in free_vars.iter() {
+                        if mutable_captures.contains(var) {
+                            this.mutable_locals.insert(*var);
                         }
                     }
                 }
@@ -1329,7 +1497,7 @@ where
             if let Some(self_name_id) = name_id {
                 let self_def_id = this.current_function.as_ref().unwrap().id;
                 let mut self_value = Value::Definition(self_def_id);
-                if needs_env_param {
+                if has_captures {
                     let environment = Value::Parameter(this.current_block, env_param_index);
                     self_value = this.push_instruction(
                         Instruction::PackClosure { function: self_value, environment },
@@ -1343,7 +1511,6 @@ where
             this.terminate_block(TerminatorInstruction::Return(return_value));
         });
 
-        self.loop_targets = old_loop_targets;
         self.restore_scope(saved_scope);
 
         // Re-read the type from the finished definition rather than reusing the one computed
@@ -1351,35 +1518,23 @@ where
         let full_type = self.finished_functions[&id].typ.clone();
 
         // Generic lambdas inherit generics from the surrounding context; instantiate manually.
-        let mut value = self.make_definition_value(id, name, full_type.clone());
-        if !is_global && !self.generics_in_scope.is_empty() {
-            let bindings = Arc::new(mapvec(0..self.generics_in_scope.len() as u32, |i| Type::Generic(Generic(i))));
-            value = self.push_instruction(Instruction::Instantiate(id, bindings), full_type.clone());
-        }
+        let mut value = if is_global {
+            self.make_definition_value(id, name, full_type.clone())
+        } else {
+            self.instantiate_in_scope(id, name, full_type.clone())
+        };
         let free_vars = self.context().get_closure_environment(expr).cloned();
-        let env_type = function_type.environment.clone();
-        let env_is_pointer = matches!(env_type, Type::Primitive(crate::mir::PrimitiveType::Pointer));
-        let has_captures = free_vars.is_some() || !captured_values.is_empty();
-        if has_captures || env_is_pointer {
-            let environment = if has_captures {
-                let free_vars = free_vars.unwrap_or_default();
-                self.pack_closure_environment(&free_vars, &captured_values, is_move, &env_type)
-            } else {
-                // Pointer-env slot with no captures (e.g. an ability impl assigning a plain function):
-                // use a null pointer for the env. Transmute from Unit so constant-folding works
-                // even when this PackClosure ends up in a global initializer.
-                self.push_instruction(Instruction::Transmute(Value::Unit), Type::POINTER)
-            };
+        if free_vars.is_some() || !captured_values.is_empty() {
+            let free_vars = free_vars.unwrap_or_default();
+            let environment = self.pack_closure_environment(&free_vars, &captured_values, is_move);
             value = self.push_instruction(Instruction::PackClosure { function: value, environment }, full_type);
         }
         value
     }
 
-    /// Packs each given variable, plus any needed capability values, into a closure environment.
-    /// When `env_type` is a pointer, the capture tuple is heap-allocated (via [Instruction::AllocShared])
-    /// and the returned value is the resulting pointer. Otherwise returns the tuple directly.
+    /// Packs each given variable, plus any needed capability values, into a closure environment tuple.
     fn pack_closure_environment(
-        &mut self, free_vars: &BTreeSet<NameId>, capability_values: &[Value], is_move: bool, env_type: &Type,
+        &mut self, free_vars: &BTreeSet<NameId>, capability_values: &[Value], is_move: bool,
     ) -> Value {
         assert!(!free_vars.is_empty() || !capability_values.is_empty());
 
@@ -1397,40 +1552,16 @@ where
             }
         });
         values.extend_from_slice(capability_values);
-        let types = mapvec(&values, |value| self.type_of_value(value));
-        let tuple = self.push_instruction(Instruction::MakeTuple(values), Type::tuple(types));
-
-        if matches!(env_type, Type::Primitive(crate::mir::PrimitiveType::Pointer)) {
-            self.push_instruction(Instruction::AllocShared(tuple), Type::POINTER)
-        } else {
-            tuple
-        }
+        self.make_tuple(values)
     }
 
     /// Unpack a closure environment parameter, binding each captured name, needed capability and
     /// forwarded evidence to its value. Each unpacked capability is pushed onto `self.capabilities` in order.
     fn unpack_closure_environment(
-        &mut self, free_vars: impl ExactSizeIterator<Item = NameId> + Clone, capabilities: &[(EffectKey, Value)],
-        forwarded_evidence: Option<&Type>, environment: Value,
+        &mut self, free_vars: impl ExactSizeIterator<Item = NameId>, capabilities: &[(EffectKey, Value)],
+        forwarded_evidence: Option<&Type>, env_value: Value,
     ) {
         let free_vars_len = free_vars.len();
-        let env_value =
-            if matches!(self.type_of_value(&environment), Type::Primitive(crate::mir::PrimitiveType::Pointer)) {
-                let mut field_types: Vec<Type> = free_vars
-                    .clone()
-                    .map(|var| {
-                        let tc_type = &self.types.result.maps.name_types[&var];
-                        self.convert_type(tc_type, None)
-                    })
-                    .collect();
-                field_types.extend(capabilities.iter().map(|(_, v)| self.type_of_value(v)));
-                field_types.extend(forwarded_evidence.cloned());
-                let tuple_type = Type::tuple(field_types);
-                self.push_instruction(Instruction::Deref(environment), tuple_type)
-            } else {
-                environment
-            };
-
         let Type::Tuple(env_fields) = self.type_of_value(&env_value) else { unreachable!() };
         let expected_len = free_vars_len + capabilities.len() + forwarded_evidence.is_some() as usize;
         assert_eq!(env_fields.len(), expected_len);
@@ -1723,8 +1854,7 @@ where
                 Matched { value, pointee: None }
             },
             Some(_) => {
-                let get_field = Instruction::GetFieldPtr { struct_ptr: matched.value, struct_type: layout, index };
-                let value = self.push_instruction(get_field, Type::POINTER);
+                let value = self.field_pointer(matched.value, &layout, index);
                 Matched { value, pointee: Some(field_type) }
             },
         }
@@ -1944,7 +2074,7 @@ where
                     let element = element.unwrap_or_else(|| struct_type.clone());
                     self.field_access_target(&element, struct_ptr)
                 };
-                self.push_instruction(Instruction::GetFieldPtr { struct_ptr, struct_type, index }, Type::POINTER)
+                self.field_pointer(struct_ptr, &struct_type, index)
             },
             LhsKind::Other => todo!("unhandled assignment LHS"),
         }
@@ -1959,15 +2089,8 @@ where
             let current = self.push_instruction(Instruction::Deref(pointer), value_type.clone());
             let rhs = self.expression(assignment.rhs);
 
-            let function = self.expression(op_expr);
-            let mut arguments = vec![current, rhs];
-            self.append_evidence_argument(op_expr, &function, &mut arguments);
-            let instruction = if self.type_of_value(&function).is_closure() {
-                Instruction::CallClosure { closure: function, arguments }
-            } else {
-                Instruction::Call { function, arguments }
-            };
-            self.push_instruction(instruction, value_type)
+            let callee = self.callee(op_expr);
+            self.emit_callee_call(op_expr, callee, vec![current, rhs], value_type)
         } else {
             let rhs = self.expression(assignment.rhs);
 
@@ -1995,106 +2118,212 @@ where
     }
 
     fn constructor(&mut self, constructor: &cst::Constructor, expr: ExprId) -> Value {
-        // Side-effects are executed in source order but the type must
-        // be packed in declaration order. So re-order fields afterward.
-        let mut fields = mapvec(&constructor.fields, |(name, field)| (*name, self.expression(*field)));
+        let field_values = self.constructor_fields(constructor, expr, |this, _, field, _| this.expression(field));
+        self.make_tuple(field_values)
+    }
 
+    /// Lower each field of the constructor `expr` with `lower_field`, which is given the field's name,
+    /// expression and index in the type's declaration order. Returns the fields in declaration order.
+    fn constructor_fields(
+        &mut self, constructor: &cst::Constructor, expr: ExprId,
+        mut lower_field: impl FnMut(&mut Self, NameId, ExprId, u32) -> Value,
+    ) -> Vec<Value> {
         // We must be careful here so that we can still produce MIR even if type-checking failed
         let no_order = BTreeMap::new();
         let field_order = self.context().constructor_field_order(expr).unwrap_or(&no_order);
-        fields.sort_unstable_by_key(|(name, _)| field_order.get(name).unwrap_or(&0));
 
-        // For ability impls, the struct's MIR type tells us each field's expected closure shape.
-        // If a field receives a bare function (env = NoClosureEnv) where a `Ptr Unit`-env closure
-        // is required, pack it with a null pointer so the produced value matches.
-        let struct_type = self.convert_expr_type(expr);
-        let expected_field_types: Vec<Type> =
-            if let Type::Tuple(fields) = &struct_type { fields.iter().cloned().collect() } else { Vec::new() };
-
-        let field_values = mapvec(fields.iter().enumerate(), |(i, (_n, v))| {
-            self.coerce_field_to_pointer_env(*v, expected_field_types.get(i))
+        // Side-effects are executed in source order but the type must
+        // be packed in declaration order. So re-order fields afterward.
+        let mut fields = mapvec(&constructor.fields, |(name, field)| {
+            let index = field_order.get(name).copied().unwrap_or(0);
+            (index, lower_field(self, *name, *field, index))
         });
-        let tuple_type = Type::Tuple(Arc::new(mapvec(&field_values, |v| self.type_of_value(v))));
-
-        self.push_instruction(Instruction::MakeTuple(field_values), tuple_type)
+        fields.sort_unstable_by_key(|(index, _)| *index);
+        mapvec(fields, |(_, value)| value)
     }
 
-    fn coerce_field_to_pointer_env(&mut self, value: Value, expected: Option<&Type>) -> Value {
-        let Some(expected) = expected else { return value };
-        let Type::Function(expected_fn) = expected else { return value };
-        if !matches!(expected_fn.environment, Type::Primitive(crate::mir::PrimitiveType::Pointer)) {
-            return value;
-        }
-        let actual = self.type_of_value(&value);
-        let Type::Function(actual_fn) = actual else { return value };
-        if !matches!(actual_fn.environment, Type::Primitive(crate::mir::PrimitiveType::NoClosureEnv)) {
-            return value;
-        }
+    /// Pack `values` into a tuple
+    fn make_tuple(&mut self, values: Vec<Value>) -> Value {
+        let tuple_type = Type::tuple(mapvec(&values, |value| self.type_of_value(value)));
+        self.push_instruction(Instruction::MakeTuple(values), tuple_type)
+    }
 
-        // Resolve `value` down to a (DefinitionId, optional GenericBindings) pair we can
-        // re-reference inside a freshly-generated wrapper definition. If the source value
-        // isn't a definition reference (e.g. it's a synthesized instruction with no
-        // top-level identity) we can't safely build a wrapper here, so fall back to packing
-        // the raw fn-ptr; downstream may still hit a shape mismatch but most cases (impls
-        // like `cast = transmute` / `print = print_float`) resolve to Definition values.
-        let (inner_def_id, inner_bindings) = match value {
-            Value::Definition(id) => (id, None),
-            Value::InstructionResult(iid) => {
-                let bindings = match &self.current_function.as_ref().unwrap().instructions[iid] {
-                    Instruction::Instantiate(id, bindings) => Some((*id, Some(bindings.clone()))),
-                    Instruction::Id(Value::Definition(id)) => Some((*id, None)),
-                    _ => None,
-                };
-                match bindings {
-                    Some(p) => p,
-                    None => {
-                        let null_ptr = self.push_instruction(Instruction::Transmute(Value::Unit), Type::POINTER);
-                        return self.push_instruction(
-                            Instruction::PackClosure { function: value, environment: null_ptr },
-                            expected.clone(),
-                        );
-                    },
-                }
-            },
-            _ => return value,
+    /// Lower the top-level definition of an impl of a trait. An impl without parameters is a global
+    /// dictionary, otherwise it is a function taking the impl's parameters and returning a dictionary.
+    /// Either way the dictionary is created by [Self::impl_constructor].
+    fn impl_definition(&mut self, definition: &cst::Definition, impl_info: &cst::ImplInfo) {
+        let name_id = impl_info.name.local_name_id;
+        let name = self.context()[name_id].clone();
+        let typ = self.types.get_generalized(name_id);
+        self.set_generics_in_scope(&typ);
+        let generic_count = self.generics_in_scope.len() as u32;
+        let id = self.get_definition_id(&impl_info.name);
+
+        let cst::Expr::Lambda(lambda) = &self.context()[definition.rhs] else {
+            let typ = self.convert_pattern_type(definition.pattern);
+            self.new_definition(id, name, generic_count, typ, |this| {
+                let dictionary = this.impl_constructor(impl_info, &[], &[]);
+                this.terminate_block(TerminatorInstruction::Result(dictionary));
+            });
+            return;
         };
 
-        let generic_count = self.generics_in_scope.len() as u32;
-        let wrapper_type = expected.clone();
-        let expected_params = expected_fn.parameters.clone();
-        let expected_env = expected_fn.environment.clone();
-        let expected_return = expected_fn.return_type.clone();
-        let inner_typ = actual_fn.as_ref().clone();
-        let inner_typ = Type::Function(Arc::new(inner_typ));
-        let wrapper_id = self.new_definition(
-            Arc::new("ability_field_wrapper".to_string()),
-            None,
-            generic_count,
-            wrapper_type.clone(),
-            |this| {
-                for pt in &expected_params {
-                    this.push_parameter(pt.clone());
-                }
-                this.push_parameter(expected_env.clone());
-                let forward_args =
-                    mapvec(0..expected_params.len(), |j| Value::Parameter(BlockId::ENTRY_BLOCK, j as u32));
-                let inner_value = if let Some(bindings) = inner_bindings {
-                    this.push_instruction(Instruction::Instantiate(inner_def_id, bindings), inner_typ.clone())
-                } else {
-                    Value::Definition(inner_def_id)
-                };
-                let result = this.push_instruction(
-                    Instruction::Call { function: inner_value, arguments: forward_args },
-                    expected_return.clone(),
-                );
-                this.terminate_block(TerminatorInstruction::Return(result));
-            },
-        );
+        let signature = self.lambda_signature(definition.rhs, lambda, false, true);
+        self.new_definition(id, name, generic_count, signature.function_type, |this| {
+            let values = this.bind_lambda_parameters(&lambda.parameters, &signature.parameter_types);
+            this.bind_own_evidence(signature.evidence_type, &signature.own_row);
+            let dictionary = this.impl_constructor(impl_info, &lambda.parameters, &values);
+            this.terminate_block(TerminatorInstruction::Return(dictionary));
+        });
+    }
 
-        let wrapper_value =
-            self.make_definition_value(wrapper_id, Arc::new("ability_field_wrapper".to_string()), wrapper_type.clone());
-        let null_ptr = self.push_instruction(Instruction::Transmute(Value::Unit), Type::POINTER);
-        self.push_instruction(Instruction::PackClosure { function: wrapper_value, environment: null_ptr }, wrapper_type)
+    /// Lower the constructor of an impl of a trait. The resulting dictionary holds each of the
+    /// trait's members followed by the impl's data, which holds the `values` of the impl's `parameters`.
+    /// Each method is lowered to a function taking a pointer to the impl's data as its first
+    /// parameter. See [types::ConvertTypeContext::dictionary_type].
+    fn impl_constructor(
+        &mut self, impl_info: &cst::ImplInfo, parameters: &[cst::Parameter], values: &[Value],
+    ) -> Value {
+        let expr = impl_info.constructor;
+        let cst::Expr::Constructor(constructor) = &self.context()[expr] else {
+            unreachable!("an impl's constructor is always a constructor expression")
+        };
+        let maps = &self.types.result.maps;
+        let parameter_types = mapvec(parameters, |parameter| maps.pattern_types[&parameter.pattern].clone());
+        let data_type = self.convert_context().impl_data_type(&parameter_types);
+        let impl_ = ImplContext { info: impl_info, parameters, data_type };
+        let methods =
+            self.impl_trait(impl_info).map_or_else(Default::default, |trait_| trait_.method_flags(self.compiler));
+
+        let mut field_values = self.constructor_fields(constructor, expr, |this, name, field, index| {
+            if methods.get(index as usize) == Some(true) {
+                let name = this.context()[name].clone();
+                this.impl_method(field, name, &impl_, index)
+            } else {
+                this.expression(field)
+            }
+        });
+        field_values.push(self.push_instruction(Instruction::MakeTuple(values.to_vec()), impl_.data_type));
+        self.make_tuple(field_values)
+    }
+
+    /// The trait an impl implements, if it is an impl of a trait. An impl of any other type is an
+    /// ordinary definition, see [type_inference::get_type::trait_impl_of].
+    fn impl_trait(&self, impl_info: &cst::ImplInfo) -> Option<TraitDefinition> {
+        let typ = self.types.result.maps.expr_types.get(&impl_info.constructor)?;
+        typ.trait_application(&self.types.bindings, self.compiler).map(|(trait_, _)| trait_)
+    }
+
+    /// Lower an impl's method to a function taking a reference to the impl's data as its first
+    /// parameter, followed by the method's own parameters and evidence. Each of the impl's
+    /// parameters is read from the impl's data rather than being captured by the method.
+    fn impl_method(&mut self, expr: ExprId, name: Name, impl_: &ImplContext, field_index: u32) -> Value {
+        let cst::Expr::Lambda(lambda) = &self.context()[expr] else {
+            unreachable!("impl methods are lambdas after type inference")
+        };
+        let signature = self.lambda_signature(expr, lambda, false, true);
+        let full_type = types::method_field_type(signature.function_type);
+
+        // The method is generic over the generics in scope
+        let id = self.get_impl_method_id(impl_.info.name, field_index);
+        let generic_count = self.generics_in_scope.len() as u32;
+        self.new_isolated_definition(id, name.clone(), generic_count, full_type.clone(), |this| {
+            let data = this.push_capability_parameter(Type::POINTER);
+            this.bind_impl_parameters(data, impl_);
+
+            this.bind_lambda_parameters(&lambda.parameters, &signature.parameter_types);
+            this.bind_own_evidence(signature.evidence_type, &signature.own_row);
+
+            let return_value = this.expression(lambda.body);
+            this.terminate_block(TerminatorInstruction::Return(return_value));
+        });
+        self.instantiate_in_scope(id, name, full_type)
+    }
+
+    /// Bind each of an impl's parameters to the corresponding field of the impl's data, which `data`
+    /// points to. A mutable parameter is copied to the stack, so each call mutates its own copy.
+    fn bind_impl_parameters(&mut self, data: Value, impl_: &ImplContext) {
+        let Type::Tuple(field_types) = &impl_.data_type else { return };
+
+        for (index, (parameter, field_type)) in impl_.parameters.iter().zip(field_types.iter()).enumerate() {
+            let value = self.load_field(data, &impl_.data_type, index as u32, field_type.clone());
+            self.bind_parameter(parameter, value);
+        }
+    }
+
+    /// The signature of the lambda `lambda`, which is the expression `expr`. Its function type takes
+    /// the evidence after its parameters if `with_evidence` is set. A handler branch's trailing
+    /// `resume` parameter is a coroutine primitive: C-shaped, no evidence.
+    fn lambda_signature(
+        &self, expr: ExprId, lambda: &cst::Lambda, is_handler_branch: bool, with_evidence: bool,
+    ) -> LambdaSignature {
+        let tc_function_type = match self.types.result.maps.expr_types[&expr].follow(&self.types.bindings) {
+            TCType::Function(tc_function_type) => tc_function_type,
+            _ => unreachable!("Lambda does not have a function type"),
+        };
+        let own_row = self.convert_context().split_row(&tc_function_type.effects);
+        let parameter_types = mapvec(lambda.parameters.iter().enumerate(), |(i, parameter)| {
+            let parameter_type = &self.types.result.maps.pattern_types[&parameter.pattern];
+            if is_handler_branch && i + 1 == lambda.parameters.len() {
+                self.convert_context().convert_c_function_type(parameter_type)
+            } else {
+                self.convert_type(parameter_type, None)
+            }
+        });
+        let evidence_type = self.convert_context().row_evidence_type(&own_row);
+
+        let mut parameters = parameter_types.clone();
+        if with_evidence {
+            parameters.push(evidence_type.clone());
+        }
+        let function_type = self.convert_context().build_function_type(tc_function_type, parameters);
+        let effects = tc_function_type.effects.clone();
+        LambdaSignature { effects, own_row, parameter_types, evidence_type, function_type }
+    }
+
+    /// Push a parameter for each of a lambda's parameters and bind its pattern to it, returning each
+    /// parameter. Mutable parameters are copied to the stack so they can be mutated.
+    fn bind_lambda_parameters(&mut self, parameters: &[cst::Parameter], parameter_types: &[Type]) -> Vec<Value> {
+        mapvec(parameters.iter().zip(parameter_types), |(parameter, parameter_type)| {
+            let parameter_value = self.push_capability_parameter(parameter_type.clone());
+            self.bind_parameter(parameter, parameter_value);
+            parameter_value
+        })
+    }
+
+    /// Bind the parameter's pattern to `value`, copying it to the stack if the parameter is mutable
+    fn bind_parameter(&mut self, parameter: &cst::Parameter, value: Value) {
+        self.bind_pattern(parameter.pattern, value);
+
+        if parameter.is_mutable
+            && let Some((_, name_id)) = self.try_find_name(parameter.pattern)
+        {
+            let alloc = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
+            self.local_variables.insert(name_id, alloc);
+            self.mutable_locals.insert(name_id);
+        }
+    }
+
+    /// Push the evidence parameter and register the capability of each effect within `own_row`
+    fn bind_own_evidence(&mut self, evidence_type: Type, own_row: &Effects) {
+        let evidence = self.push_capability_parameter(evidence_type);
+        for effect in own_row.entries.iter() {
+            let capability = self.lookup_capability(evidence, effect);
+            self.capabilities.push((self.convert_context().effect_key(effect), capability));
+        }
+        self.own_evidence = Some(evidence);
+    }
+
+    /// Refer to the definition `id` which was created within the current scope and is generic over
+    /// the same generics, instantiating it with them.
+    fn instantiate_in_scope(&mut self, id: DefinitionId, name: Name, typ: Type) -> Value {
+        let value = self.make_definition_value(id, name, typ.clone());
+        if self.generics_in_scope.is_empty() {
+            value
+        } else {
+            let bindings = Arc::new(mapvec(0..self.generics_in_scope.len() as u32, |i| Type::Generic(Generic(i))));
+            self.push_instruction(Instruction::Instantiate(id, bindings), typ)
+        }
     }
 
     fn quoted(&self, _quoted: &cst::Quoted) -> Value {
@@ -2199,9 +2428,10 @@ where
         }
     }
 
-    /// For type definitions we need to define their constructors
+    /// For type definitions we need to define their constructors. Traits have none since only an
+    /// impl can create a dictionary, and effects have no values.
     fn type_definition(&mut self, type_definition: &cst::TypeDefinition) {
-        if type_definition.kind.is_effect() {
+        if type_definition.kind.is_ability() {
             return;
         }
 
@@ -2275,7 +2505,8 @@ where
         let generic_count = self.generics_in_scope.len() as u32;
         let is_zero_arg = field_types.is_empty();
 
-        let id = self.new_definition(name, Some(name_id), generic_count, typ, |this| {
+        let id = self.get_definition_id(&top_level_name);
+        self.new_definition(id, name, generic_count, typ, |this| {
             let mut result = this.build_constructor_payload(
                 field_types,
                 tag,
@@ -2294,7 +2525,6 @@ where
             let terminator = if is_zero_arg { TerminatorInstruction::Result } else { TerminatorInstruction::Return };
             this.terminate_block(terminator(result));
         });
-        self.name_to_id.insert(top_level_name, id);
     }
 
     /// Build the value a constructor returns before any shared-pointer wrap.

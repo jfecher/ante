@@ -4,8 +4,8 @@ trait Describe t =
 impl describe_i32: Describe I32 with
     describe x = x + 100
 
-trait Twice t =
-    twice: fn {Describe t} t -> I32
+trait Twice t (d = _) =
+    twice: fn {Describe t d} t -> I32
 
 impl twice_i32: Twice I32 with
     twice {_d} x = (x + 100) * 2

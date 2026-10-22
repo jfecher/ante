@@ -1,8 +1,8 @@
 trait Double a =
     do_double: fn a -> a
 
-implicit double_i32: Double I32 =
-    Double fn x -> x + x
+impl double_i32: Double I32 with
+    do_double x = x + x
 
 // auto-deref only applies to call arguments not in a return position
 deref_ref (x: ref I32): I32 = x.*

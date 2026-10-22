@@ -315,6 +315,30 @@ pub enum Diagnostic {
     MissingExplicitPlace {
         location: Location,
     },
+    ImplicitOmitsHoleTypeArgument {
+        typ: String,
+        /// The names of the omitted generics of `typ` which default to `_`
+        missing: Vec<String>,
+        location: Location,
+    },
+    TraitConstructedOutsideImpl {
+        trait_name: Name,
+        location: Location,
+    },
+    TraitMethodEnvironment {
+        location: Location,
+    },
+    ImplParameterNotCopy {
+        typ: String,
+        location: Location,
+    },
+    CannotWidenDictionaryEffects {
+        actual: String,
+        expected: String,
+        /// The field which can't be adapted to the wider effects, if any
+        field: Option<Name>,
+        location: Location,
+    },
     AmbiguousElidedPlace {
         location: Location,
     },
@@ -792,6 +816,42 @@ impl Diagnostic {
             Diagnostic::MissingExplicitPlace { location: _ } => {
                 "A reference in this position requires an explicit `'a` place".to_string()
             },
+            Diagnostic::ImplicitOmitsHoleTypeArgument { typ, missing, location: _ } => {
+                let suffix = if typ.ends_with("s") { "'" } else { "'s" };
+                let names = mapvec(missing, |name| color_type(name).to_string()).join(", ");
+                let parameter = if missing.len() == 1 { "parameter" } else { "parameters" };
+                let needs = if missing.len() == 1 { "needs" } else { "need" };
+                format!("{}{suffix} omitted {parameter} {names} {needs} to be specified here", color_type(typ))
+            },
+            Diagnostic::TraitConstructedOutsideImpl { trait_name, location: _ } => {
+                format!("{} values can only be created with an {}", color_type(trait_name), color_keyword("impl"),)
+            },
+            Diagnostic::ImplParameterNotCopy { typ, location: _ } => {
+                let impl_ = color_keyword("impl");
+                let copy = color_type("Copy");
+                format!(
+                    "This {impl_} parameter has type {}, which is not {copy}. All {impl_} parameters must implement {copy}",
+                    color_type(typ),
+                )
+            },
+            Diagnostic::TraitMethodEnvironment { location: _ } => {
+                format!("Trait methods cannot have a closure environment",)
+            },
+            Diagnostic::CannotWidenDictionaryEffects { actual, expected, field: None, location: _ } => {
+                format!(
+                    "Expected {} but found {}. Effects can't be added to this impl here since the expected type requires a specific impl",
+                    color_type(expected),
+                    color_type(actual)
+                )
+            },
+            Diagnostic::CannotWidenDictionaryEffects { actual, expected, field: Some(field), location: _ } => {
+                format!(
+                    "Expected {} but found {}. Its field {} cannot be given more effects since it is not a method",
+                    color_type(expected),
+                    color_type(actual),
+                    color_name(field)
+                )
+            },
             Diagnostic::AmbiguousElidedPlace { location: _ } => "Place annotation required here".to_string(),
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
                 "Internal compiler error: there are free variables in this type constructor".to_string()
@@ -919,6 +979,11 @@ impl Diagnostic {
             | Diagnostic::DefaultHoleCantBeUsed { location, .. }
             | Diagnostic::RequiredTypeParameterAfterDefault { location, .. }
             | Diagnostic::MissingExplicitPlace { location, .. }
+            | Diagnostic::ImplicitOmitsHoleTypeArgument { location, .. }
+            | Diagnostic::TraitConstructedOutsideImpl { location, .. }
+            | Diagnostic::TraitMethodEnvironment { location, .. }
+            | Diagnostic::ImplParameterNotCopy { location, .. }
+            | Diagnostic::CannotWidenDictionaryEffects { location, .. }
             | Diagnostic::AmbiguousElidedPlace { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
             | Diagnostic::EffectOperationMustBeFunction { location, .. }
@@ -991,6 +1056,9 @@ impl Diagnostic {
                     "this value is only valid until the end of this scope".to_string()
                 };
                 Some((declared_at, message))
+            },
+            Diagnostic::ImplParameterNotCopy { typ: _, location } => {
+                Some((location, "This restriction is temporary!".to_string()))
             },
             _ => None,
         }

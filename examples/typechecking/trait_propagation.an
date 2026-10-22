@@ -10,11 +10,10 @@ foo () = baz bar
 // expected stdout:
 // (bar: a) = extern "bar"
 // 
-// type Baz a =
-//     baz: fn a [Ptr Unit] -> Unit
+// type Baz a ($impl = _) =
+//     baz: fn a -> Unit
 // 
 // (foo: fn Unit -> Unit is pure) () = (error).baz (bar: _)
-
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10

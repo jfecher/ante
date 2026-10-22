@@ -1,0 +1,97 @@
+import Std.Throw.Throw, throw
+
+trait Run t (e: effect) =
+    run: fn t -> I32 can e
+
+impl run_zero: Run I32 pure with
+    run _ = 0
+
+trait Outer t (e: effect) (ri = _) =
+    inner: Run t e ri
+
+effect Ping =
+    ping: fn Unit -> Unit
+
+// A dictionary may only be given more effects where it is adapted to them: as a call's
+// argument or result. Anywhere else its effect args must match exactly.
+from_body (): Run I32 Ping = run_zero
+
+annotated () =
+    x: Run I32 Ping = run_zero
+    x
+
+impl outer_ping: Outer I32 Ping with
+    inner = run_zero
+
+takes (d: Run I32 Ping): I32 can Ping = Run.run 1 {d}
+
+by_argument (): I32 can Ping = takes run_zero
+
+// A member whose type is a function once aliases are expanded is a method
+type Generate t (e: effect) = fn t -> I32 can e
+
+type Thunk (e: effect) = call: fn Unit -> I32 can e
+
+trait Gen t (e: effect) =
+    gen: Generate t e
+    thunk: Thunk e
+
+five (): I32 = 5
+
+impl gen_i32: Gen I32 pure with
+    gen x = x
+    thunk = Thunk five
+
+both (x: t) {g: Gen t e} (h: fn Unit => Unit can e): I32 can e =
+    h ()
+    g.thunk.call () + Gen.gen x
+
+// Only methods can be adapted to perform more effects
+widen_field () =
+    handle
+        _ = both 3i32 {gen_i32} (fn () -> ping ())
+    | ping () -> resume ()
+
+// A handler branch's parameters are known when the branch is checked,
+// so `println` is given exactly our `Display t e2` impl.
+print_thrown (f: a can Throw t, e) {Display t e2}: a can Fs, e, e2 =
+    handle f ()
+    | throw error ->
+        print_to_stderr do println error
+        Std.C.exit 1
+
+// Giving the impl explicitly is the same
+print_explicit (x: t) {d: Display t e2}: Unit can Print, Fs, e2 =
+    println x {d}
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/dictionary_widening_errors.an:17:30
+// 16 | // argument or result. Anywhere else its effect args must match exactly.
+//    | // error: The body of this function has type Run I32 pure but it is expected to return Run I32 Ping
+// 17 | from_body (): Run I32 Ping = run_zero
+//    |                              ^^^^^^^^
+// 
+// examples/typechecking/dictionary_widening_errors.an:20:23
+// 19 | annotated () =
+//    |     // error: Type annotation Run I32 Ping does not match the inferred type Run I32 pure
+// 20 |     x: Run I32 Ping = run_zero
+//    |                       ^^^^^^^^
+// 21 |     x
+// 
+// examples/typechecking/dictionary_widening_errors.an:24:13
+// 23 | impl outer_ping: Outer I32 Ping with
+//    |     // error: This field value has type Run I32 pure but the field is declared with type Run I32 Ping
+// 24 |     inner = run_zero
+//    |             ^^^^^^^^
+// 
+// examples/typechecking/dictionary_widening_errors.an:52:24
+// 51 |     handle
+//    |         // error: Expected Gen I32 Ping but found Gen I32 pure. Its field thunk cannot be given more effects since it is not a method
+// 52 |         _ = both 3i32 {gen_i32} (fn () -> ping ())
+//    |                        ^^^^^^^
+// 53 |     | ping () -> resume ()
+// 
+// Found 4 errors and 0 warnings
+

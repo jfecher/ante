@@ -21,7 +21,7 @@ main () = ()
 // expected stderr:
 // examples/typechecking/assign_through_immutable.an:5:6
 // 4 | deref_of_ref (a: mut (ref I32)) =
-//   |     // error: Cannot assign through a value of type ref '_ I32, a mut or uniq reference is required
+//   |     // error: Cannot assign through a value of type ref I32, a mut or uniq reference is required
 // 5 |     a.* := 2
 //   |      ^^
 // 

@@ -682,7 +682,6 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Char => write!(f, "Char"),
             TypeKind::Reference(kind) => self.fmt_reference_type(*kind, f),
             TypeKind::NoClosureEnv => write!(f, "{}", NO_CLOSURE_ENV_STRING),
-            TypeKind::Pointer => write!(f, "Ptr"),
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
             TypeKind::EffectUnion(operands) => {
                 for (i, operand) in operands.iter().enumerate() {
@@ -693,7 +692,7 @@ impl<'a> CstDisplay<'a> {
                 }
                 Ok(())
             },
-            TypeKind::Hole => write!(f, "_"),
+            TypeKind::Hole | TypeKind::RigidHole => write!(f, "_"),
             TypeKind::ImplicitPlace => write!(f, "'_"),
             TypeKind::Pure => write!(f, "pure"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
@@ -843,7 +842,7 @@ impl<'a> CstDisplay<'a> {
         let [parameter] = function_type.parameters.as_slice() else { return false };
         let unit_parameter = !parameter.is_implicit && matches!(parameter.typ.kind, TypeKind::Unit);
         let hole_environment =
-            matches!(function_type.environment.as_deref(), Some(env) if matches!(env.kind, TypeKind::Hole));
+            matches!(function_type.environment.as_deref(), Some(env) if matches!(env.kind, TypeKind::RigidHole));
         let has_effects = function_type.effects.as_ref().is_some_and(|effects| !effects.is_empty());
         unit_parameter && hole_environment && has_effects
     }

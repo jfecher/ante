@@ -28,7 +28,7 @@ main () =
 //     handle fn () [(f: fn Unit [_] -> Unit can Count)] ->
 //         (f: fn Unit [_] -> Unit can Count) ()
 //         0
-//     | (count: fn Unit -> Unit can Count) () -> fn () (resume: fn Unit [Ptr] -> I32 is pure) -> (add_i32: Add I32).+ 1 ((resume: fn Unit [Ptr] -> I32 is pure) ())
+//     | (count: fn Unit -> Unit can Count) () -> fn () (resume: fn Unit [ResumeEnv] -> I32 is pure) -> (add_i32: Add I32 add_i32).+ 1 ((resume: fn Unit [ResumeEnv] -> I32 is pure) ())
 // 
 // (main: fn Unit -> Unit is pure) () =
 //     (handle_count: fn (fn Unit -> Unit can Count) -> I32 is pure) (foo: fn Unit -> Unit can Count)

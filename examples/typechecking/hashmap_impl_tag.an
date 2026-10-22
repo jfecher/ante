@@ -1,0 +1,32 @@
+import Std.HashMap.HashMap, empty, insert, merge
+import Std.Hash.Hash, hash_u8
+
+// A second way to hash U8 keys
+impl hash_u8_alt: Hash U8 with
+    hash x = cast x * 31
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    // Each map stores the impl it hashes with in its type
+    var m1: HashMap U8 I32 hash_u8 = HashMap.empty ()
+    var m2 = HashMap.empty () {hash_u8_alt}
+
+    // Neither needs a `Hash` impl to insert, using the one stored in the map
+    ignore (m1.insert 1 2)
+    ignore (m2.insert 3 4)
+
+    // Maps hashing their keys differently can't be mixed
+    m1.merge m2
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/hashmap_impl_tag.an:20:14
+// 19 |     // Maps hashing their keys differently can't be mixed
+//    |     // error: Argument 2 has type HashMap U8 I32 hash_u8_alt but HashMap U8 I32 hash_u8 was expected
+// 20 |     m1.merge m2
+//    |              ^^
+// 
+// Found 1 error and 0 warnings
+

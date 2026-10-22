@@ -1,0 +1,103 @@
+trait Show t =
+    show: fn t -> String
+    name: String
+
+// An impl's data is not a member of its trait
+impl show_i32: Show I32 with
+    show x = cast x
+    name = "i32"
+    impl_data = 3
+
+// Trait dictionaries can only be created by an impl
+implicit show_u8: Show U8 = Show with
+    show x = cast x
+    name = "u8"
+
+implicit show_bool: Show Bool = Show (fn b -> if b then "yes" else "no") "bool"
+
+// Only the construction is reported, even when nested, not the implicit's omitted impl argument
+implicit show_char: Show Char =
+    name = "char"
+    Show with
+        show _ = "char"
+        name = name
+
+// An impl's data holds its parameters and is copied along with its values, so they must be Copy
+impl show_with (suffix: String): Show I64 with
+    show x = cast x ++ suffix
+    name = "i64"
+
+impl show_copy {Copy t} (value: t) {Show t}: Show (t, t) with
+    show _ = show value
+    name = "pair"
+
+// The trait's hidden impl generic can't be referred to
+trait Pick a =
+    pick: fn a i -> i
+
+// A trait method's environment is its impl's data, so it can't declare another
+trait Gen t =
+    gen: fn t [I32] -> I32
+
+// The same goes for a method whose environment is given by a type alias
+type Counter t = fn t [I32] -> I32
+
+trait Count t =
+    count: Counter t
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/trait_impl_errors.an:9:5
+//  8 |     name = "i32"
+//  9 |     impl_data = 3	// error: Show I32 has no field named `impl_data`
+//    |     ^^^^^^^^^
+// 
+// examples/typechecking/trait_impl_errors.an:12:29
+// 11 | // Trait dictionaries can only be created by an impl
+//    | // error: Show values can only be created with an impl
+// 12 | implicit show_u8: Show U8 = Show with
+//    |                             ^^^^^^^^^
+// 13 |     show x = cast x
+// 
+// examples/typechecking/trait_impl_errors.an:16:33
+//    | // error: Show values can only be created with an impl
+// 16 | implicit show_bool: Show Bool = Show (fn b -> if b then "yes" else "no") "bool"
+//    |                                 ^^^^
+// 
+// examples/typechecking/trait_impl_errors.an:21:5
+// 20 |     name = "char"
+// 21 |     Show with	// error: Show values can only be created with an impl
+//    |     ^^^^^^^^^
+// 22 |         show _ = "char"
+// 
+// examples/typechecking/trait_impl_errors.an:26:16
+// 25 | // An impl's data holds its parameters and is copied along with its values, so they must be Copy
+//    | // error: This impl parameter has type String, which is not Copy. All impl parameters must implement Copy
+//    | // note: This restriction is temporary!
+// 26 | impl show_with (suffix: String): Show I64 with
+//    |                ^^^^^^^^^^^^^^^^
+// 27 |     show x = cast x ++ suffix
+// 
+// examples/typechecking/trait_impl_errors.an:36:16
+// 35 | trait Pick a =
+// 36 |     pick: fn a i -> i	// error: `i` not found in scope
+//    |                ^
+// 
+// examples/typechecking/trait_impl_errors.an:36:21
+// 35 | trait Pick a =
+// 36 |     pick: fn a i -> i	// error: `i` not found in scope
+//    |                     ^
+// 
+// examples/typechecking/trait_impl_errors.an:40:16
+// 39 | trait Gen t =
+// 40 |     gen: fn t [I32] -> I32	// error: Trait methods cannot have a closure environment
+//    |                ^^^
+// 
+// examples/typechecking/trait_impl_errors.an:46:12
+// 45 | trait Count t =
+// 46 |     count: Counter t	// error: Trait methods cannot have a closure environment
+//    |            ^^^^^^^^^
+// 
+// Found 9 errors and 0 warnings
+
