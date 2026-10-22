@@ -738,9 +738,7 @@ pub enum Instruction {
     BitwiseOr(Value, Value),
     BitwiseXor(Value, Value),
     BitwiseNot(Value),
-    /// Shift left. The shift amount is the same width as the value.
     BitwiseShl(Value, Value),
-    /// Shift right. Signed integers sign-extend; unsigned integers zero-fill.
     BitwiseShr(Value, Value),
 
     SignExtend(Value),
