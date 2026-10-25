@@ -1,0 +1,33 @@
+// #280: Matching on a value with a constructor from a different type whose variant
+// index is out of bounds for the matched type panicked in the match compiler.
+
+type T =
+  | C0
+  | C1
+  | C2 U32
+
+foo (v: Maybe T): I32 =
+    if v is T.C2 _ then 42 else 0
+
+bar (v: Maybe T): I32 =
+    match v
+    | T.C2 _ -> 1
+    | _ -> 2
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/regressions/280_mismatched_constructor_pattern.an:10:13
+//  9 | foo (v: Maybe T): I32 =
+//    |     // error: This pattern has type fn U32 -> T is pure but the matched value has type fn _ -> Maybe T is pure
+// 10 |     if v is T.C2 _ then 42 else 0
+//    |             ^^^^
+// 
+// examples/regressions/280_mismatched_constructor_pattern.an:14:7
+// 13 |     match v
+//    |     // error: This pattern has type fn U32 -> T is pure but the matched value has type fn _ -> Maybe T is pure
+// 14 |     | T.C2 _ -> 1
+//    |       ^^^^
+// 15 |     | _ -> 2
+// 
+// Found 2 errors and 0 warnings
