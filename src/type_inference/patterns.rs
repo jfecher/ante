@@ -687,13 +687,15 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     ) -> Result<(Vec<Case>, Option<Box<DecisionTree>>), Diagnostic> {
         for mut row in rows {
             if let Some(col) = row.remove_column(branch_var) {
+                let in_bounds = |constructor: &Constructor| constructor.variant_index() < cases.len();
+
                 let (idx, extra_columns) = match col.pattern {
-                    Pattern::Constructor(constructor, args) => {
+                    Pattern::Constructor(constructor, args) if in_bounds(&constructor) => {
                         let idx = constructor.variant_index();
                         let columns = mapvec(cases[idx].1.iter().zip(args), |(var, pat)| Column::new(*var, pat));
                         (idx, columns)
                     },
-                    Pattern::ConstructorRest(constructor, args, name) => {
+                    Pattern::ConstructorRest(constructor, args, name) if in_bounds(&constructor) => {
                         let idx = constructor.variant_index();
                         let mut columns = mapvec(cases[idx].1.iter().zip(args), |(var, pat)| Column::new(*var, pat));
                         if let Some(name) = name
@@ -704,7 +706,11 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                         (idx, columns)
                     },
                     // Type-checking should reject any other pattern shape at this position.
-                    _ => continue,
+                    _ => {
+                        // Prevent an irrelevant unreachable pattern warning
+                        self.unreachable_cases.remove(&row.original_body);
+                        continue;
+                    },
                 };
 
                 let mut cols = row.columns;
