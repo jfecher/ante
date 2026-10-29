@@ -450,6 +450,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// The name of the member a member access accesses
+    fn member_name(&self, access: &cst::MemberAccess) -> &cst::Name {
+        &self.current_extended_context()[access.member]
+    }
+
     /// Return the current extended context.
     /// Note that this context only includes new items added by this type checker, it does
     /// not contain any existing items from the resolver until the type checker finishes
@@ -1088,7 +1093,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn is_arithmetic_operator(&self, function: ExprId) -> bool {
         let name = match &self.current_extended_context()[function] {
             cst::Expr::Variable(path) => self.current_extended_context()[*path].last_ident(),
-            cst::Expr::MemberAccess(access) => access.member.as_str(),
+            cst::Expr::MemberAccess(access) => self.member_name(access).as_str(),
             _ => return false,
         };
         matches!(name, "+" | "-" | "*" | "/" | "%")

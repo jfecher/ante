@@ -221,9 +221,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             None => self.delay_find_method_dictionary(&dictionary_type, function),
         };
 
-        let member_name = self.trait_member_name(path);
         let method_type = Type::Function(Shared::new(method));
-        self.trait_member_access(function, object, &member_name, member.index, method_type.clone());
+        self.trait_member_access(function, object, path, member.index, method_type.clone());
         Some((method_type, explicit_dictionary))
     }
 
@@ -252,7 +251,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn try_get_name(&self, expr: ExprId) -> Option<String> {
         match &self.current_extended_context()[expr] {
             cst::Expr::Variable(path) => Some(self.current_extended_context()[*path].last_ident().to_string()),
-            cst::Expr::MemberAccess(access) => Some(access.member.to_string()),
+            cst::Expr::MemberAccess(access) => Some(self.member_name(access).to_string()),
             _ => None,
         }
     }

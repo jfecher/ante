@@ -22,7 +22,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let id = self.current_item.unwrap();
         self.check_generic_defaults(definition);
 
-        let constructors: Vec<(NameId, Vec<&cst::Type>)> = match &definition.body {
+        // Each constructor's name along with the name, if it has one, and type of each of its fields
+        let constructors = match &definition.body {
             cst::TypeDefinitionBody::Error => Vec::new(),
             cst::TypeDefinitionBody::Alias(body) => {
                 // Convert the body even though the result is unused to issue kind or recursion errors
@@ -52,11 +53,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.build_effect_operation_types(id, definition, fields);
                     return;
                 }
-                let fields = mapvec(fields, |(_, field_type)| field_type);
+                let fields = mapvec(fields, |(name, field_type)| (Some(*name), field_type));
                 vec![(definition.name, fields)]
             },
             cst::TypeDefinitionBody::Enum(variants, _) => {
-                mapvec(variants, |(name, fields)| (*name, mapvec(fields, |(_, field_type)| field_type)))
+                mapvec(variants, |(name, fields)| (*name, mapvec(fields, |(name, field_type)| (*name, field_type))))
             },
         };
 
@@ -74,10 +75,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // fields that mention `n` agree on `n`'s kind.
         let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
 
-        for (constructor_name, args) in constructors.iter() {
-            let parameters = self.convert_constructor_parameters(definition, args, &mut local_kinds);
+        for (constructor_name, fields) in constructors.iter() {
+            let parameters = self.convert_constructor_parameters(definition, fields, &mut local_kinds);
             if definition.kind.is_trait() {
                 self.build_trait_member_types(type_name, definition, &parameters);
+            } else {
+                // Give each field declaration a type and origin like any other name for tooling to use
+                for ((field, _), field_type) in fields.iter().zip(&parameters) {
+                    if let Some(field) = *field {
+                        self.name_types.insert(field, field_type.clone());
+                        let origin = Origin::TopLevelDefinition(TopLevelName::new(id, field));
+                        self.current_extended_context_mut().insert_name_origin(field, origin);
+                    }
+                }
             }
             let actual = self.build_constructor_type(type_name, definition, &generics, parameters);
             self.check_name(*constructor_name, &actual);
@@ -127,16 +137,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Convert the parameter types of a constructor for a sum or product type, whose arguments
-    /// are declared as `variant_args`. A trait's methods never have an environment of their own,
-    /// see [Self::without_method_environment].
+    /// are declared as `variant_args`. A trait's methods never have an environment
+    /// of their own.
     fn convert_constructor_parameters(
-        &mut self, item: &cst::TypeDefinition, variant_args: &[&cst::Type],
+        &mut self, item: &cst::TypeDefinition, variant_args: &[(Option<NameId>, &cst::Type)],
         local_kinds: &mut crate::type_inference::types::LocalKinds,
     ) -> Vec<Type> {
         // TODO: Change lifetime desugaring to work on function types better.
         // `fn (ref t) (ref t) -> Bool` should likely be `forall 'a. fn (ref 'a t) (ref 'a t) -> Bool`
         if !item.kind.is_ability() {
-            for arg in variant_args {
+            for (_, arg) in variant_args {
                 Self::reject_implicit_places(arg, self.compiler);
             }
         }
@@ -145,7 +155,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let insert_implicit_type_vars = item.kind.is_ability();
 
         // Effects are closed by default here which stops `can` clauses from being polymorphic by default.
-        mapvec(variant_args, |arg| {
+        mapvec(variant_args, |(_, arg)| {
             let param = self.from_cst_type_in_type_definition(arg, insert_implicit_type_vars, local_kinds);
             if item.kind.is_trait() {
                 self.without_method_environment(arg, param)

@@ -1075,7 +1075,7 @@ impl<'a> CstDisplay<'a> {
             write!(f, ")")?;
         }
 
-        write!(f, ".{}", access.member)
+        write!(f, ".{}", context.get_name(access.member))
     }
 
     fn fmt_index(

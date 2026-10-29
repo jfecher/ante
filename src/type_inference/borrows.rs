@@ -834,7 +834,8 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
         // A field reached through a reference is held by the object rather than the field
         let parent_path = self.tc.try_build_move_path(access.object);
-        let holder = parent_path.map(|parent| if indirect { parent } else { parent.field(access.member.clone()) });
+        let holder =
+            parent_path.map(|parent| if indirect { parent } else { parent.field(self.tc.member_name(access).clone()) });
 
         if check_move {
             let typ = self.tc.expr_types[&expr].clone();

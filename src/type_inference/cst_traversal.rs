@@ -5,11 +5,11 @@ use crate::{
     incremental::{AllDefinitions, ExportedDefinitions, GetItem, GetItemRaw, GetType, RawItem, Resolve},
     iterator_extensions::mapvec,
     lexer::token::Integer,
-    name_resolution::{Origin, TraitMember, builtin::Builtin, namespace::SourceFileId, origin_of_top_level_definition},
+    name_resolution::{Origin, TraitMember, builtin::Builtin, origin_of_top_level_definition},
     parser::{
         cst::{self, Definition, Expr, Literal, Pattern, ReferenceKind},
         get_item::TraitDefinition,
-        ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
     },
     shared_arc::Shared,
     type_inference::{
@@ -460,7 +460,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// The name a trait member is referred to by, which is also its dictionary field's name
-    pub(super) fn trait_member_name(&self, path: PathId) -> cst::Name {
+    fn trait_member_name(&self, path: PathId) -> cst::Name {
         self.current_extended_context()[path].last_name().clone()
     }
 
@@ -477,16 +477,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return Type::ERROR;
         };
         let dictionary = self.delay_find_implicit_value(&dictionary_type, 0, expr, None);
-        self.trait_member_access(expr, dictionary, &member_name, member.index, field_type.clone());
+        self.trait_member_access(expr, dictionary, path, member.index, field_type.clone());
         self.request_copy_witness(expr, &field_type);
         field_type
     }
 
-    /// Replace `expr` with `dictionary.member`, whose type is `member_type`
+    /// Replace `expr` with `dictionary.member`, whose type is `member_type`. `path` is the path
+    /// naming the trait member which `expr` previously referred to.
     pub(super) fn trait_member_access(
-        &mut self, expr: ExprId, dictionary: ExprId, member: &cst::Name, index: u32, member_type: Type,
+        &mut self, expr: ExprId, dictionary: ExprId, path: PathId, index: u32, member_type: Type,
     ) {
-        let access = cst::MemberAccess { object: dictionary, member: member.clone() };
+        // The original path keeps the member's origin, so this name needs none of its own
+        let (member, location) = self.current_extended_context()[path].components.last().unwrap().clone();
+        let member = self.push_name(member, location);
+        let access = cst::MemberAccess { object: dictionary, member };
         let context = self.current_extended_context_mut();
         context.insert_expr(expr, Expr::MemberAccess(access));
         context.push_member_access_index(expr, index);
@@ -733,13 +737,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         let object = member_access.object;
-        let member = member_access.member.clone();
+        let member = member_access.member;
+        let member_name = self.member_name(member_access).clone();
 
         let hint = self.next_type_variable();
         let struct_type = self.infer_expr(object, &hint);
 
         // Resolve the method name to a top-level function
-        let Some((method_name, func_type, bindings)) = self.resolve_method_for_type(&struct_type, &member) else {
+        let Some((method_name, func_type, bindings)) = self.resolve_method_for_type(&struct_type, &member_name) else {
             return None;
         };
         let method_type = Type::Function(func_type.clone());
@@ -756,27 +761,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return None;
         };
 
-        // The member access location includes the leading `.` but the component span
-        // must cover only the member name so tooling can treat it as a reference.
-        let end = location.span.end;
-        let start = crate::diagnostics::Position {
-            byte_index: end.byte_index.saturating_sub(member.len()),
-            line_number: end.line_number,
-            column_number: end.column_number.saturating_sub(member.chars().count() as u32),
-        };
-        let member_location = crate::diagnostics::Span { start, end }.in_file(location.file_id);
-
         // Create a Variable expression for the method, with a fresh path
-        let method_path = self.push_path(
-            cst::Path { components: vec![(member, member_location)] },
-            method_type.clone(),
-            location.clone(),
-        );
+        let member_location = self.current_extended_context().name_location(member);
+        let method_path =
+            self.push_path(cst::Path::ident(member_name, member_location), method_type.clone(), location.clone());
+        self.name_types.insert(member, method_type.clone());
 
-        self.current_extended_context_mut().insert_path_origin(method_path, Origin::TopLevelDefinition(method_name));
-
+        let origin = Origin::TopLevelDefinition(method_name);
+        let context = self.current_extended_context_mut();
+        context.insert_path_origin(method_path, origin);
+        context.insert_name_origin(member, origin);
         if let Some(bindings) = bindings {
-            self.current_extended_context_mut().insert_instantiation(method_path, bindings);
+            context.insert_instantiation(method_path, bindings);
         }
 
         let method_var = self.push_expr(Expr::Variable(method_path), method_type, location);
@@ -913,12 +909,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ) -> Type {
         let hint = self.next_type_variable();
         let struct_type = self.infer_expr(member_access.object, &hint);
+        let member = member_access.member;
+        let member_name = self.member_name(member_access).clone();
 
         let fields = self.get_field_types(&struct_type, None);
-        if let Some((field, field_index)) = fields.get(&member_access.member) {
+        if let Some((field, field_index)) = fields.get(&member_name) {
             let field = field.clone();
             let field_index = *field_index;
             self.current_extended_context_mut().push_member_access_index(expr, field_index);
+            self.name_types.insert(member, field.clone());
+            if let Some(owner) = self.field_owner(&struct_type) {
+                self.record_field_origin(member, owner, field_index);
+            }
 
             // A dictionary's method is passed a reference to the dictionary's impl data when it is
             // called, so a method can only be accessed as a callee: `dictionary.method args`. A method
@@ -957,9 +959,22 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else {
             let typ = self.type_to_string(&struct_type);
             let location = expr.locate(self);
-            let name = member_access.member.clone();
-            self.compiler.accumulate(Diagnostic::NoSuchFieldForType { typ, location, name });
+            self.compiler.accumulate(Diagnostic::NoSuchFieldForType { typ, location, name: member_name });
             Type::ERROR
+        }
+    }
+
+    /// The user-defined type whose fields a value of type `typ` has, looking through a reference or pointer
+    fn field_owner(&self, typ: &Type) -> Option<TopLevelName> {
+        let typ = typ.pointer_element(&self.bindings).unwrap_or_else(|| typ.clone());
+        self.find_type_name(&typ)
+    }
+
+    /// Record that `name` refers to the declaration of the field at `index` of `owner`.
+    /// Positional fields have no declaration to refer to.
+    fn record_field_origin(&mut self, name: NameId, owner: TopLevelName, index: u32) {
+        if let Some(origin) = owner.field_origin(index, self.compiler) {
+            self.current_extended_context_mut().insert_name_origin(name, origin);
         }
     }
 
@@ -968,7 +983,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn resolve_method_for_type(
         &mut self, struct_type: &Type, member: &cst::Name,
     ) -> Option<(TopLevelName, Shared<FunctionType>, Option<Vec<Type>>)> {
-        let (source_file, type_top_level_id) = self.find_type_info(struct_type)?;
+        let type_top_level_id = self.find_type_name(struct_type)?.top_level_item;
+        let source_file = type_top_level_id.source_file;
 
         // Only resolve methods on actual type definitions, not on traits or effects
         let RawItem(item, _) = GetItemRaw(type_top_level_id).get(self.compiler);
@@ -1000,15 +1016,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Some((name, func_type.clone(), bindings))
     }
 
-    /// Find the source file and TopLevelId where a type is defined, unwrapping references and type applications.
-    fn find_type_info(&self, typ: &Type) -> Option<(SourceFileId, TopLevelId)> {
+    /// Find the name of the user-defined type `typ` refers to, unwrapping references and type applications.
+    fn find_type_name(&self, typ: &Type) -> Option<TopLevelName> {
         match self.follow_type(typ) {
-            Type::UserDefined(Origin::TopLevelDefinition(id)) => {
-                Some((id.top_level_item.source_file, id.top_level_item))
-            },
+            Type::UserDefined(Origin::TopLevelDefinition(id)) => Some(*id),
             Type::Application(constructor, _) => match typ.reference_element(&self.bindings) {
-                Some((_, element)) => self.find_type_info(&element),
-                _ => self.find_type_info(constructor),
+                Some((_, element)) => self.find_type_name(&element),
+                _ => self.find_type_name(constructor),
             },
             _ => None,
         }
@@ -1191,11 +1205,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // This is used when lowering to MIR when structs are converted into tuples.
         let mut field_order = BTreeMap::new();
         let field_types = self.get_field_types(&typ, None);
+        let owner = self.field_owner(&typ);
         let methods = impl_.map_or_else(Default::default, |(_, trait_)| trait_.method_flags(self.compiler));
 
         for (name, expr) in &constructor.fields {
             let name_string = &self.current_context()[*name];
-            let (expected_field_type, field_index) = field_types.get(name_string).cloned().unwrap_or((Type::ERROR, 0));
+            let field = field_types.get(name_string).cloned();
+            if let (Some(owner), Some((_, index))) = (owner, &field) {
+                self.record_field_origin(*name, owner, *index);
+            }
+            let (expected_field_type, field_index) = field.unwrap_or((Type::ERROR, 0));
 
             if methods.get(field_index as usize) == Some(true) {
                 self.check_impl_method(*expr, &expected_field_type);

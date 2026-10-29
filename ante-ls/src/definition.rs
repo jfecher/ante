@@ -135,6 +135,32 @@ mod tests {
         assert_eq!(loc.span.start.byte_index, source.find('x').unwrap());
     }
 
+    /// A field access resolves to the field/method's declaration
+    #[test]
+    fn definition_of_member_accesses() {
+        let source =
+            "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n    ()\n";
+        let (db, file_id) = db_with_source(source, "def_members.an");
+
+        let field = source.find("b.val").unwrap() + 2;
+        let loc = definition_at(&db, file_id, field).expect("field access should resolve");
+        assert_eq!(loc.span.start.byte_index, source.find("val").unwrap(), "must jump to the field declaration");
+
+        let method = source.rfind("get").unwrap();
+        let loc = definition_at(&db, file_id, method).expect("dot-syntax call should resolve");
+        assert_eq!(loc.span.start.byte_index, source.find("Box.get").unwrap() + 4, "must jump to the method");
+    }
+
+    /// A field in a named constructor resolves to the field's declaration
+    #[test]
+    fn definition_of_named_constructor_field() {
+        let source = "type Box = val: I32\n\nmain () =\n    b = Box with val = 3\n    ()\n";
+        let (db, file_id) = db_with_source(source, "def_constructor_field.an");
+        let field = source.rfind("val").unwrap();
+        let loc = definition_at(&db, file_id, field).expect("constructor field should resolve");
+        assert_eq!(loc.span.start.byte_index, source.find("val").unwrap());
+    }
+
     /// A module qualifier resolves to the start of the module's file. A crate component
     /// refers to the crate's root module which has no source file, so it has no definition.
     #[test]

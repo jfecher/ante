@@ -56,7 +56,7 @@ main () =
 // type Shape =
 //     | Circle F64
 //     | Rect F64 F64
-//     with (name: (error)): String
+//     with (name: String): String
 // 
 // (set_some: fn (mut 'b (Maybe String)) -> Unit can Mutate 'b!) (b: mut 'b (Maybe String)) =
 //     (match_var5: (error)) = (b: mut 'b (Maybe String))

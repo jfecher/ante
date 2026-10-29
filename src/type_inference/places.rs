@@ -668,7 +668,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     Some(t) if t.reference_element(&self.bindings).is_some() => {
                         match t.reference_places(&self.bindings) {
                             Some(places) => {
-                                let field = [PlaceSegment::Field(access.member.clone())];
+                                let field = [PlaceSegment::Field(self.member_name(access).clone())];
                                 Type::project_place(&places, &field, &self.bindings, &TypeBindings::default())
                             },
                             None => self.next_type_variable(),

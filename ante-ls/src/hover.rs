@@ -87,28 +87,66 @@ mod tests {
     use ropey::Rope;
     use std::path::PathBuf;
 
+    fn db_with_source(source: &str, file_name: &str) -> (Db, SourceFileId) {
+        let ante_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("ante-ls must live inside the ante workspace")
+            .to_path_buf();
+
+        let file = ante_root.join(file_name);
+        let mut db = Db::default();
+        crate::diagnostics::init_db(&mut db, &ante_root);
+        let roots = crate::diagnostics::CrateRoots::new(&db, ante_root);
+        crate::diagnostics::set_file_content(&mut db, &roots, &file, &Rope::from_str(source));
+
+        // Resolve the id the same way production requests do.
+        let file_id = crate::diagnostics::file_id_for_path(&roots, &file);
+        (db, file_id)
+    }
+
     /// Regression for a hover failure where `try` in ante's parser kept around
     /// Paths which were not chosen for the parse, which overlapped with the actual path of `iota`
     /// in the test below. This broke ante-ls's iteration over all paths/names/exprs/patterns.
     #[test]
     fn hover_on_imported_iota() {
         let source = "import Std.Stream.iota\n\nmain () =\n    iota 3\n    ()\n";
-
-        let ante_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("ante-ls must live inside the ante workspace")
-            .to_path_buf();
-
-        let foo = ante_root.join("foo.an");
-        let mut db = Db::default();
-        crate::diagnostics::init_db(&mut db, &ante_root);
-        let roots = crate::diagnostics::CrateRoots::new(&db, ante_root);
-        crate::diagnostics::set_file_content(&mut db, &roots, &foo, &Rope::from_str(source));
-
-        // Resolve the id the same way production requests do.
-        let file_id = crate::diagnostics::file_id_for_path(&roots, &foo);
+        let (db, file_id) = db_with_source(source, "foo.an");
         // Byte 38 is the 'i' in `iota` on line 4.
         let result = hover_at(&db, file_id, 38);
         assert_eq!(result.as_deref(), Some("iota : fn Usz -> (fn Unit [Usz] -> Unit can Emit Usz) is pure"));
+    }
+
+    /// Fields have a type at their declaration, in member accesses, and in named constructors
+    #[test]
+    fn hover_on_struct_fields() {
+        let source = "type Box = val: I32\n\nget (b: Box) = b.val\n\nmain () =\n    b = Box with val = 3\n    ()\n";
+        let (db, file_id) = db_with_source(source, "hover_fields.an");
+
+        let declaration = source.find("val").unwrap();
+        assert_eq!(hover_at(&db, file_id, declaration).as_deref(), Some("val : I32"));
+
+        let access = source.find("b.val").unwrap() + 2;
+        assert_eq!(hover_at(&db, file_id, access).as_deref(), Some("val : I32"));
+
+        let constructor_field = source.rfind("val").unwrap();
+        assert_eq!(hover_at(&db, file_id, constructor_field).as_deref(), Some("val : I32"));
+    }
+
+    /// Positional fields have no declaration but are still typed where accessed
+    #[test]
+    fn hover_on_positional_field() {
+        let source = "type Pair = | Pair I32 String\n\nsecond (p: Pair) = p.1\n";
+        let (db, file_id) = db_with_source(source, "hover_positional.an");
+        let access = source.rfind('1').unwrap();
+        assert_eq!(hover_at(&db, file_id, access).as_deref(), Some("1 : String"));
+    }
+
+    #[test]
+    fn hover_on_dot_syntax_method_call() {
+        let source =
+            "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n    ()\n";
+        let (db, file_id) = db_with_source(source, "hover_method.an");
+        let call = source.rfind("get").unwrap();
+        assert_eq!(hover_at(&db, file_id, call).as_deref(), Some("get : fn Box -> I32 is pure"));
     }
 }

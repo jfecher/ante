@@ -417,7 +417,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Expr::MemberAccess(access) => {
                 let parent = self.try_build_move_path(access.object)?;
-                Some(parent.field(access.member.clone()))
+                Some(parent.field(self.member_name(access).clone()))
             },
             _ => None,
         }

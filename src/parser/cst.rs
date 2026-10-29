@@ -616,7 +616,7 @@ impl Argument {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct MemberAccess {
     pub object: ExprId,
-    pub member: Name,
+    pub member: NameId,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

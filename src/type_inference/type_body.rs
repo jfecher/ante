@@ -3,6 +3,7 @@ use inc_complete::DbGet;
 use crate::{
     incremental::{GetItem, TypeCheck},
     iterator_extensions::mapvec,
+    name_resolution::{Origin, origin_of_top_level_definition},
     parser::{
         cst::{self, Name, TopLevelItem, TopLevelItemKind},
         desugar_context::DesugarContext,
@@ -126,6 +127,35 @@ impl TopLevelName {
         let (item, _) = GetItem(self.top_level_item).get(compiler);
         let TopLevelItemKind::TypeDefinition(definition) = &item.kind else { return 0 };
         if self.local_name_id == definition.name { definition.body.common_fields().len() } else { 0 }
+    }
+
+    /// The origin of the field at `index` of the type or variant `self`, if the field is named.
+    /// Indices match the fields of [Self::type_body]: those of a union type are its `with`-clause
+    /// fields, unless it has a single variant whose fields (which include them) are used instead.
+    pub fn field_origin<Db: DbGet<GetItem>>(self, index: u32, compiler: &Db) -> Option<Origin> {
+        let (item, _) = GetItem(self.top_level_item).get(compiler);
+        let TopLevelItemKind::TypeDefinition(definition) = &item.kind else { return None };
+        let index = index as usize;
+
+        let field = match &definition.body {
+            cst::TypeDefinitionBody::Struct(fields) => fields.get(index).map(|(name, _)| *name),
+            cst::TypeDefinitionBody::Enum(variants, common_fields) => {
+                let variant = if self.local_name_id == definition.name {
+                    match variants.as_slice() {
+                        [variant] => Some(variant),
+                        _ => None,
+                    }
+                } else {
+                    definition.body.find_variant(self.local_name_id).map(|(_, variant)| variant)
+                };
+                match variant {
+                    Some((_, fields)) => fields.get(index).and_then(|(name, _)| *name),
+                    None => common_fields.get(index).map(|(name, _)| *name),
+                }
+            },
+            _ => None,
+        }?;
+        Some(origin_of_top_level_definition(TopLevelName::new(self.top_level_item, field), &item.kind))
     }
 }
 

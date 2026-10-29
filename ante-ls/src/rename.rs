@@ -22,6 +22,7 @@ use ante::name_resolution::{
     namespace::{CrateId, SourceFileId},
     origin_of_top_level_definition, Origin, ResolutionResult, TraitMember,
 };
+use ante::parser::cst::TopLevelItemKind;
 use ante::parser::ids::{IdStore, NameId, NameStore, PathId, TopLevelId, TopLevelName};
 
 use dashmap::DashMap;
@@ -280,11 +281,18 @@ pub fn collect_reference_locations(compiler: &Db, target: &RenameTarget) -> Vec<
     let (item, _) = GetItem(name.top_level_item).get(compiler);
     let target_origin = origin_of_top_level_definition(name, &item.kind);
 
-    let is_method = AllDefinitions(name.top_level_item.source_file)
-        .get(compiler)
-        .methods
-        .values()
-        .any(|methods| methods.values().any(|method| *method == name));
+    // Fields and methods are resolved by type, so an item may refer to one without
+    // the target's item being in its referenced_items. Trait and effect members are not
+    // plain fields and are referred to by path, which referenced_items does cover.
+    let is_field = target_origin == Origin::TopLevelDefinition(name)
+        && matches!(&item.kind, TopLevelItemKind::TypeDefinition(definition)
+            if definition.name != name.local_name_id && definition.body.find_variant(name.local_name_id).is_none());
+    let is_type_directed = is_field
+        || AllDefinitions(name.top_level_item.source_file)
+            .get(compiler)
+            .methods
+            .values()
+            .any(|methods| methods.values().any(|method| *method == name));
 
     let crates = GetCrateGraph.get(compiler);
     let Some(local) = crates.get(&CrateId::LOCAL) else { return locations };
@@ -292,7 +300,7 @@ pub fn collect_reference_locations(compiler: &Db, target: &RenameTarget) -> Vec<
         let parse = Parse(*file_id).get(compiler);
         for item in &parse.cst.top_level_items {
             let resolve = Resolve(item.id).get(compiler);
-            if !is_method {
+            if !is_type_directed {
                 let references_target =
                     item.id == name.top_level_item || resolve.referenced_items.contains(&name.top_level_item);
                 let has_type_resolution = resolve.path_origins.values().any(|o| *o == Origin::TypeResolution);
@@ -663,8 +671,11 @@ mod tests {
     fn rename_method_rewrites_dot_syntax_calls() {
         let source = "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n";
         let (db, ids) = db_with_sources(&[("rename_dot_call.an", source)]);
-        let changes = edits_at(&db, ids[0], source.find("Box.get").unwrap() + 4, "value");
-        assert_eq!(total_edits(&changes), 2, "method declaration and dot-syntax call site");
+        // Renaming from the declaration or from the call site must find the same references
+        for offset in [source.find("Box.get").unwrap() + 4, source.rfind("get").unwrap()] {
+            let changes = edits_at(&db, ids[0], offset, "value");
+            assert_eq!(total_edits(&changes), 2, "method declaration and dot-syntax call site");
+        }
     }
 
     #[test]
@@ -820,6 +831,56 @@ mod tests {
             "export qualifier",
         ];
         assert_eq!(total_edits(&changes), expected.len(), "expected edits: {expected:?}");
+    }
+
+    #[test]
+    fn rename_field_rewrites_accesses_and_constructor_fields() {
+        let source = "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box with val = 3\n    x = b.val + b.get ()\n    ()\n";
+        let (db, ids) = db_with_sources(&[("rename_field.an", source)]);
+        // Renaming from the declaration or from an access site must find the same references
+        for offset in [source.find("val").unwrap(), source.rfind("b.val").unwrap() + 2] {
+            let changes = edits_at(&db, ids[0], offset, "value");
+            assert_eq!(total_edits(&changes), 4, "declaration, both accesses, and the named constructor field");
+        }
+    }
+
+    #[test]
+    fn positional_field_is_not_renameable() {
+        let source = "type Pair = | Pair I32 String\n\nsecond (p: Pair) = p.1\n";
+        let (db, ids) = db_with_sources(&[("rename_positional.an", source)]);
+        let result = symbol_at(&db, ids[0], source.rfind('1').unwrap());
+        assert!(matches!(result, Err(RenameError::NoSymbol)), "positional fields have no declaration to rename");
+    }
+
+    #[test]
+    fn rename_field_rewrites_cross_file_access() {
+        let root = ante_root();
+        let mut db = Db::default();
+        crate::diagnostics::init_db(&mut db, &root);
+        let crate_name = GetCrateGraph.get(&db)[&CrateId::LOCAL].name.clone();
+
+        let def_source = "export Box, make\n\ntype Box = val: I32\n\nmake () = Box 3\n";
+        let use_source = format!("import {crate_name}.CrossFieldDef.make\n\nunbox () =\n    b = make ()\n    b.val\n");
+
+        let roots = crate::diagnostics::CrateRoots::new(&db, root.clone());
+        let def_path = root.join("CrossFieldDef.an");
+        let use_path = root.join("CrossFieldUse.an");
+        crate::diagnostics::set_file_content(&mut db, &roots, &def_path, &Rope::from_str(def_source));
+        crate::diagnostics::set_file_content(&mut db, &roots, &use_path, &Rope::from_str(&use_source));
+        let def_file = crate::diagnostics::file_id_for_path(&roots, &def_path);
+
+        // `unbox` never names `Box`, so this exercises the field-target pruning bypass.
+        let changes = edits_at(&db, def_file, def_source.find("val").unwrap(), "value");
+        assert_eq!(changes.len(), 2, "both the defining and the accessing file must be edited");
+        assert_eq!(total_edits(&changes), 2, "field declaration and cross-file access");
+    }
+
+    #[test]
+    fn rename_trait_method_rewrites_impl_method() {
+        let source = "trait Greet a =\n    greet: fn a -> I32\n\nimpl greet_i32: Greet I32 with\n    greet x = x\n\nmain () =\n    y = greet 3\n    ()\n";
+        let (db, ids) = db_with_sources(&[("rename_trait_method.an", source)]);
+        let changes = edits_at(&db, ids[0], source.find("greet").unwrap(), "hello");
+        assert_eq!(total_edits(&changes), 3, "trait declaration, impl method, and call site");
     }
 
     #[test]

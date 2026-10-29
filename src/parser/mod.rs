@@ -1450,6 +1450,18 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
+    /// Parses the field name after a `.` in a member access, pushing it along with its location
+    fn parse_member_name_id(&mut self) -> Result<NameId> {
+        match self.current_token() {
+            Token::IntegerLiteral(..) => {
+                let location = self.current_token_location();
+                let name = self.parse_member_name()?;
+                Ok(self.push_name(name, location))
+            },
+            _ => self.parse_ident_id(),
+        }
+    }
+
     fn parse_ident_or_type_name(&mut self) -> Result<(Name, Location)> {
         match self.current_token() {
             Token::Identifier(name) => {
@@ -2130,7 +2142,7 @@ impl<'tokens> Parser<'tokens> {
                 Token::MemberAccess => {
                     result = self.with_expr_id_and_location(|this| {
                         this.advance();
-                        let member = this.parse_member_name()?;
+                        let member = this.parse_member_name_id()?;
                         Ok(Expr::MemberAccess(MemberAccess { object: result, member }))
                     })?;
                 },
