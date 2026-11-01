@@ -753,7 +753,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// every `ImplicitPlace` placeholder.
     pub(super) fn reject_implicit_places(typ: &cst::Type, db: &DbHandle) {
         match &typ.kind {
-            cst::TypeKind::ImplicitPlace => {
+            cst::TypeKind::ImplicitPlace { .. } => {
                 db.accumulate(Diagnostic::MissingExplicitPlace { location: typ.location.clone() });
             },
             cst::TypeKind::Application(f, args) => {

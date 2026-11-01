@@ -60,27 +60,27 @@ Vec.pop (v: mut Vec t): Maybe t can Fs, Mutate 'v =
 
 /// Retrieves the element at the given 0-based index.
 /// Fails if the index is out of bounds
-Vec.get (v: ref 'v Vec t) (i: Usz): ref 'v! t can Fail =
+Vec.get (v: ref Vec t) (i: Usz): ref! t can Fail =
     if i < v.len
     then v.get_unchecked i
     else fail ()
 
 /// Retrieves a mutable reference to the element at the given 0-based index.
 /// Fails if the index is out of bounds
-Vec.get_mut (v: mut 'v Vec t) (i: Usz): mut 'v! t can Fail =
+Vec.get_mut (v: mut Vec t) (i: Usz): mut! t can Fail =
     if i < v.len
     then v.get_mut_unchecked i
     else fail ()
 
 /// An unsafe function to retrieve an element at the given index
 /// without checking if the index is inbounds
-Vec.get_unchecked (v: ref 'v Vec t) (i: Usz): ref 'v! t =
+Vec.get_unchecked (v: ref Vec t) (i: Usz): ref! t =
     ptr = offset v.data i
     transmute ptr
 
 /// An unsafe function to retrieve a mutable element at the given index
 /// without checking if the index is inbounds
-Vec.get_mut_unchecked (v: mut 'v Vec t) (i: Usz): mut 'v! t =
+Vec.get_mut_unchecked (v: mut Vec t) (i: Usz): mut! t =
     ptr = offset v.data i
     transmute ptr
 

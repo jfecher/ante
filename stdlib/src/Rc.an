@@ -14,12 +14,12 @@ Rc.of (value: t): Rc t =
     Rc ptr
 
 /// Returns a reference into the inner element
-Rc.as_ref (rc: ref 'rc Rc t): ref 'rc! t =
+Rc.as_ref (rc: ref Rc t): ref! t =
     rc = ptr_to_mut rc.ptr
     rc.second
 
 /// Returns a mutable reference into the inner element
-Rc.as_mut (rc: mut 'rc Rc t): mut 'rc! t =
+Rc.as_mut (rc: mut Rc t): mut! t =
     rc = ptr_to_mut rc.ptr
     rc.second
 

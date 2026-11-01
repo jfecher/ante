@@ -946,12 +946,16 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             },
             // TODO: There is a separate check in type definition bodies to reject these.
             // Rework it to be more similar to the HoleCantBeUsed above.
-            crate::parser::cst::TypeKind::ImplicitPlace => {
-                let place = match &mut self.elided_place {
+            crate::parser::cst::TypeKind::ImplicitPlace { unstable } => {
+                let mut place = match &mut self.elided_place {
                     ElidedPlace::Infer => self.next_type_variable(),
                     ElidedPlace::Parameter(own) => own.take().unwrap_or_else(|| self.next_omitted()),
                     ElidedPlace::Return(place) => place.clone(),
                 };
+                if *unstable {
+                    let none = TypeBindings::default();
+                    place = Type::project_place(&place, &[PlaceSegment::Unstable], &none, &none);
+                }
                 (place, Kind::Place)
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),

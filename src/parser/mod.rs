@@ -1107,18 +1107,19 @@ impl<'tokens> Parser<'tokens> {
         };
 
         self.advance();
-        self.parse_reference_element_type(kind, start)
+        let unstable = self.accept(Token::ExclamationMark);
+        self.parse_reference_element_type(kind, start, unstable)
     }
 
-    fn parse_reference_element_type(&mut self, kind: cst::ReferenceKind, ref_location: Location) -> Result<Type> {
-        // An optional `'name` place can appear directly after the reference keyword,
-        // e.g. `ref 'a t`. If omitted, the place slot is filled with an `ImplicitPlace`
-        // placeholder so the type lowering can insert a fresh place variable (or, in
-        // type-definition bodies, reject it).
+    fn parse_reference_element_type(&mut self, kind: cst::ReferenceKind, ref_location: Location, unstable: bool,
+    ) -> Result<Type> {
         let place = if matches!(self.current_token(), Token::Apostrophe) {
+            if unstable {
+                return self.expected("a type, since `!` after a reference keyword elides the place");
+            }
             self.parse_place_type()?
         } else {
-            Type::new(TypeKind::ImplicitPlace, ref_location.clone())
+            Type::new(TypeKind::ImplicitPlace { unstable }, ref_location.clone())
         };
 
         match self.parse_type_application() {

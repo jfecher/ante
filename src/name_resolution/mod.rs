@@ -1075,7 +1075,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::Hole
             | TypeKind::RigidHole
             | TypeKind::Reference(..)
-            | TypeKind::ImplicitPlace
+            | TypeKind::ImplicitPlace { .. }
             | TypeKind::Pure
             | TypeKind::IntegerConstant(_) => (),
             TypeKind::Named(path) => self.link(*path, false, true),

@@ -136,7 +136,7 @@ impl Type {
         match &self.kind {
             TypeKind::Application(f, args) => {
                 let is_elided_ref_place = matches!(f.kind, TypeKind::Reference(_))
-                    && args.first().is_some_and(|arg| matches!(arg.kind, TypeKind::ImplicitPlace));
+                    && args.first().is_some_and(|arg| matches!(arg.kind, TypeKind::ImplicitPlace { .. }));
                 is_elided_ref_place || args.iter().any(Type::has_elided_place)
             },
             TypeKind::Tuple(elements) => elements.iter().any(Type::has_elided_place),
@@ -232,11 +232,9 @@ pub enum TypeKind {
     /// type variable. If a top-level item's type is not fully specified, this will still be inferred.
     RigidHole,
 
-    /// Synthesized by the parser for the place arg of `ref t` / `mut t` / `imm t` /
-    /// `uniq t` when no `'name` was written. Becomes a fresh place variable in normal
-    /// positions, and is rejected with `MissingExplicitPlace` inside type-definition
-    /// bodies where places must be explicit.
-    ImplicitPlace,
+    /// When `ref t` or similar are used the parser fills in `ImplicitPlace`s for the missing
+    /// places. If `unstable` is true, this is `ref! t` or similar.
+    ImplicitPlace { unstable: bool },
 
     /// A place written with `'`, e.g. `'a`, `'p.f!` or `'(a, b!)`
     Place(Vec<PlacePath>),

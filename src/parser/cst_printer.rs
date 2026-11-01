@@ -693,7 +693,7 @@ impl<'a> CstDisplay<'a> {
                 Ok(())
             },
             TypeKind::Hole | TypeKind::RigidHole => write!(f, "_"),
-            TypeKind::ImplicitPlace => write!(f, "'_"),
+            TypeKind::ImplicitPlace { unstable } => write!(f, "'_{}", if *unstable { "!" } else { "" }),
             TypeKind::Pure => write!(f, "pure"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
             TypeKind::Forall(generics, body) => {
@@ -744,9 +744,16 @@ impl<'a> CstDisplay<'a> {
             && args.len() == 2
         {
             self.fmt_reference_type(*kind, f)?;
-            if !matches!(args[0].kind, TypeKind::ImplicitPlace) {
-                write!(f, " ")?;
-                self.fmt_type(&args[0], context, f)?;
+            match &args[0].kind {
+                TypeKind::ImplicitPlace { unstable } => {
+                    if *unstable {
+                        write!(f, "!")?;
+                    }
+                },
+                _ => {
+                    write!(f, " ")?;
+                    self.fmt_type(&args[0], context, f)?;
+                },
             }
             write!(f, " ")?;
             let is_function = matches!(args[1].kind, TypeKind::Function(_));
