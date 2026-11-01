@@ -490,10 +490,7 @@ impl<'ctx> ModuleContext<'ctx> {
 
         // Done after all blocks are processed so back-edge sources are included.
         for (block_id, phi) in self.phi_nodes.drain() {
-            let incoming = self
-                .incoming
-                .remove(&block_id)
-                .unwrap_or_else(|| panic!("llvm codegen: No incoming for block {block_id}"));
+            let Some(incoming) = self.incoming.remove(&block_id) else { continue };
             for (pred_block, value) in incoming {
                 phi.add_incoming(&[(&value, pred_block)]);
             }
