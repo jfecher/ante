@@ -81,7 +81,7 @@ main () = ()
 // expected exit status: 1
 // expected stderr:
 // examples/typechecking/borrows/break_continue_in_branch.an:16:9
-// 13 |         if cond () then
+// 13 |             // The borrow checker used to not count invalidations before a break/return
 // 14 |             v.push 3	// note: elem may be invalidated by this mutation
 //    |              -------
 // 15 |             break
