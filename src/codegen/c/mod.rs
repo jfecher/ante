@@ -1114,6 +1114,19 @@ impl Builder {
                 self.write_type(&typ, "");
                 let _ = write!(self.current_item, " {id} = {id}_exp;");
             },
+            mir::Instruction::SetJmp(buffer) => {
+                self.write_result_binding(id, definition);
+                self.write("_setjmp(");
+                self.write_value(buffer, mir);
+                self.write(");");
+            },
+            mir::Instruction::LongJmp { buffer, coroutine } => {
+                self.write("mco_abort_longjmp(");
+                self.write_value(buffer, mir);
+                self.write(", ");
+                self.write_value(coroutine, mir);
+                let _ = write!(self.current_item, ", 1); Unit {id} = (Unit){{0}};");
+            },
             mir::Instruction::Deref(value) => {
                 let result = definition.instruction_result_type(id);
                 if matches!(result, mir::Type::Array { .. }) {
@@ -1250,7 +1263,7 @@ impl Builder {
     /// Record `name`'s declared type as the type of its first use
     fn record_extern_use(&self, name: &str, typ: &mir::Type) {
         // These are already declared in [CFile::add_starter_items], redeclaring would conflict.
-        if matches!(name, "malloc" | "memcpy" | "fmod") {
+        if matches!(name, "malloc" | "memcpy" | "fmod" | "_setjmp" | "mco_abort_longjmp") {
             return;
         }
         self.externs.entry(name.to_string()).or_insert_with(|| typ.clone());

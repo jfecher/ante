@@ -131,16 +131,22 @@ typedef double ante_f64;
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
+#define ANTE_RETURNS_TWICE __attribute__((returns_twice))
+#define ANTE_NORETURN __attribute__((noreturn))
 #define ANTE_UNREACHABLE() __builtin_unreachable()
 #define ANTE_INF() __builtin_inf()
 #define ANTE_NAN() __builtin_nan(\"\")
 #elif defined(_MSC_VER)
 #include <math.h>
+#define ANTE_RETURNS_TWICE
+#define ANTE_NORETURN
 #define ANTE_UNREACHABLE() __assume(0)
 #define ANTE_INF() INFINITY
 #define ANTE_NAN() NAN
 #else
 #include <math.h>
+#define ANTE_RETURNS_TWICE
+#define ANTE_NORETURN
 #define ANTE_UNREACHABLE() ((void)0)
 #define ANTE_INF() INFINITY
 #define ANTE_NAN() NAN
@@ -152,6 +158,10 @@ typedef double ante_f64;
         self.function_declarations += "void* memcpy(void*, void*, size_t);\n";
         self.function_declarations += "void* memset(void*, int, size_t);\n";
         self.function_declarations += "double fmod(double, double);\n";
+        // Used by `SetJmp` and `LongJmp`. These are not declared via `setjmp.h` since its
+        // `jmp_buf` parameter type would conflict with the `void*` we pass.
+        self.function_declarations += "ANTE_RETURNS_TWICE int _setjmp(void*);\n";
+        self.function_declarations += "ANTE_NORETURN void mco_abort_longjmp(void*, void*, int);\n";
         self
     }
 }

@@ -426,6 +426,8 @@ fn fmt_instruction(
         mir::Instruction::AtomicCmpxchg { pointer, expected, desired, .. } => {
             write!(f, "atomic_cmpxchg {}, {}, {}", v(pointer), v(expected), v(desired))?
         },
+        mir::Instruction::SetJmp(buffer) => write!(f, "setjmp {}", v(buffer))?,
+        mir::Instruction::LongJmp { buffer, coroutine } => write!(f, "longjmp {}, {}", v(buffer), v(coroutine))?,
     }
 
     writeln!(f)

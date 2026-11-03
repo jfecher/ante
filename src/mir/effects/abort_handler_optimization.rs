@@ -231,23 +231,10 @@ fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, target_coro:
     if return_blocks.is_empty() {
         return;
     }
-    let longjmp_type = Type::Function(Arc::new(FunctionType {
-        parameters: vec![Type::POINTER, Type::POINTER, Type::int(IntegerKind::I32)],
-        environment: Type::NO_CLOSURE_ENV,
-        return_type: Type::UNIT,
-    }));
-    let longjmp = Emitter::in_block(def, BlockId::ENTRY_BLOCK)
-        .push_instruction(Instruction::Extern("mco_abort_longjmp".to_string()), longjmp_type);
     for (block, ret_val) in return_blocks {
         let mut e = Emitter::in_block(def, block);
         e.push_instruction(Instruction::Store { pointer: result_slot, value: ret_val }, Type::UNIT);
-        e.push_instruction(
-            Instruction::Call {
-                function: longjmp,
-                arguments: vec![buf_ptr, target_coro, Value::Integer(IntConstant::I32(1))],
-            },
-            Type::UNIT,
-        );
+        e.push_instruction(Instruction::LongJmp { buffer: buf_ptr, coroutine: target_coro }, Type::UNIT);
         def.blocks[block].terminator = Some(TerminatorInstruction::Unreachable);
     }
 }
@@ -408,17 +395,9 @@ fn emit_body_closure(e: &mut Emitter, body: PreparedBody, body_fn_type: Type, ca
     e.push_instruction(Instruction::PackClosure { function: body_fn_value, environment: new_env_value }, body_fn_type)
 }
 
-/// `idx = _setjmp(buf); is_zero = idx == 0`. LLVM's TargetLibraryInfo recognizes `_setjmp`
-/// by name and applies returns_twice automatically.
+/// `idx = setjmp(buf); is_zero = idx == 0`
 fn emit_setjmp_test(e: &mut Emitter, buf_ptr: Value) -> Value {
-    let i32_t = Type::int(IntegerKind::I32);
-    let setjmp_type = Type::Function(Arc::new(FunctionType {
-        parameters: vec![Type::POINTER],
-        environment: Type::NO_CLOSURE_ENV,
-        return_type: i32_t.clone(),
-    }));
-    let setjmp_extern = e.push_instruction(Instruction::Extern("_setjmp".to_string()), setjmp_type);
-    let setjmp_idx = e.push_instruction(Instruction::Call { function: setjmp_extern, arguments: vec![buf_ptr] }, i32_t);
+    let setjmp_idx = e.push_instruction(Instruction::SetJmp(buf_ptr), Type::int(IntegerKind::I32));
     e.push_instruction(Instruction::EqInt(setjmp_idx, Value::Integer(IntConstant::I32(0))), Type::BOOL)
 }
 

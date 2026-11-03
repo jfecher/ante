@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
+    attributes::{Attribute, AttributeLoc},
     basic_block::BasicBlock,
     builder::Builder,
     module::{Linkage, Module},
     passes::PassBuilderOptions,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{BasicType, BasicTypeEnum, IntType, StructType},
+    types::{BasicType, BasicTypeEnum, FunctionType, IntType, StructType},
     values::{AggregateValue, BasicValue, BasicValueEnum, FunctionValue, GlobalValue, PhiValue, PointerValue},
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -788,6 +789,19 @@ impl<'ctx> ModuleContext<'ctx> {
         self.unit_type().const_zero().into()
     }
 
+    fn enum_attribute(&self, name: &str) -> Attribute {
+        self.llvm.create_enum_attribute(Attribute::get_named_enum_kind_id(name), 0)
+    }
+
+    /// Declare a C runtime function with the given attribute
+    fn runtime_function(&self, name: &str, fn_type: FunctionType<'ctx>, attribute: &str) -> FunctionValue<'ctx> {
+        self.module.get_function(name).unwrap_or_else(|| {
+            let function = self.module.add_function(name, fn_type, None);
+            function.add_attribute(AttributeLoc::Function, self.enum_attribute(attribute));
+            function
+        })
+    }
+
     fn codegen_instruction(&mut self, function: &mir::Definition, id: mir::InstructionId) {
         let result = match &function.instructions[id] {
             mir::Instruction::Call { function: function_value, arguments } => {
@@ -1116,6 +1130,31 @@ impl<'ctx> ModuleContext<'ctx> {
                     .unwrap();
                 // cmpxchg yields `{ old_value, success_flag }`; return the previous value.
                 self.builder.build_extract_value(result, 0, "").unwrap()
+            },
+            mir::Instruction::SetJmp(buffer) => {
+                let ptr_type = self.llvm.ptr_type(AddressSpace::default());
+                let fn_type = self.llvm.i32_type().fn_type(&[ptr_type.into()], false);
+                // Without `returns_twice`, llvm optimizations may delete stores made before a longjmp back
+                let setjmp = self.runtime_function("_setjmp", fn_type, "returns_twice");
+                let buffer = self.lookup_value(buffer);
+                let call = self.builder.build_direct_call(setjmp, &[buffer.into()], "").unwrap();
+                call.add_attribute(AttributeLoc::Function, self.enum_attribute("returns_twice"));
+                call.try_as_basic_value().unwrap_basic()
+            },
+            mir::Instruction::LongJmp { buffer, coroutine } => {
+                let ptr_type = self.llvm.ptr_type(AddressSpace::default());
+                let i32_type = self.llvm.i32_type();
+                let params = [ptr_type.into(), ptr_type.into(), i32_type.into()];
+                let fn_type = self.llvm.void_type().fn_type(&params, false);
+                let longjmp = self.runtime_function("mco_abort_longjmp", fn_type, "noreturn");
+                let arguments = [
+                    self.lookup_value(buffer).into(),
+                    self.lookup_value(coroutine).into(),
+                    i32_type.const_int(1, false).into(),
+                ];
+                let call = self.builder.build_direct_call(longjmp, &arguments, "").unwrap();
+                call.add_attribute(AttributeLoc::Function, self.enum_attribute("noreturn"));
+                self.unit_value()
             },
             mir::Instruction::Extern(name) => {
                 let typ = function.instruction_result_type(id);

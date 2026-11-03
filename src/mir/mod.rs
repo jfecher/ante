@@ -812,6 +812,18 @@ pub enum Instruction {
         success: AtomicOrdering,
         failure: AtomicOrdering,
     },
+
+    /// `_setjmp(buffer): I32`: saves the current execution context into the given buffer.
+    /// Returns 0 initially and nonzero when returning a second time via [Instruction::LongJmp].
+    SetJmp(Value),
+
+    /// Jump back to the [Instruction::SetJmp] which saved `buffer`, making it return 1. Any
+    /// coroutines entered since then are torn down until `coroutine` is running again.
+    /// `coroutine` is either the `SetJmp` coroutine or null if there was none.
+    LongJmp {
+        buffer: Value,
+        coroutine: Value,
+    },
 }
 
 /// The environment of a closure stored in a constant global, see [Definition::constant_function_field]
@@ -929,6 +941,8 @@ macro_rules! for_each_instruction_value {
                 f(expected);
                 f(desired);
             },
+            Instruction::SetJmp(buffer) => f(buffer),
+            Instruction::LongJmp { buffer, coroutine } => two(buffer, coroutine),
         }
     }};
 }

@@ -471,6 +471,18 @@ impl Definition {
                     let pointer_type = mir.type_of_value(pointer, self);
                     instr_assert!(matches!(pointer_type, Type::POINTER), self, id, mir, "AtomicCmpxchg pointer must be a pointer");
                 },
+                Instruction::SetJmp(buffer) => {
+                    let buffer_type = mir.type_of_value(buffer, self);
+                    instr_assert!(matches!(buffer_type, Type::POINTER), self, id, mir, "SetJmp buffer must be a pointer, got `{buffer_type}`");
+                    instr_assert_subtype!(*result_type, Type::int(IntegerKind::I32), self, id, mir, "SetJmp result must be an I32");
+                },
+                Instruction::LongJmp { buffer, coroutine } => {
+                    let buffer_type = mir.type_of_value(buffer, self);
+                    instr_assert!(matches!(buffer_type, Type::POINTER), self, id, mir, "LongJmp buffer must be a pointer, got `{buffer_type}`");
+                    let coroutine_type = mir.type_of_value(coroutine, self);
+                    instr_assert!(matches!(coroutine_type, Type::POINTER), self, id, mir, "LongJmp coroutine must be a pointer, got `{coroutine_type}`");
+                    instr_assert_subtype!(*result_type, Type::UNIT, self, id, mir, "LongJmp result must be unit");
+                },
             }
         }
     }

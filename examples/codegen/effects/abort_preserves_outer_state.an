@@ -1,0 +1,32 @@
+// Regression test: aborting handlers are lowered to `_setjmp`/longjmp, and `_setjmp` was
+// declared without LLVM's `returns_twice` attribute. LLVM assumed deleted the stores to
+// `s` made by the `emit` handler before `stop` longjmp'd back, and printed 0.
+effect Emit =
+    emit: fn I64 -> Unit
+
+effect Stop =
+    stop: fn Unit -> Never
+
+gen (i: I64): Unit can Emit, Stop =
+    if i == 0 then stop ()
+    emit i
+    gen (i - 1)
+
+sum (action: fn Unit => Unit can Emit, e): I64 can e =
+    var s = 0
+    handle action ()
+    | emit e ->
+        s := s + e
+        resume ()
+    s
+
+catch (action: fn Unit => Unit can Stop, e): Unit can e =
+    handle action ()
+    | stop () -> ()
+
+main () =
+    print_to_stdout do
+    println (sum fn () -> catch fn () -> gen 4)
+
+// args: -O2 --delete-binary --no-color
+// expected stdout: 10
