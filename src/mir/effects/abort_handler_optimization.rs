@@ -28,8 +28,8 @@ use super::effect_lowering::{
     run_handle_optimization_worklist,
 };
 use super::tail_resume_optimization::{
-    OriginalEnvLayout, clone_body_with_extended_env, neutralize_handler_caps_in_dead_body,
-    rewrite_handler_caps_in_body, substitute_value,
+    OriginalEnvLayout, analyze_resumes, clone_body_with_extended_env, neutralize_handler_caps_in_dead_body,
+    rewrite_handler_caps_in_body,
 };
 
 impl Mir {
@@ -96,7 +96,7 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
         let shape = case_shape_from_handler_type(&handler_type)?;
         let (handler_def_id, handler_env, handler_bindings) = resolve_body_function(case.handler, definition)?;
         let handler_def = mir.definitions.get(&handler_def_id)?;
-        if !case_is_abort_only(handler_def, &shape) {
+        if !analyze_resumes(handler_def, shape.op_arg_types.len()).is_some_and(|resumes| resumes.is_abortive()) {
             return None;
         }
         if !matches!(&handler_def.typ, Type::Function(_)) {
@@ -116,14 +116,6 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
             shape,
         })
     })
-}
-
-/// True iff the handler's resume parameter is referenced nowhere in its body.
-fn case_is_abort_only(handler_def: &Definition, shape: &CaseShape) -> bool {
-    let resume_param = Value::Parameter(BlockId::ENTRY_BLOCK, shape.op_arg_types.len() as u32);
-    let mut uses_resume = false;
-    handler_def.for_each_used_value(|v| uses_resume |= *v == resume_param);
-    !uses_resume
 }
 
 fn try_optimize_handle(
@@ -184,7 +176,7 @@ fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index:
     let (buf_ptr, result_slot, target_coro, handler_env) =
         emit_wrapper_prologue(&mut def, env_pointer, &decision.handler_env_type, decision.handler_is_closure);
     if let Some(replacement) = handler_env {
-        substitute_value(&mut def, old_env_param, replacement);
+        def.replace_value(old_env_param, replacement);
     }
     rewrite_returns_as_longjmp(&mut def, buf_ptr, target_coro, result_slot);
     mir.definitions.insert(new_id, def);

@@ -35,6 +35,7 @@ use crate::{
 };
 
 pub(crate) mod builder;
+mod cfg;
 mod display;
 mod effects;
 pub(crate) mod existentialization;
@@ -152,6 +153,9 @@ where
         .reduce(Mir::default, Mir::extend)
         .remove_internal_externs()
         .remove_unreachable_functions()
+        .inline_higher_order_functions()
+        .optimize_local_handlers()
+        .specialize_handle_lambdas()
         .optimize_tail_resume()
         .optimize_abort_handlers()
         .lower_effects(generics == GenericsStrategy::Existential)
@@ -291,6 +295,14 @@ impl Definition {
         self.instructions.values().for_each(|instruction| instruction.for_each_value(&mut f));
         for block in self.blocks.values() {
             block.terminator.iter().for_each(|terminator| terminator.for_each_value(&mut f));
+        }
+    }
+
+    /// Invoke `f` mutably on each value used by an instruction or terminator of this definition
+    pub fn for_each_used_value_mut(&mut self, mut f: impl FnMut(&mut Value)) {
+        self.instructions.values_mut().for_each(|instruction| instruction.for_each_value_mut(&mut f));
+        for block in self.blocks.values_mut() {
+            block.terminator.iter_mut().for_each(|terminator| terminator.for_each_value_mut(&mut f));
         }
     }
 
@@ -442,6 +454,22 @@ impl Definition {
     /// True if this function is not generic over any type variables
     fn is_monomorphic(&self) -> bool {
         self.generic_count == 0
+    }
+
+    /// Each generic definition this definition refers to without an `Instantiate`. A bare
+    /// `Value::Definition(g)` of a generic `g` within a generic definition implicitly instantiates
+    /// `g` with this definition's own generics, see [inline::copy_body].
+    pub(crate) fn implicit_instantiations(&self, definitions: &Definitions) -> Vec<DefinitionId> {
+        let mut targets = Vec::new();
+        self.for_each_used_value(|value| {
+            if let Value::Definition(id) = value
+                && is_generic(definitions, id)
+                && !targets.contains(id)
+            {
+                targets.push(*id);
+            }
+        });
+        targets
     }
 }
 
@@ -1110,6 +1138,13 @@ pub struct EffectKey {
     pub args: Vec<Type>,
 }
 
+impl EffectKey {
+    /// True if any of this effect's type arguments mention a generic
+    fn contains_generics(&self) -> bool {
+        self.args.iter().any(Type::contains_generics)
+    }
+}
+
 /// One slot of an effect row's evidence, see [Type::Evidence]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EvidenceEntry {
@@ -1275,6 +1310,35 @@ impl Type {
         }
     }
 
+    /// [Type::substitute] the given bindings, if any
+    fn substitute_optional(&self, bindings: Option<&GenericBindings>) -> Type {
+        match bindings {
+            Some(bindings) => self.substitute(bindings),
+            None => self.clone(),
+        }
+    }
+
+    /// True if this type mentions any generic, including the row generics of evidence
+    fn contains_generics(&self) -> bool {
+        match self {
+            Type::Primitive(_) | Type::U32(_) => false,
+            Type::Generic(_) => true,
+            Type::Tuple(fields) | Type::Union(fields) => fields.iter().any(Type::contains_generics),
+            Type::Function(function) => {
+                function.parameters.iter().any(Type::contains_generics)
+                    || function.environment.contains_generics()
+                    || function.return_type.contains_generics()
+            },
+            Type::Array { length, element } => length.contains_generics() || element.contains_generics(),
+            Type::Evidence(entries) => entries.iter().any(|entry| match entry {
+                EvidenceEntry::Capability { key, capability } => {
+                    key.contains_generics() || capability.contains_generics()
+                },
+                EvidenceEntry::Rest(_) => true,
+            }),
+        }
+    }
+
     /// Retrieves the size in bytes of this type as it sits in memory, including any
     /// trailing alignment padding (the equivalent of LLVM's `getTypeAllocSize`).
     /// Result depends on the target machine.
@@ -1403,6 +1467,11 @@ pub(crate) fn identity_bindings(generic_count: u32) -> Option<Arc<GenericBinding
     (!bindings.is_empty()).then(|| Arc::new(bindings))
 }
 
+/// True if `id` is a definition with generics of its own
+pub(crate) fn is_generic(definitions: &Definitions, id: &DefinitionId) -> bool {
+    definitions.get(id).is_some_and(|definition| !definition.is_monomorphic())
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PrimitiveType {
     Error,
@@ -1456,13 +1525,38 @@ impl FunctionType {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{borrow::Cow, sync::Arc};
 
-    use crate::mir::{Block, BlockId, Definition, TerminatorInstruction, Type, Value, next_definition_id};
+    use crate::mir::{
+        Block, BlockId, Definition, Definitions, Instruction, TerminatorInstruction, Type, Value, inline,
+        next_definition_id,
+    };
 
     /// Create an empty function for testing
     fn make_function() -> Definition {
         Definition::new(Arc::new(String::new()), next_definition_id(), 0, Type::ERROR)
+    }
+
+    #[test]
+    fn instantiating_makes_implicit_instantiations_explicit() {
+        let target = Definition::new(Arc::new("target".to_string()), next_definition_id(), 1, Type::ERROR);
+        let mut referrer = Definition::new(Arc::new("referrer".to_string()), next_definition_id(), 1, Type::ERROR);
+        let entry = BlockId::ENTRY_BLOCK;
+        referrer.push_instruction_in(entry, Instruction::Id(Value::Definition(target.id)), Type::ERROR);
+        referrer.blocks[entry].terminator = Some(TerminatorInstruction::Return(Value::Unit));
+
+        let mut definitions = Definitions::default();
+        definitions.insert(target.id, target);
+        let bindings = Arc::new(vec![Type::UNIT]);
+        let substitution = inline::Substitution { bindings: &bindings, definitions: &definitions };
+        let instance = inline::instantiate(Cow::Borrowed(&referrer), next_definition_id(), substitution, 0);
+
+        // The referrer's own generics are substituted into its reference to `target`
+        let instantiated = instance.block_instructions().find_map(|id| match &instance.instructions[id] {
+            Instruction::Instantiate(_, bindings) => Some(bindings.clone()),
+            _ => None,
+        });
+        assert_eq!(instantiated.as_deref(), Some(&vec![Type::UNIT]));
     }
 
     #[test]

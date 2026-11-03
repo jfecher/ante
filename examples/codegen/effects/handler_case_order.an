@@ -1,0 +1,75 @@
+// Ensure handler cases written in a different order than the effect declares its operations
+// do not break things horribly
+import Std.Stream.Loop, break_, continue_
+
+effect Two =
+    first: fn Unit -> I32
+    second: fn Unit -> I32
+
+effect Use a =
+    get: fn Unit -> a
+    set: fn a -> Unit
+
+mixed (limit: I32): I32 =
+    handle
+        a = second ()
+        b = first ()
+        a * 10 + b
+    | second () -> if limit > 5 then 99 else resume 2
+    | first () -> resume 1
+
+body (i: I32): Unit can Loop =
+    if i == 3 then break_ ()
+
+loop_count (): I32 =
+    var broke = false
+    var count = 0
+    for i in 0 .. 10 do
+        if not broke then
+            handle body i
+            | continue_ () -> ()
+            | break_ () -> broke := true
+            if not broke then count += 1
+    count
+
+state (): I32 =
+    var current = 1
+    handle
+        set (get () + 10)
+        get ()
+    | set new_state ->
+        current := new_state
+        resume ()
+    | get () -> resume current
+
+tail_resumes (): I32 =
+    handle
+        a = second ()
+        b = first ()
+        a * 10 + b
+    | second () -> resume 2
+    | first () -> resume 1
+
+non_tail_resumes (): I32 =
+    handle
+        a = second ()
+        b = first ()
+        a * 10 + b
+    | first () -> (resume 1) + 100
+    | second () -> (resume 2) + 1000
+
+main () =
+    print_to_stdout do
+    println (mixed 0)
+    println (loop_count ())
+    println (state ())
+    println (tail_resumes ())
+    println (non_tail_resumes ())
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 21
+// 3
+// 11
+// 21
+// 1121

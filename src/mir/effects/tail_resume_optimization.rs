@@ -75,6 +75,7 @@ struct CaseDecision {
     /// Generic bindings from the original `Instantiate` of `case.handler`,
     handler_bindings: Option<Arc<GenericBindings>>,
     shape: CaseShape,
+    resumes: Resumes,
 }
 
 fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> Option<Vec<CaseDecision>> {
@@ -86,95 +87,101 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
         let shape = case_shape_from_handler_type(&handler_type)?;
         let (handler_def_id, handler_env, handler_bindings) = resolve_body_function(case.handler, definition)?;
         let handler_def = mir.definitions.get(&handler_def_id)?;
-        if !case_is_tail_resumptive(handler_def, &shape) {
-            return None;
-        }
-        decisions.push(CaseDecision { handler_def_id, handler_env, handler_bindings, shape });
+        let resumes = analyze_resumes(handler_def, shape.op_arg_types.len()).filter(Resumes::is_tail_resumptive)?;
+        decisions.push(CaseDecision { handler_def_id, handler_env, handler_bindings, shape, resumes });
     }
     Some(decisions)
 }
 
-/// True if every Return in `handler_def` is a tail-call to `resume_param`, the resume parameter
-/// is used nowhere else, and at least one tail-resume call exists.
-fn case_is_tail_resumptive(handler_def: &Definition, shape: &CaseShape) -> bool {
-    let resume_param = Value::Parameter(BlockId::ENTRY_BLOCK, shape.op_arg_types.len() as u32);
+/// How a handler uses its `resume` parameter, see [analyze_resumes]
+pub(super) struct Resumes {
+    /// Each call to `resume`, all of which are in tail position: their block, id, and argument
+    pub(super) calls: Vec<(BlockId, InstructionId, Value)>,
+    /// True if the handler only returns the results of these calls
+    pub(super) only_resumes: bool,
+}
 
-    // 1. Find all tail CallClosure(resume_param, [arg]) ids: these are the CallClosure
-    //    instructions that are the last instruction in their block, where the block's terminator
-    //    is `Return(InstructionResult(call_id))`.
-    let mut tail_call_ids: FxHashSet<InstructionId> = FxHashSet::default();
-    let mut tail_call_blocks: FxHashSet<BlockId> = FxHashSet::default();
-    for (block_id, block) in handler_def.blocks.iter() {
-        let Some(TerminatorInstruction::Return(Value::InstructionResult(call_id))) = &block.terminator else {
-            continue;
-        };
-        if block.instructions.last() != Some(call_id) {
-            continue;
-        }
-        let Instruction::CallClosure { closure, arguments } = &handler_def.instructions[*call_id] else {
-            continue;
-        };
-        if *closure == resume_param && arguments.len() == 1 {
-            tail_call_ids.insert(*call_id);
-            tail_call_blocks.insert(block_id);
+impl Resumes {
+    /// True if the handler always resumes in tail position, so [Mir::optimize_tail_resume] can
+    /// turn it into a plain function
+    pub(super) fn is_tail_resumptive(&self) -> bool {
+        !self.calls.is_empty() && self.only_resumes
+    }
+
+    /// True if the handler never resumes, so [Mir::optimize_abort_handlers] can lower it
+    pub(super) fn is_abortive(&self) -> bool {
+        self.calls.is_empty()
+    }
+}
+
+/// Find each call to the handler's resume parameter at the given parameter index, returning
+/// `None` if any is not in tail position.
+pub(super) fn analyze_resumes(handler: &Definition, resume_index: usize) -> Option<Resumes> {
+    let resume = Value::Parameter(BlockId::ENTRY_BLOCK, resume_index as u32);
+    let mut calls = Vec::new();
+    // The blocks without instructions each resume's result passes through
+    let mut paths = FxHashSet::default();
+    for (block_id, block) in handler.blocks.iter() {
+        for (index, id) in block.instructions.iter().enumerate() {
+            let Instruction::CallClosure { closure, arguments } = &handler.instructions[*id] else { continue };
+            if *closure != resume {
+                continue;
+            }
+            let is_tail = index + 1 == block.instructions.len()
+                && arguments.len() == 1
+                && arguments[0] != resume
+                && flows_to_return(handler, block_id, Value::InstructionResult(*id), &mut paths);
+            if !is_tail {
+                return None;
+            }
+            calls.push((block_id, *id, arguments[0]));
         }
     }
 
-    if tail_call_ids.is_empty() {
-        return false;
+    let mut uses = 0;
+    handler.for_each_used_value(|value| uses += usize::from(*value == resume));
+    if uses != calls.len() {
+        return None;
     }
 
-    // 2. Every Return must be one of our recognized tail-resume returns.
-    for (block_id, block) in handler_def.blocks.iter() {
-        if let Some(TerminatorInstruction::Return(_)) = &block.terminator
-            && !tail_call_blocks.contains(&block_id)
-        {
-            return false;
+    // Every other return returns something else, as does every other jump to a resume's path
+    let resume_blocks: FxHashSet<BlockId> = calls.iter().map(|(block, ..)| *block).collect();
+    let only_resumes = handler.blocks.iter().all(|(id, block)| {
+        if resume_blocks.contains(&id) || paths.contains(&id) {
+            return true;
         }
-    }
+        let mut enters_path = false;
+        if let Some(terminator) = &block.terminator {
+            terminator.for_each_successor(|target| enters_path |= paths.contains(&target));
+        }
+        !enters_path && !matches!(block.terminator, Some(TerminatorInstruction::Return(_)))
+    });
+    Some(Resumes { calls, only_resumes })
+}
 
-    // 3. resume_param appears nowhere outside a recognized tail-CallClosure's `closure` slot.
-    for (id, instruction) in handler_def.instructions.iter() {
-        if tail_call_ids.contains(&id) {
-            // The tail CallClosure is allowed to use resume_param as its closure target,
-            // but its argument must not also reference resume_param (e.g. `resume(resume)`).
-            if let Instruction::CallClosure { arguments, .. } = instruction
-                && arguments.contains(&resume_param)
-            {
+/// True if the terminator of `block` returns `value`, possibly by jumping through blocks without
+/// instructions, which are added to `path`. A `Unit` value is interchangeable with the unit constant.
+fn flows_to_return(handler: &Definition, block: BlockId, value: Value, path: &mut FxHashSet<BlockId>) -> bool {
+    let is_unit = handler.local_value_type(&value) == Some(&Type::UNIT);
+    let same = |other: &Value| *other == value || (is_unit && *other == Value::Unit);
+    match &handler.blocks[block].terminator {
+        Some(TerminatorInstruction::Return(result)) => same(result),
+        Some(TerminatorInstruction::Jmp((target, argument))) if path.len() < 64 => {
+            if !handler.blocks[*target].instructions.is_empty() || *target == block {
                 return false;
             }
-        } else {
-            let mut found = false;
-            instruction.for_each_value(|v| {
-                if *v == resume_param {
-                    found = true;
-                }
-            });
-            if found {
-                return false;
+            path.insert(*target);
+            match argument {
+                Some(argument) if same(argument) => {
+                    flows_to_return(handler, *target, Value::Parameter(*target, 0), path)
+                },
+                Some(_) => false,
+                // `value` must dominate `target` here, so it is still the value to look for
+                None => flows_to_return(handler, *target, value, path),
             }
-        }
+        },
+        _ => false,
     }
-
-    // 4. resume_param doesn't appear in non-tail terminators (Jmp/If/Switch/Result args).
-    for (block_id, block) in handler_def.blocks.iter() {
-        if tail_call_blocks.contains(&block_id) {
-            continue;
-        }
-        if let Some(t) = &block.terminator {
-            let mut found = false;
-            t.for_each_value(|v| {
-                if *v == resume_param {
-                    found = true;
-                }
-            });
-            if found {
-                return false;
-            }
-        }
-    }
-
-    true
 }
 
 fn try_optimize_handle(
@@ -191,8 +198,7 @@ fn try_optimize_handle(
     }
 
     // Materialize a direct wrapper definition per case.
-    let wrapper_ids: Vec<DefinitionId> =
-        decisions.iter().map(|d| materialize_direct_wrapper(mir, d.handler_def_id, &d.shape)).collect();
+    let wrapper_ids: Vec<DefinitionId> = decisions.iter().map(|d| materialize_direct_wrapper(mir, d)).collect();
 
     let wrapper_closure_types: Vec<Type> = wrapper_ids.iter().map(|id| mir.definitions[id].typ.clone()).collect();
     let cap_tuple_type = Type::Tuple(Arc::new(wrapper_closure_types.clone()));
@@ -366,7 +372,7 @@ fn remap_definition_ids(def: &mut Definition, id_map: &FxHashMap<DefinitionId, D
     }
     for (&old, &new) in id_map.iter() {
         if old != new {
-            substitute_value(def, Value::Definition(old), Value::Definition(new));
+            def.replace_value(Value::Definition(old), Value::Definition(new));
         }
     }
 }
@@ -409,12 +415,12 @@ pub(super) fn rewrite_handler_caps_in_body(
 /// so the call site stays untouched. The handler's actual closure env (if any) is recovered by
 /// dereferencing the Pointer at the wrapper's prologue, and references to it inside the inlined
 /// handler body are remapped to the loaded value.
-fn materialize_direct_wrapper(mir: &mut Mir, handler_def_id: DefinitionId, shape: &CaseShape) -> DefinitionId {
-    let handler_def = mir.definitions[&handler_def_id].clone();
+fn materialize_direct_wrapper(mir: &mut Mir, decision: &CaseDecision) -> DefinitionId {
+    let CaseDecision { handler_def_id, shape, resumes, .. } = decision;
     let new_id = next_definition_id();
-    let mut new_def = handler_def.clone_with_id(new_id);
+    let mut new_def = mir.definitions[handler_def_id].clone_with_id(new_id);
 
-    let Type::Function(handler_ft) = &handler_def.typ else {
+    let Type::Function(handler_ft) = &new_def.typ else {
         panic!("handler def is not a function");
     };
     let env_present = handler_ft.is_closure();
@@ -425,7 +431,7 @@ fn materialize_direct_wrapper(mir: &mut Mir, handler_def_id: DefinitionId, shape
         environment: Type::POINTER,
         return_type: shape.op_return_type.clone(),
     }));
-    new_def.name = Arc::new(format!("{}_tail_resume_wrapper", handler_def.name));
+    new_def.name = Arc::new(format!("{}_tail_resume_wrapper", new_def.name));
 
     let entry = BlockId::ENTRY_BLOCK;
     let n = shape.op_arg_types.len();
@@ -442,51 +448,27 @@ fn materialize_direct_wrapper(mir: &mut Mir, handler_def_id: DefinitionId, shape
     let old_env_param = Value::Parameter(entry, (n + 1) as u32);
 
     let env_substitute: Option<Value> = if env_present {
-        let deref_id = new_def.instructions.push(Instruction::Deref(env_pointer));
-        new_def.instruction_result_types.push_existing(deref_id, handler_env_type);
-        new_def.blocks[entry].instructions.insert(0, deref_id);
-        Some(Value::InstructionResult(deref_id))
+        Some(new_def.insert_instruction_at(entry, 0, Instruction::Deref(env_pointer), handler_env_type))
     } else {
         None
     };
 
-    // Rewrite each tail `CallClosure(resume_param, [arg])` into `Id(arg)`, in-place. The
-    // instruction id stays valid (so the matching `Return(InstructionResult(id))` terminator
-    // still resolves to `arg` via the Id passthrough), block instruction lists don't change,
-    // and validation still type-checks every entry in `definition.instructions`. Removing the
-    // instruction from the VecMap would have left validation iterating an entry whose closure
-    // operand (the old resume parameter slot, now reused for the env Pointer) is not a function.
-    let resume_param = Value::Parameter(entry, n as u32);
-    let mut rewrites: Vec<(InstructionId, Value)> = Vec::new();
-    for (_block_id, block) in new_def.blocks.iter() {
-        let Some(TerminatorInstruction::Return(Value::InstructionResult(call_id))) = &block.terminator else {
-            continue;
-        };
-        if block.instructions.last() != Some(call_id) {
-            continue;
-        }
-        let Instruction::CallClosure { closure, arguments } = &new_def.instructions[*call_id] else { continue };
-        if *closure != resume_param || arguments.len() != 1 {
-            continue;
-        }
-        rewrites.push((*call_id, arguments[0]));
+    // Rewrite each tail `CallClosure(resume_param, [arg])` into `Id(arg)`
+    for (block, id, arg) in &resumes.calls {
+        new_def.instructions[*id] = Instruction::Id(*arg);
+        // The original CallClosure's result type was the handler's return type.
+        // Now that we forward `arg`, the result type is `op_return_type`.
+        new_def.instruction_result_types[*id] = shape.op_return_type.clone();
+        new_def.blocks[*block].terminator = Some(TerminatorInstruction::Return(Value::InstructionResult(*id)));
     }
-    for (id, arg) in rewrites {
-        new_def.instructions[id] = Instruction::Id(arg);
-        // The original CallClosure's result type was the handler's `r2` (= handler return
-        // type); now that we forward `arg` (= what resume was called with), the result type
-        // becomes `r1` (= op_return_type). The only consumer of this instruction was the
-        // handler's tail Return and its block's terminator still names this instruction id,
-        // so the wrapper's overall return type also becomes op_return_type, matching the
-        // wrapper's declared signature.
-        new_def.instruction_result_types[id] = shape.op_return_type.clone();
-    }
+    // The blocks a resume used to jump through to its return are unreachable now
+    new_def.remove_unreachable_blocks();
 
     // Substitute Value references throughout the body:
     //  - `old_env_param` (Value::Parameter(entry, n+1)) → `env_substitute` (the Deref result),
     //    needed because the parameter at index n+1 no longer exists.
     if let Some(replacement) = env_substitute {
-        substitute_value(&mut new_def, old_env_param, replacement);
+        new_def.replace_value(old_env_param, replacement);
     }
 
     mir.definitions.insert(new_id, new_def);
@@ -499,30 +481,21 @@ fn materialize_direct_wrapper(mir: &mut Mir, handler_def_id: DefinitionId, shape
 /// because the outer definition's now-dead PackClosure still references it. Transmute neutralizes
 /// the Capability without affecting types or other consumers.
 pub(super) fn neutralize_handler_caps_in_dead_body(mir: &mut Mir, body_fn_id: DefinitionId) {
-    let Some(body_fn) = mir.definitions.get_mut(&body_fn_id) else { return };
-    let cap_ids: Vec<InstructionId> = body_fn
-        .instructions
-        .iter()
-        .filter_map(|(id, instr)| if matches!(instr, Instruction::Capability) { Some(id) } else { None })
-        .collect();
-    for id in cap_ids {
-        body_fn.instructions[id] = Instruction::Transmute(Value::Unit);
-        // result_type stays the cap tuple type; Transmute's validation has no constraints.
+    if let Some(body_fn) = mir.definitions.get_mut(&body_fn_id) {
+        body_fn.neutralize_capabilities();
     }
 }
 
-/// Replace every occurrence of `find` with `replace` across a Definition's instructions and
-/// block terminators. This is a structural Value-level substitution; it does not modify
-/// instruction result types or block parameter types.
-pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace: Value) {
-    let sub = |v: &mut Value| {
-        if *v == find {
-            *v = replace;
+impl Definition {
+    /// Replace every `Instruction::Capability` with `Transmute(Value::Unit)`, see
+    /// [neutralize_handler_caps_in_dead_body]
+    pub(super) fn neutralize_capabilities(&mut self) {
+        for instruction in self.instructions.values_mut() {
+            if matches!(instruction, Instruction::Capability) {
+                // result_type stays the cap tuple type; Transmute's validation has no constraints.
+                *instruction = Instruction::Transmute(Value::Unit);
+            }
         }
-    };
-    definition.instructions.values_mut().for_each(|instruction| instruction.for_each_value_mut(sub));
-    for terminator in definition.blocks.values_mut().filter_map(|block| block.terminator.as_mut()) {
-        terminator.for_each_value_mut(sub);
     }
 }
 

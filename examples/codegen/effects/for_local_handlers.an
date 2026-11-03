@@ -1,0 +1,84 @@
+// Test the local handler optimization, which turns break_/continue_/emit calls
+// in for_ loops into direct jumps when the handlers are visible after inlining.
+import Std.Stream.for_, iota, map, filter, enumerate, Loop, break_, continue_, Emit, emit, stream_fn, foldl, reduce, sum, stream, stream_array
+import Std.Fail.assert, abort_on_fail
+
+/// Recursive, so it is never inlined: its `Loop` calls must go through a residual handle
+countdown_breaking (n: Usz) (limit: Usz): Unit can Loop =
+    if n == 0 then ()
+    else if n == limit then break_ ()
+    else countdown_breaking (n - 1) limit
+
+/// Never inlined and calls `continue_` after the first level
+skip_deep (depth: Usz): Unit can Loop =
+    if depth == 0 then continue_ ()
+    else skip_deep (depth - 1)
+
+main () =
+    print_to_stdout do
+    abort_on_fail do
+
+    var total = 0
+    for_ (iota 100) fn i ->
+        if i > 50 then break_ ()
+        if i %% 2 then continue_ ()
+        total += i
+    assert (total == 625)
+
+    var count = 0
+    for_ (iota 10) fn _ ->
+        break_ ()
+        count += 1
+    assert (count == 0)
+
+    // nested loops: break_ only exits the inner loop
+    var pairs = 0
+    for_ (iota 5) fn i ->
+        for_ (iota 5) fn j ->
+            if j > i then break_ ()
+            pairs += 1
+    assert (pairs == 15)
+
+    // Ensure we still optimize through multiple stream adapters.
+    // Difficult to test this without examining the Mir manually
+    for_ (iota 20 |> filter (fn x -> x.* %% 3) |> map (_ * 10) |> enumerate) fn (index, x) ->
+        if index >= 4 then break_ ()
+        print index
+        print " "
+        println x
+
+    // mixed: a local break_ plus a non-inlinable helper using Loop
+    // Should still optimize the local portion
+    var visited = 0
+    for_ (iota 10) fn i ->
+        if i == 8 then break_ ()
+        visited += 1
+        countdown_breaking 3 (6 - i)
+    assert (visited == 4)
+
+    // non-inlinable continue_
+    var after = 0
+    for_ (iota 6) fn i ->
+        if i %% 2 then skip_deep 3
+        after += i
+    assert (after == 1 + 3 + 5 + 9)
+
+    // We should optimize foldl too (but foldr uses non-tail-resumes)
+    count () = stream [1, 2, 3]
+    sum1 = sum count 0
+    sum2 = reduce count (+)
+    sum3 = foldl count 0 (+)
+    assert (sum1 == 6 and sum2 == 6 and sum3 == 6)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 625
+// 0
+// 15
+// 0 0
+// 1 30
+// 2 60
+// 3 90
+// 4
+// 9
+// 6

@@ -1,0 +1,82 @@
+// Regression test for a bug where the outer handler was accidentally selected in `inlined`
+// after the local effect optimization
+effect Give a =
+    give: fn a -> Unit
+
+both (f: fn Unit => Unit can Give a, Give b): Unit can Give a, Give b =
+    f ()
+
+both_recursive (f: fn Unit => Unit can Give a, Give b) (k: I32): Unit can Give a, Give b =
+    if k > 0 then both_recursive f (k - 1) else f ()
+
+inlined (x: a) (y: b) (n: I32): Unit can Print =
+    if n > 0 then inlined x y (n - 1)
+    else
+        handle
+            handle both do (give x; give y)
+            | give (_: a) ->
+                println "inner"
+                resume ()
+                println "after inner"
+        | give (_: b) ->
+            println "outer"
+            resume ()
+            println "after outer"
+
+not_inlined (x: a) (y: b) (n: I32): Unit can Print =
+    if n > 0 then not_inlined x y (n - 1)
+    else
+        handle
+            handle both_recursive (do give x; give y) 0
+            | give (_: a) ->
+                println "inner"
+                resume ()
+                println "after inner"
+        | give (_: b) ->
+            println "outer"
+            resume ()
+            println "after outer"
+
+tail_resumes (x: a) (y: b) (n: I32): Unit can Print =
+    if n > 0 then tail_resumes x y (n - 1)
+    else
+        handle
+            handle both do (give x; give y)
+            | give (_: a) ->
+                println "inner"
+                resume ()
+        | give (_: b) ->
+            println "outer"
+            resume ()
+
+main () =
+    print_to_stdout do
+    inlined 1u8 2i32 0
+    inlined 1u8 2u8 0
+    not_inlined 1u8 2i32 0
+    not_inlined 1u8 2u8 0
+    tail_resumes 1u8 2i32 0
+    tail_resumes 1u8 2u8 0
+
+// args: --delete-binary --no-color
+// expected stdout:
+// inner
+// outer
+// after inner
+// after outer
+// inner
+// inner
+// after inner
+// after inner
+// inner
+// outer
+// after inner
+// after outer
+// inner
+// inner
+// after inner
+// after inner
+// inner
+// outer
+// inner
+// inner

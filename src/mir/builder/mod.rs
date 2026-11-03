@@ -1976,7 +1976,7 @@ where
             _ => unreachable!("handle.expression should be a Lambda after parsing"),
         };
 
-        let cases = mapvec(&handle.cases, |(pattern, branch)| {
+        let mut cases = mapvec(&handle.cases, |(pattern, branch)| {
             let (effect_op, op_index) =
                 self.try_resolve_effect_op(pattern.function).expect("Couldn't find effect op in MIR handle");
             self.effect_op_indices.insert(effect_op, op_index);
@@ -1987,8 +1987,10 @@ where
                 },
                 _ => unreachable!("handler branch should be a Lambda after parsing"),
             };
-            crate::mir::HandlerCase { effect_op, handler }
+            (op_index, crate::mir::HandlerCase { effect_op, handler })
         });
+        cases.sort_by_key(|(op_index, _)| *op_index);
+        let cases = mapvec(cases, |(_, case)| case);
 
         self.push_instruction(Instruction::Handle { body, cases }, result_type)
     }

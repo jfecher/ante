@@ -491,18 +491,10 @@ pub(super) fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseSh
 
 /// Resolves a `handle` body or handler Value to its `DefinitionId`, env value, and generic bindings, if any.
 pub(super) fn resolve_body_function(
-    mut body: Value, definition: &Definition,
+    body: Value, definition: &Definition,
 ) -> Option<(DefinitionId, Option<Value>, Option<Arc<GenericBindings>>)> {
-    let mut env = None;
-
-    if let Value::InstructionResult(instruction) = body
-        && let Instruction::PackClosure { function, environment } = &definition.instructions[instruction]
-    {
-        body = *function;
-        env = Some(*environment);
-    }
-    let (id, bindings) = definition.definition_of(body)?;
-    Some((id, env, bindings))
+    let function = definition.known_function(body)?;
+    Some((function.id, function.environment, function.bindings))
 }
 
 fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, context: Context) {

@@ -102,6 +102,15 @@ where
     }
 }
 
+impl<K: From<usize>, V> IntoIterator for VecMap<K, V> {
+    type Item = (K, V);
+    type IntoIter = std::iter::Map<std::iter::Enumerate<std::vec::IntoIter<V>>, fn((usize, V)) -> (K, V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.items.into_iter().enumerate().map(|(i, v)| (K::from(i), v))
+    }
+}
+
 impl<K, V> Serialize for VecMap<K, V>
 where
     V: Serialize,

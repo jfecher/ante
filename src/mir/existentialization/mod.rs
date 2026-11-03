@@ -138,10 +138,7 @@ fn helper(helper: Helper, id: DefinitionId, ptr_size: u32) -> Definition {
 
 /// Emit an instruction into `block` of a helper, which needs no [builder::FunctionBuilder]
 fn emit(definition: &mut Definition, block: BlockId, instruction: Instruction, typ: Type) -> Value {
-    let id = definition.instructions.push(instruction);
-    definition.instruction_result_types.push_existing(id, typ);
-    definition.blocks[block].instructions.push(id);
-    Value::InstructionResult(id)
+    definition.push_instruction_in(block, instruction, typ)
 }
 
 /// The whole-program state shared by every definition's rewrite
