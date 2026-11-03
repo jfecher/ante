@@ -890,7 +890,7 @@ fn generate_drive_function(
     let mut switch_cases = Vec::with_capacity(cases.len());
     for (case_index, _case) in cases.iter().enumerate() {
         let case_block = definition.blocks.push(Block::new(Vec::new()));
-        switch_cases.push((case_index as u32, (case_block, None)));
+        switch_cases.push((case_index as u64, (case_block, None)));
 
         emit_handler_case(
             &mut definition,

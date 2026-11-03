@@ -1,4 +1,4 @@
-import Std.String.from_c_string, to_ascii_lowercase, to_ascii_uppercase
+import Std.String.from_c_string, to_ascii_lowercase, to_ascii_uppercase, eq_string
 import Std.C
 import Std.String.bytes, chars, substr, string_of, join, split, reverse
 import Std.String.parse_i8, parse_i16, parse_i32, parse_i64, parse_isz
@@ -7,45 +7,46 @@ import Std.String.try_cast_string_i8, try_cast_string_i16, try_cast_string_i32, 
 import Std.String.try_cast_string_u8, try_cast_string_u16, try_cast_string_u32, try_cast_string_u64, try_cast_string_usz
 import Std.Stream.iter, intersperse, stream_fn, Emit, emit
 import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
-import Std.Fail.try, panic_on_fail
+import Std.Fail.try, panic_on_fail, assert, abort_on_fail
 
 main () =
     print_to_stdout do
     abort_on_panic do
     panic_on_fail do
+    abort_on_fail do
 
     // bytes & chars:
     iter (bytes "AB") println
     iter (chars "AB") println
 
     // substr:
-    println (substr "abcdef" 1 4)
-    println (substr "abc" 0 99) // prints an empty string, should update to fail
+    assert <| substr "abcdef" 1 4 == "bcd"
+    assert <| substr "abc" 0 99 == "" // prints an empty string, should update to fail
 
     // string_of:
-    println (string_of (chars "hi"))
+    assert <| string_of (chars "hi") == "hi"
 
     // reverse:
-    println (reverse "hello")
+    assert <| reverse "hello" == "olleh"
     fresh = string_of (chars "world")
-    println (reverse fresh)
+    assert <| reverse fresh == "dlrow"
 
     // split:
     split "foo bar  baz " ' ' |> iter println
     println "end of split"
 
     // intersperse:
-    println (intersperse abc_stream ", " |> join)
+    assert <| (intersperse abc_stream ", " |> join) == "a, b, c"
     test_predicates ()
     test_parse ()
 
     // C strings:
-    println (from_c_string (C.String.new "round trip"))
-    println (C.strlen (C.String.new "abc"))
+    assert <| from_c_string (C.String.new "round trip") == "round trip"
+    assert <| C.strlen (C.String.new "abc") == 3
 
     // case conversion:
-    println (to_ascii_lowercase "Std.HashMap 123")
-    println (to_ascii_uppercase "Std.HashMap 123")
+    assert <| to_ascii_lowercase "Std.HashMap 123" == "std.hashmap 123"
+    assert <| to_ascii_uppercase "Std.HashMap 123" == "STD.HASHMAP 123"
 
 abc_stream (): Unit can Emit String =
     emit "a"
@@ -53,102 +54,101 @@ abc_stream (): Unit can Emit String =
     emit "c"
 
 test_predicates () =
-    println (starts_with "hello world" "hello")
-    println (starts_with "hello world" "world")
-    println (starts_with "hi" "hello")
-    println (ends_with "hello world" "world")
-    println (ends_with "hello world" "hello")
-    println (contains "hello world" "lo wo")
-    println (contains "hello world" "xyz")
-    println (contains "abc" "")
-    // Brackets so trailing whitespace is more visible
-    println ("[" ++ trim "  hi  " ++ "]")
-    println ("[" ++ trim_start "  hi  " ++ "]")
-    println ("[" ++ trim_end "  hi  " ++ "]")
-    println ("[" ++ trim "   " ++ "]")
-    println ("[" ++ trim "no-trim" ++ "]")
+    assert <| starts_with "hello world" "hello"
+    assert <| not starts_with "hello world" "world"
+    assert <| not starts_with "hi" "hello"
+    assert <| ends_with "hello world" "world"
+    assert <| not ends_with "hello world" "hello"
+    assert <| contains "hello world" "lo wo"
+    assert <| not contains "hello world" "xyz"
+    assert <| contains "abc" ""
+    assert <| trim "  hi  " == "hi"
+    assert <| trim_start "  hi  " == "hi  "
+    assert <| trim_end "  hi  " == "  hi"
+    assert <| trim "   " == ""
+    assert <| trim "no-trim" == "no-trim"
 
 test_parse () =
-    println (try do parse_i32 "0")
-    println (try do parse_i32 "-0")
-    println (try do parse_i32 "+0")
-    println (try do parse_i32 "000123")
-    println (try do parse_i32 "12345")
-    println (try do parse_i32 "-42")
-    println (try do parse_i32 "+7")
-    println (try do parse_i32 "+123")
-    println (try do parse_i32 "")
-    println (try do parse_i32 "-")
-    println (try do parse_i32 "+")
-    println (try do parse_i32 "--")
-    println (try do parse_i32 "+-")
-    println (try do parse_i32 "-+")
-    println (try do parse_i32 "++")
-    println (try do parse_i32 "12x")
-    println (try do parse_i32 "x12")
-    println (try do parse_i32 "1_000")
-    println (try do parse_i32 " 1")
-    println (try do parse_i32 "1 ")
-    println (try do parse_i32 "0xff")
-    println (try do parse_i32 "2147483647")
-    println (try do parse_i32 "2147483648")
-    println (try do parse_i32 "999999999999999999999999999")
-    println (try do parse_i32 "-2147483647")
-    println (try do parse_i32 "-2147483648")
-    println (try do parse_i32 "-2147483649")
-    println (try do parse_i32 "-999999999999999999999999999")
+    assert <| (try do parse_i32 "0") is Some 0
+    assert <| (try do parse_i32 "-0") is Some 0
+    assert <| (try do parse_i32 "+0") is Some 0
+    assert <| (try do parse_i32 "000123") is Some 123
+    assert <| (try do parse_i32 "12345") is Some 12345
+    assert <| (try do parse_i32 "-42") is Some (-42)
+    assert <| (try do parse_i32 "+7") is Some 7
+    assert <| (try do parse_i32 "+123") is Some 123
+    assert <| (try do parse_i32 "") is None
+    assert <| (try do parse_i32 "-") is None
+    assert <| (try do parse_i32 "+") is None
+    assert <| (try do parse_i32 "--") is None
+    assert <| (try do parse_i32 "+-") is None
+    assert <| (try do parse_i32 "-+") is None
+    assert <| (try do parse_i32 "++") is None
+    assert <| (try do parse_i32 "12x") is None
+    assert <| (try do parse_i32 "x12") is None
+    assert <| (try do parse_i32 "1_000") is None
+    assert <| (try do parse_i32 " 1") is None
+    assert <| (try do parse_i32 "1 ") is None
+    assert <| (try do parse_i32 "0xff") is None
+    assert <| (try do parse_i32 "2147483647") is Some 2147483647
+    assert <| (try do parse_i32 "2147483648") is None
+    assert <| (try do parse_i32 "999999999999999999999999999") is None
+    assert <| (try do parse_i32 "-2147483647") is Some (-2147483647)
+    assert <| (try do parse_i32 "-2147483648") is Some (-2147483648)
+    assert <| (try do parse_i32 "-2147483649") is None
+    assert <| (try do parse_i32 "-999999999999999999999999999") is None
 
-    println (try do try_cast "321" : I32)
-    println (try do parse_i8 "127")
-    println (try do parse_i8 "128")
-    println (try do parse_i8 "-128")
-    println (try do parse_i8 "-129")
-    println (try do parse_i16 "32767")
-    println (try do parse_i16 "32768")
-    println (try do parse_i16 "-32768")
-    println (try do parse_i16 "-32769")
-    println (try do parse_i64 "123456789012345")
-    println (try do parse_i64 "-9223372036854775808")
-    println (try do parse_i64 "-9223372036854775809")
-    println (try do parse_i64 "9223372036854775808")
-    println (try do parse_isz "12345")
-    println (try do parse_isz "-12345")
-    println (try do parse_u8 "255")
-    println (try do parse_u8 "256")
-    println (try do parse_u8 "+255")
-    println (try do parse_u8 "-1")
-    println (try do parse_u16 "65535")
-    println (try do parse_u16 "65536")
-    println (try do parse_u16 "+65535")
-    println (try do parse_u32 "4294967295")
-    println (try do parse_u32 "4294967296")
-    println (try do parse_u32 "+4294967295")
-    println (try do parse_u64 "18446744073709551615")
-    println (try do parse_u64 "18446744073709551616")
-    println (try do parse_u64 "+18446744073709551615")
-    println (try do parse_usz "12345")
-    println (try do parse_usz "+12345")
+    assert <| (try do try_cast "321" : I32) is Some 321
+    assert <| (try do parse_i8 "127") is Some 127
+    assert <| (try do parse_i8 "128") is None
+    assert <| (try do parse_i8 "-128") is Some (-128)
+    assert <| (try do parse_i8 "-129") is None
+    assert <| (try do parse_i16 "32767") is Some 32767
+    assert <| (try do parse_i16 "32768") is None
+    assert <| (try do parse_i16 "-32768") is Some (-32768)
+    assert <| (try do parse_i16 "-32769") is None
+    assert <| (try do parse_i64 "123456789012345") is Some 123456789012345
+    assert <| (try do parse_i64 "-9223372036854775808") is Some (-9223372036854775808)
+    assert <| (try do parse_i64 "-9223372036854775809") is None
+    assert <| (try do parse_i64 "9223372036854775808") is None
+    assert <| (try do parse_isz "12345") is Some 12345
+    assert <| (try do parse_isz "-12345") is Some (-12345)
+    assert <| (try do parse_u8 "255") is Some 255
+    assert <| (try do parse_u8 "256") is None
+    assert <| (try do parse_u8 "+255") is Some 255
+    assert <| (try do parse_u8 "-1") is None
+    assert <| (try do parse_u16 "65535") is Some 65535
+    assert <| (try do parse_u16 "65536") is None
+    assert <| (try do parse_u16 "+65535") is Some 65535
+    assert <| (try do parse_u32 "4294967295") is Some 4294967295
+    assert <| (try do parse_u32 "4294967296") is None
+    assert <| (try do parse_u32 "+4294967295") is Some 4294967295
+    assert <| (try do parse_u64 "18446744073709551615") is Some 18446744073709551615
+    assert <| (try do parse_u64 "18446744073709551616") is None
+    assert <| (try do parse_u64 "+18446744073709551615") is Some 18446744073709551615
+    assert <| (try do parse_usz "12345") is Some 12345
+    assert <| (try do parse_usz "+12345") is Some 12345
 
-    println (try do try_cast "-5" : I8)
-    println (try do try_cast "128" : I8)
-    println (try do try_cast "-123" : I16)
-    println (try do try_cast "32768" : I16)
-    println (try do try_cast "-123456" : I32)
-    println (try do try_cast "2147483648" : I32)
-    println (try do try_cast "123456789" : I64)
-    println (try do try_cast "9223372036854775808" : I64)
-    println (try do try_cast "-12345" : Isz)
+    assert <| (try do try_cast "-5" : I8) is Some (-5)
+    assert <| (try do try_cast "128" : I8) is None
+    assert <| (try do try_cast "-123" : I16) is Some (-123)
+    assert <| (try do try_cast "32768" : I16) is None
+    assert <| (try do try_cast "-123456" : I32) is Some (-123456)
+    assert <| (try do try_cast "2147483648" : I32) is None
+    assert <| (try do try_cast "123456789" : I64) is Some 123456789
+    assert <| (try do try_cast "9223372036854775808" : I64) is None
+    assert <| (try do try_cast "-12345" : Isz) is Some (-12345)
 
-    println (try do try_cast "42" : U8)
-    println (try do try_cast "-1" : U8)
-    println (try do try_cast "256" : U8)
-    println (try do try_cast "65535" : U16)
-    println (try do try_cast "65536" : U16)
-    println (try do try_cast "4294967295" : U32)
-    println (try do try_cast "4294967296" : U32)
-    println (try do try_cast "42" : U64)
-    println (try do try_cast "18446744073709551616" : U64)
-    println (try do try_cast "12345" : Usz)
+    assert <| (try do try_cast "42" : U8) is Some 42
+    assert <| (try do try_cast "-1" : U8) is None
+    assert <| (try do try_cast "256" : U8) is None
+    assert <| (try do try_cast "65535" : U16) is Some 65535
+    assert <| (try do try_cast "65536" : U16) is None
+    assert <| (try do try_cast "4294967295" : U32) is Some 4294967295
+    assert <| (try do try_cast "4294967296" : U32) is None
+    assert <| (try do try_cast "42" : U64) is Some 42
+    assert <| (try do try_cast "18446744073709551616" : U64) is None
+    assert <| (try do try_cast "12345" : Usz) is Some 12345
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -156,109 +156,9 @@ test_parse () =
 // 66
 // A
 // B
-// bcd
-// 
-// hi
-// olleh
-// dlrow
 // foo
 // bar
 // 
 // baz
 // 
 // end of split
-// a, b, c
-// true
-// false
-// false
-// true
-// false
-// true
-// false
-// true
-// [hi]
-// [hi  ]
-// [  hi]
-// []
-// [no-trim]
-// Some 0
-// Some 0
-// Some 0
-// Some 123
-// Some 12345
-// Some -42
-// Some 7
-// Some 123
-// None
-// None
-// None
-// None
-// None
-// None
-// None
-// None
-// None
-// None
-// None
-// None
-// None
-// Some 2147483647
-// None
-// None
-// Some -2147483647
-// Some -2147483648
-// None
-// None
-// Some 321
-// Some 127
-// None
-// Some -128
-// None
-// Some 32767
-// None
-// Some -32768
-// None
-// Some 123456789012345
-// Some -9223372036854775808
-// None
-// None
-// Some 12345
-// Some -12345
-// Some 255
-// None
-// Some 255
-// None
-// Some 65535
-// None
-// Some 65535
-// Some 4294967295
-// None
-// Some 4294967295
-// Some 18446744073709551615
-// None
-// Some 18446744073709551615
-// Some 12345
-// Some 12345
-// Some -5
-// None
-// Some -123
-// None
-// Some -123456
-// None
-// Some 123456789
-// None
-// Some -12345
-// Some 42
-// None
-// None
-// Some 65535
-// None
-// Some 4294967295
-// None
-// Some 42
-// None
-// Some 12345
-// round trip
-// 3
-// std.hashmap 123
-// STD.HASHMAP 123

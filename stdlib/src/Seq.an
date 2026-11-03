@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl, emit
 
-export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq
+export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq, eq_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -277,3 +277,15 @@ impl stream_seq: Stream (Seq a) (ref a) pure with
         for i in 0 .. seq.len do
             elem = offset seq.data.elements (Usz i)
             emit (ptr_to_mut elem)
+
+impl eq_seq {Eq t e}: Eq (Seq t) e with
+    (==) l r =
+        if l.len != r.len then
+            return false
+
+        for i in 0 .. l.len do
+            le = ptr_to_mut (offset l.data.elements (Usz i))
+            re = ptr_to_mut (offset r.data.elements (Usz i))
+            if le != re then
+                return false
+        true

@@ -2,12 +2,13 @@ import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
     print_vec, extract_vec, stream_ref_vec, eq_vec
 
-import Std.Fail.on_fail, panic_on_fail
+import Std.Fail.on_fail, panic_on_fail, assert, abort_on_fail
 import Std.Stream.iter, stream_array
 
 main () =
     print_to_stdout do
     abort_on_panic do
+    abort_on_fail do
 
     test_basics ()
     test_remove_first ()
@@ -27,138 +28,108 @@ main () =
 
 test_basics () =
     var v = Vec.empty ()
-    println (v.is_empty ())
+    assert <| v.is_empty ()
 
     v.push 3i32
     v.push 4
     v.push 5
     v.remove_index 1 ~> panic_on_fail
-    println (ref v)
+    assert <| v == Vec.of [3, 5]
 
     v.pop ()
-    println (ref v)
+    assert <| v == Vec.of [3]
 
-    println ((v.get 0).* ~> on_fail (do 0))
-    println (v.is_empty ())
-    println (v.len ())
-    println (v.capacity () >= v.len ())
+    assert <| ((v.get 0).* ~> on_fail (do 0)) == 3
+    assert <| not v.is_empty ()
+    assert <| v.len () == 1
+    assert <| v.capacity () >= v.len ()
 
     v.reserve 32
-    println (v.capacity () >= 32)
-    println (v.get_unchecked 0).*
+    assert <| v.capacity () >= 32
+    assert <| v.get_unchecked 0 == 3
 
 test_remove_first () =
     var v = Vec.empty ()
     v.push 3
     v.push 5
     v.push 5
-    println (v.remove_first 5)
-    println (ref v)
-    println (v.remove_first 99)
+    assert <| v.remove_first 5 is Some 1
+    assert <| v == Vec.of [3, 5]
+    assert <| v.remove_first 99 is None
 
 test_remove_indices () =
     var v = Vec.of [10, 20, 30, 40, 50]
     idxs = Vec.of [1, 3]
     v.remove_indices idxs ~> panic_on_fail
-    println (ref v)
+    assert <| v == Vec.of [10, 30, 50]
 
 test_remove_all () =
     var v = Vec.of [1, 2, 1, 1, 3]
-    println (v.remove_all 1)
-    println (ref v)
+    assert <| v.remove_all 1 == 3
+    assert <| v == Vec.of [2, 3]
 
 test_swap_last () =
     var v = Vec.of [10, 20, 30, 40]
-    println (v.swap_last 1)
-    println (ref v)
-    println (v.swap_last 2)
+    assert <| v.swap_last 1
+    assert <| v == Vec.of [10, 40, 30]
+    assert <| not v.swap_last 2
 
 test_indexing () =
     v = Vec.of [10, 40, 30]
     fourty = (ref v).[1]  // TODO: cumbersome
-    println fourty
+    assert <| fourty == 40
 
 test_stream () =
     v = Vec.of [7, 8, 9]
     iter (ref v) (fn (x: ref I32) -> println x.*)
 
 test_eq () =
-    println (Vec.of [1, 2] == Vec.of [1, 2])
-    println (Vec.of [1, 2] == Vec.of [1, 3])
+    assert <| Vec.of [1, 2] == Vec.of [1, 2]
+    assert <| Vec.of [1, 2] != Vec.of [1, 3]
 
 test_reverse () =
     var v = Vec.of [1, 2, 3, 4]
     v.reverse ()
-    println (ref v)
+    assert <| v == Vec.of [4, 3, 2, 1]
 
 test_swap () =
     var v = Vec.of [10, 20, 30]
     v.swap 0 2 ~> panic_on_fail
-    println (ref v)
+    assert <| v == Vec.of [30, 20, 10]
 
 test_insert () =
     panic_on_fail do
     var v = Vec.of [1, 3, 5]
     v.insert 1 2
     v.insert 3 4
-    println (ref v)
+    assert <| v == Vec.of [1, 2, 3, 4, 5]
 
 test_dedup () =
     var v = Vec.of [1, 1, 2, 2, 2, 3, 1]
     v.dedup ()
-    println (ref v)
+    assert <| v == Vec.of [1, 2, 3, 1]
 
 test_truncate_clear () =
     var v = Vec.of [1, 2, 3, 4]
     v.truncate 2
-    println (ref v)
+    assert <| v == Vec.of [1, 2]
     Vec.clear (mut v)
-    println (ref v)
+    assert <| v.is_empty ()
 
 test_sort () =
     var v = Vec.of [4, 1, 3, 2, 5]
     // `Expected Cmp _ but found Unit` when doing `v.sort ()`
     // TODO: Investigate why this happens for `v.sort ()` but not `v.dedup ()`
     Vec.sort (mut v)
-    println (ref v)
+    assert <| v == Vec.of [1, 2, 3, 4, 5]
 
 test_sort_by () =
     var v = Vec.of [4, 1, 3, 2]
     v.sort_by (>)
-    println (ref v)
+    assert <| v == Vec.of [4, 3, 2, 1]
 
 // args: --delete-binary --no-color
 // expected stdout:
-// true
-// [3, 5]
-// [3]
-// 3
-// false
-// 1
-// true
-// true
-// 3
-// Some 1
-// [3, 5]
-// None
-// [10, 30, 50]
-// 3
-// [2, 3]
-// true
-// [10, 40, 30]
-// false
-// 40
 // 7
 // 8
 // 9
-// true
-// false
-// [4, 3, 2, 1]
-// [30, 20, 10]
-// [1, 2, 3, 4, 5]
-// [1, 2, 3, 1]
-// [1, 2]
-// []
-// [1, 2, 3, 4, 5]
-// [4, 3, 2, 1]
-

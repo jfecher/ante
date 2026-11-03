@@ -708,13 +708,13 @@ impl Builder {
                 let instruction = &definition.instructions[*instruction_id];
                 self.write_instruction(*instruction_id, instruction, definition, mir);
             }
-            self.write_terminator(block, mir);
+            self.write_terminator(block, definition, mir);
         }
     }
 
     /// Write a block's terminator. Every block ends in a `goto`/`return`/trap so control never
     /// falls through into the textually-following block's label.
-    fn write_terminator(&mut self, block: &mir::Block, mir: &mir::Mir) {
+    fn write_terminator(&mut self, block: &mir::Block, definition: &mir::Definition, mir: &mir::Mir) {
         match block.terminator.as_ref().expect("block has no terminator") {
             // `Result` only occurs in globals, handled separately, but treat it as a return defensively.
             mir::TerminatorInstruction::Return(value) | mir::TerminatorInstruction::Result(value) => {
@@ -738,8 +738,13 @@ impl Builder {
                 self.write("switch (");
                 self.write_value(int_value, mir);
                 self.write(") { ");
+                let mir::Type::Primitive(mir::PrimitiveType::Int(kind)) = mir.type_of_value(int_value, definition) else {
+                    unreachable!("Switch value type is not an integer")
+                };
                 for (tag, target) in cases {
-                    let _ = write!(self.current_item, "case {tag}: {{ ");
+                    self.write("case ");
+                    self.write_integer_constant(IntConstant::from_bits(kind, *tag));
+                    self.write(": { ");
                     self.write_jmp(target.0, &target.1, mir);
                     self.write(" } ");
                 }

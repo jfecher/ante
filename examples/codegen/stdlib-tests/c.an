@@ -3,7 +3,7 @@ import Std.C.puts, putchar, strlen, system, memcmp, memcpy, malloc, free,
     fopen, fclose, fputs, fputc, fwrite, fseek, ftell, ferror, calloc, realloc,
     copy_file
 import Std.String.from_c_string
-import Std.Fail.Fail, panic_on_fail
+import Std.Fail.Fail, panic_on_fail, assert, abort_on_fail
 
 mkdtemp = extern "mkdtemp": fn C.String -> C.String can Fs
 
@@ -20,6 +20,7 @@ main () =
     // puts writes a line and appends a newline
     print_to_stdout do
     abort_on_panic do
+    abort_on_fail do
 
     _ = puts (C.String "hello\0".data)
 
@@ -28,10 +29,10 @@ main () =
     putchar '\n'
 
     // strlen
-    println (strlen (C.String "abcdef\0".data))    // 6
+    assert <| strlen (C.String "abcdef\0".data) == 6
 
     // system: invoke /bin/true; exit code is the process status
-    println (system (C.String "true\0".data))      // 0
+    assert <| system (C.String "true\0".data) == 0
 
     // memcmp: equal vs unequal byte buffers
     a = malloc 4 : Ptr U8
@@ -46,22 +47,22 @@ main () =
     array_insert c 1usz 2u8
     array_insert c 2usz 9u8
     array_insert c 3usz 9u8
-    println (memcmp a b 4usz == 0)            // true (equal)
-    println (memcmp a c 4usz == 0)            // false (unequal)
+    assert <| memcmp a b 4usz == 0
+    assert <| memcmp a c 4usz != 0
     free a
     free b
     free c
 
     // calloc returns zeroed memory
     z = calloc 4usz 1usz : Ptr U8
-    println (deref_ptr z)                      // 0
+    assert <| deref_ptr z == 0
     free z
 
     // realloc grows a buffer
     p = malloc 1 : Ptr U8
     array_insert p 0usz 7u8
     p2 = realloc p 8usz
-    println (deref_ptr p2)                     // 7 (preserved)
+    assert <| deref_ptr p2 == 7
     free p2
 
     // File round-trip exercising fopen/fputs/fputc/fwrite/fseek/ftell/ferror/fclose
@@ -82,25 +83,15 @@ main () =
     fr = fopen path_r (C.String "r\0".data)
     if fr.f == null () then panic "fopen failed to open the test file for reading"
     _ = fseek fr.* 0i32 2i32                   // SEEK_END
-    println (ftell fr.*)                       // 3
+    assert <| ftell fr == 3
     _ = fseek fr.* 0i32 0i32                   // SEEK_SET
-    println (ferror fr.*)                      // 0
+    assert <| ferror fr == 0
     fclose fr
 
     remove_dir = "rm -rf " ++ dir ++ "\0"
     _ = system (C.String remove_dir.data)
-    println "done"
 
 // args: --delete-binary --no-color
 // expected stdout:
 // hello
 // A
-// 6
-// 0
-// true
-// false
-// 0
-// 7
-// 3
-// 0
-// done

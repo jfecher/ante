@@ -6,7 +6,7 @@ import Std.Fail.Fail, fail, panic_on_fail, or_panic, on_fail, try
 export HashMap, Entry, Hash, HashMap.empty, HashMap.of, HashMap.clear, HashMap.resize, HashMap.should_resize,
     HashMap.insert, HashMap.get_entry, HashMap.get, HashMap.get_mut, HashMap.contains, HashMap.remove, HashMap.len,
     HashMap.is_empty, HashMap.keys, HashMap.values, HashMap.get_or_insert, HashMap.get_or_insert_with, HashMap.retain,
-    HashMap.merge, HashMap.extend, print_hashmap, stream_map
+    HashMap.merge, HashMap.extend, print_hashmap, stream_map, eq_hashmap
 
 /// A linear-scan mutable HashMap using a resize factor of 2.0
 ///
@@ -254,3 +254,18 @@ impl insert_hashmap {Eq k e}: Insert (mut HashMap k v) k v (Panic & e) with
     (.[]:=) map key value =
         map.insert key value
         ()
+
+impl eq_hashmap {Eq k e} {Eq v e}: Eq (HashMap k v) e with
+    (==) map1 map2 =
+        if map1.len () != map2.len () then
+            return false
+
+        for i in 0 .. map1.capacity do
+            entry1 = ptr_to_mut (offset map1.entries i)
+            if entry1.occupied then
+                match map2.get_entry entry1.key
+                | None -> return false
+                | Some entry2 ->
+                    if entry1.value != entry2.value then
+                        return false
+        true

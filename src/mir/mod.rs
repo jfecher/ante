@@ -973,7 +973,8 @@ pub enum TerminatorInstruction {
     },
     Switch {
         int_value: Value,
-        cases: Vec<(/*tag_to_match*/ u32, JmpTarget)>,
+        /// Each case's value is stored as raw bits, truncated to the width of `int_value`'s type
+        cases: Vec<(/*tag_to_match*/ u64, JmpTarget)>,
         else_: JmpTarget,
         end: BlockId,
     },
@@ -1069,6 +1070,22 @@ impl IntConstant {
             IntConstant::I32(_) => IntegerKind::I32,
             IntConstant::I64(_) => IntegerKind::I64,
             IntConstant::Isz(_) => IntegerKind::Isz,
+        }
+    }
+
+    /// Create a constant of the given kind from raw bits, truncating them to the kind's width
+    pub(crate) fn from_bits(kind: IntegerKind, bits: u64) -> IntConstant {
+        match kind {
+            IntegerKind::U8 => IntConstant::U8(bits as u8),
+            IntegerKind::U16 => IntConstant::U16(bits as u16),
+            IntegerKind::U32 => IntConstant::U32(bits as u32),
+            IntegerKind::U64 => IntConstant::U64(bits),
+            IntegerKind::Usz => IntConstant::Usz(bits as usize),
+            IntegerKind::I8 => IntConstant::I8(bits as i8),
+            IntegerKind::I16 => IntConstant::I16(bits as i16),
+            IntegerKind::I32 => IntConstant::I32(bits as i32),
+            IntegerKind::I64 => IntConstant::I64(bits as i64),
+            IntegerKind::Isz => IntConstant::Isz(bits as isize),
         }
     }
 

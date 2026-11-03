@@ -1753,8 +1753,8 @@ where
             let key = match &case.constructor {
                 Constructor::False | Constructor::Unit => 0,
                 Constructor::True => 1,
-                Constructor::Int(value) => *value as u32,
-                Constructor::Variant(_, variant_index) => *variant_index as u32,
+                Constructor::Int(value) => *value,
+                Constructor::Variant(_, variant_index) => *variant_index as u64,
                 // Range constructors aren't lowered through a Switch directly; if we ever
                 // encounter one here it's a compiler bug.
                 Constructor::Range(_, _) => unreachable!("Range constructor in MIR switch lowering"),

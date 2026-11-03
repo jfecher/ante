@@ -1,6 +1,7 @@
 import Std.Seq
-import Std.Seq.Seq, of, pop, remove_last, get, get_copied, iter, push, clone_seq, drop_seq, print_seq, stream_seq
-import Std.Stream.iota, stream_fn
+import Std.Seq.Seq, of, pop, remove_last, get, get_copied, iter, push, clone_seq, drop_seq, print_seq, stream_seq, eq_seq
+import Std.Stream.iota, stream_fn, stream_array
+import Std.Fail.assert, abort_on_fail
 
 type Tag = id: U32
 
@@ -11,6 +12,8 @@ impl drop_tag: Drop Tag Print with
 
 main () =
     print_to_stdout do
+    abort_on_fail do
+
     var seq = Seq.empty ()
     seq := seq.push 33
     seq := seq.push 44
@@ -18,36 +21,31 @@ main () =
     snapshot1 = clone seq
 
     seq := seq.push 55
-    println (clone seq)                      // [33, 44, 55]
-    println (clone snapshot1)                // [33, 44]
+    assert <| seq == Seq.of [33, 44, 55]
+    assert <| snapshot1 == Seq.of [33, 44]
 
-    println (snapshot1.push 100)             // [33, 44, 100]
-    println seq                              // [33, 44, 55]
+    assert <| snapshot1.push 100 == Seq.of [33, 44, 100]
+    assert <| seq == Seq.of [33, 44, 55]
 
     // Seq.of:
     // TODO: This type annotation shouldn't be necessary, but is
     built: Seq Usz = Seq.of (iota 5)
-    println (clone built)                    // [0, 1, 2, 3, 4]
+    assert <| built == Seq.of [0, 1, 2, 3, 4]
 
     // pop:
     popped_seq, popped = pop (clone built)
-    println popped                           // Some 4
-    println popped_seq                       // [0, 1, 2, 3]
+    assert <| popped is Some 4
+    assert <| popped_seq == Seq.of [0, 1, 2, 3]
 
     // remove_last:
-    println (remove_last (clone built))      // [0, 1, 2, 3]
+    assert <| remove_last (clone built) == Seq.of [0, 1, 2, 3]
 
     // get:
-    match built.get 0
-    | Some r -> println (r.* : Usz)
-    | None -> println "missing"               // 0
-
-    match built.get 99
-    | Some r -> println r.*
-    | None -> println "missing"               // missing
+    assert <| built.get 0 is Some 0
+    assert <| built.get 99 is None
 
     // get_copied:
-    println (get_copied built 1u32)    // Some 1
+    assert <| get_copied built 1u32 is Some 1
 
     // Seq.iter:
     iter (ref built) (fn x -> println x.*)   // 0, 1, 2, 3, 4
@@ -71,17 +69,6 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout:
-// [33, 44, 55]
-// [33, 44]
-// [33, 44, 100]
-// [33, 44, 55]
-// [0, 1, 2, 3, 4]
-// Some 4
-// [0, 1, 2, 3]
-// [0, 1, 2, 3]
-// 0
-// missing
-// Some 1
 // 0
 // 1
 // 2

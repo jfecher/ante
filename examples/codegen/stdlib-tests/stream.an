@@ -3,11 +3,13 @@ import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, any, foldl
     filter_map, reduce, map2, zip, intersperse, intersperse_with, chain, count,
     find, find_map, take, take_while, skip, skip_while, sum, product, for_, Loop,
     break_, continue_, Emit, emit
-import Std.Fail.Fail, try
+import Std.Fail.Fail, try, assert, abort_on_fail
 
 main () =
     print_to_stdout do
     abort_on_panic do
+    abort_on_fail do
+
     iota 10
         |> filter (fn x -> x.* %% 2)
         |> map (_ * 2)
@@ -15,7 +17,7 @@ main () =
         |> iter println
 
     evens = iota 10 |> map (_ * 2)
-    println <| all evens (_ %% 2)
+    assert <| all evens (_ %% 2)
 
     fold_tests ()
     extra_tests ()
@@ -25,13 +27,13 @@ fold_tests () =
     foldr_result = iota 5 |> foldr 0 (-) // 0 - (1 - (2 - (3 - 4))) = 2
 
     // pain point: No `Cast Usz I64` nor a `TryCast Usz I64`
-    println (transmute foldl_result : I64)
-    println foldr_result
+    assert <| (transmute foldl_result : I64) == -10
+    assert <| foldr_result == 2
 
 extra_tests () =
     // any:
-    println (any (iota 5) (_ > 3))   // true
-    println (any (iota 3) (_ > 99))  // false
+    assert <| any (iota 5) (_ > 3)
+    assert <| not any (iota 3) (_ > 99)
 
     // filter_map
     iota 5
@@ -39,8 +41,8 @@ extra_tests () =
         |> iter println  // 0, 20, 40
 
     // reduce: success + empty (wrap in try because reduce {Fail})
-    println (try (fn {f} -> reduce (iota 5) (+)) : Maybe Usz)   // Some 10
-    println (try (fn {f} -> reduce (iota 0) (+)) : Maybe Usz)   // None
+    assert <| try (fn {f} -> reduce (iota 5) (+)) is Some 10
+    assert <| try (fn {f} -> reduce (iota 0) (+)) is None
 
     // map2: truncates to shorter input
     map2 (iota 3) (iota 5) (+)
@@ -65,14 +67,14 @@ extra_tests () =
         |> iter println // 0, 1, 0, 1
 
     // count:
-    println (count (iota 7))  // 7
+    assert <| count (iota 7) == 7
 
     // find:
-    println (try (do find (iota 5) (_ > 2)))    // Some 3
-    println (try (do find (iota 5) (_ > 99)))   // None
+    assert <| try (do find (iota 5) (_ > 2)) is Some 3
+    assert <| try (do find (iota 5) (_ > 99)) is None
 
     // find_map:
-    println (try do find_map (iota 5) (fn x -> iff (x == 3) (do x * 10)))  // Some 30
+    assert <| (try do find_map (iota 5) (fn x -> iff (x == 3) (do x * 10))) is Some 30
 
     // take, take_while
     iota 100 |> take 3 |> iter println       // 0, 1, 2
@@ -83,8 +85,8 @@ extra_tests () =
     iota 5 |> skip_while (_ < 2) |> iter println  // 2, 3, 4
 
     // sum + product
-    println (sum (iota 5) 0)                     // 10
-    println (product (iota 5 |> map (_ + 1)) 1)  // 120
+    assert <| sum (iota 5) 0 == 10
+    assert <| product (iota 5 |> map (_ + 1)) 1 == 120
 
     println "for_:"
     for_ (iota 20) fn x ->
@@ -92,9 +94,8 @@ extra_tests () =
         if x == 8 then break_ ()
         println x
 
-    println "last:"
-    println (last (iota 5))
-    println (last (take (iota 5) 0))
+    assert <| last (iota 5) is Some 4
+    assert <| last (take (iota 5) 0) is None
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -103,16 +104,9 @@ extra_tests () =
 // 2, 8
 // 3, 12
 // 4, 16
-// true
-// -10
-// 2
-// true
-// false
 // 0
 // 20
 // 40
-// Some 10
-// None
 // 0
 // 2
 // 4
@@ -133,10 +127,6 @@ extra_tests () =
 // 1
 // 0
 // 1
-// 7
-// Some 3
-// None
-// Some 30
 // 0
 // 1
 // 2
@@ -148,15 +138,10 @@ extra_tests () =
 // 2
 // 3
 // 4
-// 10
-// 120
 // for_:
 // 1
 // 2
 // 4
 // 5
 // 7
-// last:
-// Some 4
-// None
 

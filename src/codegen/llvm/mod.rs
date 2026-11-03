@@ -1301,7 +1301,7 @@ impl<'ctx> ModuleContext<'ctx> {
                     let (case_block, case_args) = target;
                     self.remember_incoming(*case_block, case_args);
                     let case_block = self.blocks[*case_block];
-                    let int_value = int_value.get_type().const_int(*case_value as u64, false);
+                    let int_value = int_value.get_type().const_int(*case_value, false);
                     (int_value, case_block)
                 });
 

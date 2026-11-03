@@ -3,10 +3,12 @@ import Std.HashSet.HashSet, empty, of, clear, contains, insert, remove, len,
     print_hashset
 import Std.Hash.hash_u8
 import Std.Stream.iter, stream_array, stream_fn
+import Std.Fail.abort_on_fail, assert
 
 main () =
     print_to_stdout do
     abort_on_panic do
+    abort_on_fail do
 
     test_basics ()
     test_of_extend_retain_merge ()
@@ -17,36 +19,36 @@ is_even (key: U8) = key %% 2
 test_basics () =
     var set: HashSet U8 = HashSet.empty ()
 
-    println (set.is_empty ())
-    println (set.len ())
-    println (set.insert 1)
-    println (set.insert 1)
-    println (set.contains 1)
-    println (set.remove 1)
-    println (set.remove 1)
-    println (set.is_empty ())
+    assert <| set.is_empty ()
+    assert <| set.len () == 0
+    assert <| set.insert 1
+    assert <| not set.insert 1
+    assert <| set.contains 1
+    assert <| set.remove 1
+    assert <| not set.remove 1
+    assert <| set.is_empty ()
 
 
 test_of_extend_retain_merge () =
     var set = HashSet.of [1, 2, 2]
-    println (set.len ())
+    assert <| set.len () == 2
 
     set.extend [2, 3, 4]
-    println (set.len ())
+    assert <| set.len () == 4
 
     set.retain is_even
-    println (set.len ())
-    println (set.contains 1)
-    println (set.contains 2)
-    println (set.contains 3)
+    assert <| set.len () == 2
+    assert <| not set.contains 1
+    assert <| set.contains 2
+    assert <| not set.contains 3
 
     other = HashSet.of [3, 5]
     set.merge other
-    println (set.len ())
-    println (set.contains 5)
+    assert <| set.len () == 4
+    assert <| set.contains 5
 
     set.clear ()
-    println (set.is_empty ())
+    assert <| set.is_empty ()
 
 test_stream_and_print () =
     set = HashSet.of [42]
@@ -59,23 +61,6 @@ test_stream_and_print () =
 
 // args: --delete-binary --no-color
 // expected stdout:
-// true
-// 0
-// true
-// false
-// true
-// true
-// false
-// true
-// 2
-// 4
-// 2
-// false
-// true
-// false
-// 4
-// true
-// true
 // 42
 // 43
 // 43

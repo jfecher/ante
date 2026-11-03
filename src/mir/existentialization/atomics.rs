@@ -67,7 +67,7 @@ pub(super) fn helper(operation: AtomicOperation, id: DefinitionId, ptr_size: u32
     let mut cases = Vec::new();
     for kind in [IntegerKind::U8, IntegerKind::U16, IntegerKind::U32, IntegerKind::U64] {
         let block = definition.blocks.push(Block::new(Vec::new()));
-        cases.push((kind.size_in_bytes(ptr_size), (block, None)));
+        cases.push((kind.size_in_bytes(ptr_size) as u64, (block, None)));
 
         let int = Type::int(kind);
         let mut emit = |instruction, typ| emit(&mut definition, block, instruction, typ);

@@ -1,7 +1,8 @@
 import Std.IO.File, iterator_file, print_to_file, create_dir, create_dir_all
 import Std.C
 import Std.C.fputs, fopen, fclose, system
-import Std.Fail.Fail, try, abort_on_fail
+import Std.Fail.Fail, try, abort_on_fail, assert
+import Std.String.eq_string
 
 write_test_file (path: String): Unit can Fs, Fail =
     var f = File.open path "w"
@@ -19,34 +20,32 @@ main () =
 
     // Test next_char reads the first character
     f1 = File.open (clone path) "r"
-    c1 = f1.next_char ()
-    c2 = f1.next_char ()
-    print c1
-    println c2
+    assert <| f1.next_char () == 'l'
+    assert <| f1.next_char () == 'i'
     f1.close ()
 
-    println (try (do File.open "/nonexistent_ante_dir/missing.txt" "r") is Some _)
+    assert (try (do File.open "/nonexistent_ante_dir/missing.txt" "r") is None)
 
     // Test next_line reads complete lines
     var f2 = File.open (clone path) "r"
-    println (f2.next_line ())
-    println (f2.next_line ())
-    println (f2.eof ())
-    println (f2.next_line ())
+    assert <| f2.next_line () == "line1"
+    assert <| f2.next_line () == "line2"
+    assert <| not f2.eof ()
+    assert <| f2.next_line () == "line3"
 
     // Iterating past the end should yield an empty string
-    println (f2.next_line ())
-    println (f2.next_line ())
-    println (f2.eof ())
+    assert <| f2.next_line () == ""
+    assert <| f2.next_line () == ""
+    assert <| f2.eof ()
 
     // Reading a character past the end fails
     f2_ref = ref f2
-    println (try (do f2_ref.next_char ()) is Some _)
+    assert <| try (do f2_ref.next_char ()) is None
     f2.close ()
 
     // Test iterating over file lines using the File Iterator impl
     var f3 = File.open (clone path) "r"
-    iterate (mut f3) println
+    iterate (mut f3) println  // line1\nline2\nline3
     f3.close ()
 
     // Test print_to_file
@@ -57,37 +56,21 @@ main () =
     f4.close ()
 
     var f5 = File.open (clone path) "r"
-    println (f5.next_line ())
+    assert <| f5.next_line () == "printed 42"
     f5.close ()
 
     // TODO: Add function to remove directories
     _ = system (C.String "rm -rf /tmp/ante_io_test_dir\0".data)
-    println (try (do create_dir_all (test_dir "/a//b/c/")) is Some _)
-    println (try (do create_dir_all (test_dir "/a/b/c")) is Some _)
-    println (try (do create_dir (test_dir "/a")) is Some _)
+    assert <| try (do create_dir_all (test_dir "/a//b/c/")) is Some _
+    assert <| try (do create_dir_all (test_dir "/a/b/c")) is Some _
+    assert <| try (do create_dir (test_dir "/a")) is Some _
     // Parents are not created by create_dir
-    println (try (do create_dir (test_dir "/missing/x")) is Some _)
+    assert <| try (do create_dir (test_dir "/missing/x")) is None
     // A file is not a directory
-    println (try (do create_dir (clone path)) is Some _)
+    assert <| try (do create_dir (clone path)) is None
 
 // args: --delete-binary --no-color
 // expected stdout:
-// li
-// false
-// line1
-// line2
-// false
-// line3
-// 
-// 
-// true
-// false
 // line1
 // line2
 // line3
-// printed 42
-// true
-// true
-// true
-// false
-// false
