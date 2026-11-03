@@ -94,8 +94,8 @@ extra_tests () =
         if x == 8 then break_ ()
         println x
 
-    assert <| last (iota 5) is Some 4
-    assert <| last (take (iota 5) 0) is None
+    assert <| try (do last (iota 5)) is Some 4
+    assert <| try (do last (take (iota 5) 0)) is None
 
 // args: --delete-binary --no-color
 // expected stdout:

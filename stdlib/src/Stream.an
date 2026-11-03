@@ -59,7 +59,7 @@ for_ (stream: s) {Stream s a e} (f: fn a => b can Loop, e): Unit can e =
 /// Applies `f` to each element from the stream, re-emitting each result.
 /// 
 /// Given `a1, a2, .., aN`, emit `f a1, f a2, .., f aN`
-map (stream: s) {Stream s a e} (f: fn a => b) = fn () ->
+map (stream: s) {Stream s a e} (f: fn a => b) = do
     handle Stream.stream stream
     | emit a ->
         emit (f a)
@@ -68,7 +68,7 @@ map (stream: s) {Stream s a e} (f: fn a => b) = fn () ->
 /// Re-emits only the elements from the original stream for which `f elem` is true
 ///
 /// E.g. `filter (iota 5) (_ > 2)` will emit `3` and `4`.
-filter (stream: s) {Stream s a e} (f: fn (ref a) => Bool) = fn () ->
+filter (stream: s) {Stream s a e} (f: fn (ref a) => Bool) = do
     handle Stream.stream stream
     | emit a ->
         if f (ref a) then emit a
@@ -77,7 +77,7 @@ filter (stream: s) {Stream s a e} (f: fn (ref a) => Bool) = fn () ->
 /// Performs a combined map and filter opereration, applying `f` to each element in
 /// the stream, filtering out any elements for which `None` is returned, leaving only
 /// the `Some` elements.
-filter_map (stream: s) {Stream s a e} (f: fn a => Maybe b) = fn () ->
+filter_map (stream: s) {Stream s a e} (f: fn a => Maybe b) = do
     handle Stream.stream stream
     | emit a ->
         match f a
@@ -142,7 +142,7 @@ reduce (stream: s) {Stream s a e} (f: fn a a => a): a can Fail, e =
 /// Given `a1, a2, .., aN` and `b1, b2, .., bN`, emit `f a1 b1, f a2 b2, .., f aN bN`.
 /// If the two input streams are not the same length, the length of the resulting stream
 /// will be the shorter of the two.
-map2 (stream1: s1) (stream2: s2) {Stream s1 a e1} {Stream s2 b e2} {Copy a} {Copy b} (f: fn a b => c) = fn () ->
+map2 (stream1: s1) (stream2: s2) {Stream s1 a e1} {Stream s2 b e2} {Copy a} {Copy b} (f: fn a b => c) = do
     // TODO: Old impl was broken, rewrite again to remove collecting to Vec
     v1 = Vec.of stream1
     v2 = Vec.of stream2
@@ -153,7 +153,7 @@ map2 (stream1: s1) (stream2: s2) {Stream s1 a e1} {Stream s2 b e2} {Copy a} {Cop
         emit (f a b)
 
 /// Emit numbers from 0 to `n`, end-exclusive
-iota n = fn () ->
+iota n = do
     for i in 0usz .. n do emit i
 
 /// Zip the two streams together, emitting `x, y` for each
@@ -187,28 +187,34 @@ any (stream: s) {Stream s a e} (f: fn a => Bool): Bool can e =
         if f a then true
         else resume ()
 
-/// Returns the first element of the stream or `None` if it is empty
-first (stream: s) {Stream s a e}: Maybe a can e =
-    handle
-        // TODO: This fails when we rewrite it to `Stream.stream stream; None`
-        // The type checker can't see through `;` to see the expected type is still `Maybe a`
-        Stream.stream stream
-        None
-    | emit a -> Some a
+/// Returns the first element of the stream. Fails if the stream is empty
+first (stream: s) {Stream s a e}: a can Fail, e =
+    handle Stream.stream stream; fail ()
+    | emit a -> a
 
-/// Returns the final element of the stream or `None` if it is empty
-last (stream: s) {Stream s a e}: Maybe a can e =
+/// Returns the final element of the stream. Fails if the stream is empty
+last (stream: s) {Stream s a e}: a can Fail, e =
     var result = Maybe.None
     handle Stream.stream stream
     | emit a ->
         result := Maybe.Some a
         resume ()
-    result
+
+    if result is Some elem then elem
+    else fail ()
+
+/// Returns the nth element of the stream (indexed starting from 0). Fails if the stream's length is `< n`.
+nth (stream: s) {Stream s a e} (n: Usz): a can Fail, e =
+    var i = 0
+    handle Stream.stream stream; fail ()
+    | emit a ->
+        if i == n then a
+        else i += 1; resume ()
 
 /// Intersperse an item in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
-intersperse (stream: s) {Stream s a e} (item: a) {Clone a} = fn () ->
+intersperse (stream: s) {Stream s a e} (item: a) {Clone a} = do
     var not_first = false
     handle Stream.stream stream
     | emit a ->
@@ -220,7 +226,7 @@ intersperse (stream: s) {Stream s a e} (item: a) {Clone a} = fn () ->
 /// Intersperse an item from the given function in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
-intersperse_with (stream: s) {Stream s a e} (item: fn Unit => a) = fn () ->
+intersperse_with (stream: s) {Stream s a e} (item: fn Unit => a) = do
     var not_first = false
     handle Stream.stream stream
     | emit a ->
@@ -230,7 +236,7 @@ intersperse_with (stream: s) {Stream s a e} (item: fn Unit => a) = fn () ->
         resume ()
 
 /// Emits all elements from the first stream followed by all elements from the second stream
-chain (stream1: s1) {Stream s1 a e1} (stream2: s2) {Stream s2 a e2} = fn () ->
+chain (stream1: s1) {Stream s1 a e1} (stream2: s2) {Stream s2 a e2} = do
     Stream.stream stream1
     Stream.stream stream2
 
@@ -261,7 +267,7 @@ find_map (stream: s) {Stream s a e} (predicate: fn a => Maybe b): b can Fail, e 
         | None -> resume ()
 
 /// Re-emit only the first `n` items from the stream
-take (stream: s) {Stream s a e} (initial_n: U32) = fn () ->
+take (stream: s) {Stream s a e} (initial_n: U32) = do
     var n = initial_n
     handle Stream.stream stream
     | emit a ->
@@ -272,7 +278,7 @@ take (stream: s) {Stream s a e} (initial_n: U32) = fn () ->
 
 /// Re-emit items from the stream only while `predicate` keeps returning true.
 /// When the predicate first returns false, the stream will stop.
-take_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = fn () ->
+take_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = do
     handle Stream.stream stream
     | emit a ->
         if predicate (ref a) then
@@ -280,7 +286,7 @@ take_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = fn () ->
             resume ()
 
 /// Skips the first `n` items from the stream, emitting the rest as normal.
-skip (stream: s) {Stream s a e} (initial_n: U32) = fn () ->
+skip (stream: s) {Stream s a e} (initial_n: U32) = do
     var n = initial_n
     handle Stream.stream stream
     | emit a ->
@@ -292,7 +298,7 @@ skip (stream: s) {Stream s a e} (initial_n: U32) = fn () ->
 
 /// Skips elements while `predicate elem` is true. After the first `false`,
 /// no more elements will be skipped (including the element itself).
-skip_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = fn () ->
+skip_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = do
     var found_false = false
     handle Stream.stream stream
     | emit a ->

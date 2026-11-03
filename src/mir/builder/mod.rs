@@ -666,6 +666,10 @@ where
             && let Some((effect_op, op_index)) = self.try_resolve_effect_op(*path_id)
         {
             let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
+            // Check if an argument diverged
+            if self.current_block().terminator.is_some() {
+                return Value::Unit;
+            }
             return self.emit_effect_op_call(call.function, effect_op, op_index, arguments, result_type, diverges);
         }
 
@@ -674,6 +678,11 @@ where
             None => self.callee(call.function),
         };
         let arguments = mapvec(&call.arguments, |arg| self.expression(arg.expr));
+
+        // Check if an argument diverged
+        if self.current_block().terminator.is_some() {
+            return Value::Unit;
+        }
 
         let value = self.emit_callee_call(call.function, callee, arguments, result_type);
         if diverges {
