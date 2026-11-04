@@ -2,7 +2,7 @@
 //! - Call `resume` exactly once
 //! - Do not store `resume`
 //! - Do not resume in a loop
-//! - Allocate a stack slot before resuming (it may dangle afterward)
+//! - Do not allocate a dynamically sized stack slot before resuming
 //!
 //! Each case `pre; y = resume v; post y` is split at its `resume` call:
 //! - The part before `resume` becomes a function the capability calls directly. It pushes a
@@ -155,10 +155,12 @@ struct CaseSplit {
     resume_index: usize,
     resume_id: InstructionId,
     resume_argument: Value,
+    /// Each stack slot allocated before `resume`, in the order of its field in `frame_type`
+    slots: Vec<InstructionId>,
     /// Each value defined before `resume` and used after it, in the order of its field in
-    /// `frame_type`
+    /// `frame_type` after the slots
     live: Vec<Value>,
-    /// `(live..)` in terms of the handler's generics
+    /// `(slots.., live..)` in terms of the handler's generics
     frame_type: Type,
 }
 
@@ -258,14 +260,14 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
         let shape = case_shape_from_handler_type(&handler_type)?;
         let (handler_id, handler_env, handler_bindings) = resolve_body_function(case.handler, definition)?;
         let handler = mir.definitions.get(&handler_id)?;
-        analyze_case(handler, handler_id, handler_env, handler_bindings, shape)
+        analyze_case(mir, handler, handler_id, handler_env, handler_bindings, shape)
     })
 }
 
 /// Check `handler` calls `resume` exactly once on every path through it and find what must be
 /// saved in its frame
 fn analyze_case(
-    handler: &Definition, handler_id: DefinitionId, handler_env: Option<Value>,
+    mir: &Mir, handler: &Definition, handler_id: DefinitionId, handler_env: Option<Value>,
     handler_bindings: Option<Arc<GenericBindings>>, shape: CaseShape,
 ) -> Option<CaseSplit> {
     let Type::Function(_) = &handler.typ else { return None };
@@ -280,23 +282,25 @@ fn analyze_case(
 
     // In block order so the frame layout is deterministic
     let mut after_blocks = Vec::new();
+    let mut slots = Vec::new();
+    let mut field_types = Vec::new();
     for (block_id, block) in handler.blocks.iter() {
         if after.contains(&block_id) {
             after_blocks.push(block_id);
             continue;
         }
 
-        // A stack slot allocated before `resume` would be in the stack frame of the part before
-        // `resume`, which returns before the part after it runs
+        // Stack slots allocated before `resume` move into the frame
         let end = if block_id == resume_block { resume_index } else { block.instructions.len() };
-        let allocates = block.instructions[..end].iter().any(|id| {
-            matches!(
-                handler.instructions[*id],
-                Instruction::StackAlloc(_) | Instruction::StackAllocUninit(_) | Instruction::StackAllocBytes(_)
-            )
-        });
-        if allocates {
-            return None;
+        for id in &block.instructions[..end] {
+            let typ = match &handler.instructions[*id] {
+                Instruction::StackAlloc(value) => handler.type_of_value(value, &mir.externals, &mir.definitions),
+                Instruction::StackAllocUninit(typ) => typ.clone(),
+                Instruction::StackAllocBytes(_) => return None,
+                _ => continue,
+            };
+            slots.push(*id);
+            field_types.push(typ);
         }
 
         // Blocks before `resume` may only reach blocks after it through `resume`, and can't return
@@ -344,7 +348,9 @@ fn analyze_case(
             terminator.for_each_value(&mut add_live);
         }
     }
-    let field_types = opt_mapvec(&live, |value| handler.local_value_type(value).cloned())?;
+    for value in &live {
+        field_types.push(handler.local_value_type(value)?.clone());
+    }
 
     Some(CaseSplit {
         handler_id,
@@ -355,6 +361,7 @@ fn analyze_case(
         resume_index,
         resume_id,
         resume_argument,
+        slots,
         live,
         frame_type: Type::tuple(field_types),
     })
@@ -414,12 +421,33 @@ fn build_pre_function(mir: &mut Mir, split: &CaseSplit, helpers: FrameStackHelpe
     let block = split.resume_block;
     definition.blocks[block].instructions.truncate(split.resume_index);
     for (i, value) in split.live.iter().enumerate() {
-        let index = i as u32;
+        let index = (split.slots.len() + i) as u32;
         let field = Instruction::GetFieldPtr { struct_ptr: frame, struct_type: split.frame_type.clone(), index };
         let field = definition.push_instruction_in(block, field, Type::POINTER);
         definition.push_instruction_in(block, Instruction::Store { pointer: field, value: *value }, Type::UNIT);
     }
     definition.blocks[block].terminator = Some(TerminatorInstruction::Return(split.resume_argument));
+
+    // Allocate each stack slot in the frame instead
+    let slot_indices: FxHashMap<InstructionId, u32> =
+        split.slots.iter().enumerate().map(|(i, id)| (*id, i as u32)).collect();
+    for block in definition.blocks.values_mut() {
+        let mut i = 0;
+        while i < block.instructions.len() {
+            let id = block.instructions[i];
+            i += 1;
+            let Some(index) = slot_indices.get(&id) else { continue };
+            let field =
+                Instruction::GetFieldPtr { struct_ptr: frame, struct_type: split.frame_type.clone(), index: *index };
+            if let Instruction::StackAlloc(value) = std::mem::replace(&mut definition.instructions[id], field) {
+                let store = Instruction::Store { pointer: Value::InstructionResult(id), value };
+                let store_id = definition.instructions.push(store);
+                definition.instruction_result_types.push_existing(store_id, Type::UNIT);
+                block.instructions.insert(i, store_id);
+                i += 1;
+            }
+        }
+    }
 
     if let Some(handler_env) = handler_env {
         definition.replace_value(handler_env_parameter, handler_env);
@@ -450,8 +478,9 @@ fn build_post_function(mir: &mut Mir, split: &CaseSplit) -> DefinitionId {
     let mut field_pointers = Vec::with_capacity(split.live.len());
     let mut loads = Vec::with_capacity(split.live.len() * 2);
     let mut substitutions = FxHashMap::default();
-    for (i, (value, typ)) in split.live.iter().zip(field_types.iter()).enumerate() {
-        let index = i as u32;
+    let live_types = &field_types[split.slots.len()..];
+    for (i, (value, typ)) in split.live.iter().zip(live_types).enumerate() {
+        let index = (split.slots.len() + i) as u32;
         let field = Instruction::GetFieldPtr { struct_ptr: Value::Unit, struct_type: split.frame_type.clone(), index };
         let field = definition.add_instruction(field, Type::POINTER);
         let load = definition.add_instruction(Instruction::Deref(Value::InstructionResult(field)), typ.clone());
