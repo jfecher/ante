@@ -34,15 +34,28 @@ fn precompile_minicoro(source: &Path, stdlib_dir: &Path) {
     println!("cargo:rerun-if-changed={}", source.display());
     println!("cargo:rerun-if-changed={}", source.with_file_name("minicoro.h").display());
 
-    // Renamed into place so a concurrent link never reads a partial object
-    let object = stdlib_dir.join("minicoro.o");
-    let temporary = stdlib_dir.join(format!("minicoro.o.tmp{}", std::process::id()));
-    let status = Command::new("cc").arg("-c").arg(source).args(["-O0", "-w", "-o"]).arg(&temporary).status();
-    if status.is_ok_and(|status| status.success()) && std::fs::rename(&temporary, &object).is_ok() {
+    // If this fails, the linker compiles aminicoro from source for each program instead
+    compile_into_place(Command::new("cc").arg("-c").arg(source).args(["-O2", "-w"]), &stdlib_dir.join("minicoro.o"));
+
+    // The LLVM backend falls back to `minicoro.o` if this is missing or unreadable.
+    compile_into_place(
+        Command::new("clang").arg("-c").arg("-emit-llvm").arg(source).args(["-O2", "-w", "-fno-stack-protector"]),
+        &stdlib_dir.join("minicoro.bc"),
+    );
+}
+
+/// Runs `command -o <temporary>`, then renames the result to `output` so a concurrent link can't
+/// read a partial file. On failure, `output` is removed.
+fn compile_into_place(command: &mut Command, output: &Path) {
+    let mut temporary = output.as_os_str().to_owned();
+    temporary.push(format!(".tmp{}", std::process::id()));
+    let temporary = PathBuf::from(temporary);
+
+    let status = command.arg("-o").arg(&temporary).status();
+    if status.is_ok_and(|status| status.success()) && std::fs::rename(&temporary, output).is_ok() {
         return;
     }
 
-    // precompile failed, remove the files. We'll just recompile aminicoro at runtime
     let _ = std::fs::remove_file(&temporary);
-    let _ = std::fs::remove_file(&object);
+    let _ = std::fs::remove_file(output);
 }

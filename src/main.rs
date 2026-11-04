@@ -511,11 +511,12 @@ fn codegen_all(
     let ready = match backend {
         #[cfg(feature = "llvm")]
         cli::Backend::Llvm => {
-            let modules = match codegen_llvm(compiler, show_time, opt_level, generics, false, Some(selected_main)) {
-                Some(result) => result.objects,
-                None => Vec::new(),
-            };
-            codegen::llvm::link(modules, program_name, show_time, opt_level, link_options)
+            let (modules, runtime_linked) =
+                match codegen_llvm(compiler, show_time, opt_level, generics, false, Some(selected_main)) {
+                    Some(result) => (result.objects, result.runtime_linked),
+                    None => (Vec::new(), false),
+                };
+            codegen::llvm::link(modules, runtime_linked, program_name, show_time, opt_level, link_options)
         },
         cli::Backend::C => {
             let mir = time_phase("Lowering generics", show_time, || mir::lower_generics(compiler, generics));

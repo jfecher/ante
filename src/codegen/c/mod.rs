@@ -70,7 +70,7 @@ pub fn codegen_c_for_mir(
 
     // And link it into a binary
     if status.success() {
-        time_phase("Linking", show_time, || super::link_with_cc(&[o_file_name.clone()], binary_name, link_options));
+        time_phase("Linking", show_time, || super::link_with_cc(&[o_file_name.clone()], binary_name, link_options, true));
         std::fs::remove_file(&c_file_name).unwrap();
     }
 }

@@ -26,6 +26,12 @@ pub fn aminicoro_path() -> PathBuf {
     }
 }
 
+/// The path to `aminicoro` compiled to LLVM bitcode. If `clang` wasn't found when the compiler
+/// was built, this will not exist.
+pub fn aminicoro_bitcode_path() -> Option<PathBuf> {
+    Some(stdlib_path().join("minicoro.bc")).filter(|path| path.is_file())
+}
+
 pub fn stdlib_path() -> PathBuf {
     match option_env!("ANTE_STDLIB_DIR") {
         Some(env) => match std::fs::canonicalize(env) {

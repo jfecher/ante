@@ -32,6 +32,8 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodegenLlvmResult {
     pub objects: Vec<Arc<Vec<u8>>>,
+    /// True if `objects` already contain the aminicoro runtime
+    pub runtime_linked: bool,
 }
 
 pub fn initialize_native_target() {
@@ -68,13 +70,18 @@ pub(crate) fn codegen_llvm_for_mir(
         let objects = crate::timings::time_phase("Object emission", show_time, || {
             parts.par_iter().map(|part| codegen_partition(mir, part, main_id)).collect()
         });
-        return Some(CodegenLlvmResult { objects });
+        return Some(CodegenLlvmResult { objects, runtime_linked: false });
     }
 
     let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
     let llvm = inkwell::context::Context::create();
     let target_machine = native_target_machine(opt_level);
     let module = build_module(&llvm, mir, &target_machine, name, main_id, mir.definitions.keys().copied());
+
+    let runtime_linked = opt_level != OptLevel::O0
+        // Avoid linking the runtime if `--emit ir` is set so we don't emit that as part of it
+        && !emit_ir
+        && crate::timings::time_phase("Linking runtime bitcode", show_time, || link_runtime_bitcode(&module.module));
 
     if opt_level != OptLevel::O0 {
         module
@@ -88,7 +95,32 @@ pub(crate) fn codegen_llvm_for_mir(
     }
 
     let object = crate::timings::time_phase("Object emission", show_time, || emit_object(&module, &target_machine));
-    Some(CodegenLlvmResult { objects: vec![object] })
+    Some(CodegenLlvmResult { objects: vec![object], runtime_linked })
+}
+
+/// Link the aminicoro runtime's LLVM bitcode into `module` so the optimizer can inline its
+/// helpers into the program. This is important for perf of effect handlers.
+///
+/// Returns false if the bitcode is unavailable or can't be read.
+fn link_runtime_bitcode(module: &Module) -> bool {
+    let Some(path) = crate::paths::aminicoro_bitcode_path() else { return false };
+    let Ok(runtime) = Module::parse_bitcode_from_path(&path, module.get_context()) else { return false };
+
+    runtime.set_triple(&module.get_triple());
+    runtime.set_data_layout(&module.get_data_layout());
+
+    // Llvm needs each of these to match to inline. We don't tag functions with these elsewhere
+    // so we need to remove what clang added here to get this to inline.
+    for function in runtime.get_functions() {
+        for attribute in ["target-cpu", "target-features", "tune-cpu"] {
+            function.remove_string_attribute(AttributeLoc::Function, attribute);
+        }
+    }
+
+    match module.link_in_module(runtime) {
+        Ok(()) => true,
+        Err(error) => panic!("Failed to link the aminicoro runtime bitcode from {}: {error}", path.display()),
+    }
 }
 
 /// Build a module defining only `ids`
@@ -145,7 +177,7 @@ fn codegen_partition(mir: &mir::Mir, part: &[DefinitionId], main_id: Option<Defi
 /// Link the given list of object code blobs into an executable.
 /// Returns `true` if linking succeeded, `false` otherwise.
 pub fn link(
-    objects: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, _opt_level: OptLevel,
+    objects: Vec<Arc<Vec<u8>>>, runtime_linked: bool, binary_name: &str, show_time: bool, _opt_level: OptLevel,
     link_options: &super::LinkOptions,
 ) -> bool {
     let paths = crate::timings::time_phase("Object emission", show_time, || {
@@ -158,7 +190,9 @@ pub fn link(
         })
     });
 
-    crate::timings::time_phase("Linking", show_time, || super::link_with_cc(&paths, binary_name, link_options))
+    crate::timings::time_phase("Linking", show_time, || {
+        super::link_with_cc(&paths, binary_name, link_options, !runtime_linked)
+    })
 }
 
 fn native_target_machine(opt_level: OptLevel) -> TargetMachine {

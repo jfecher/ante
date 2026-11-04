@@ -45,10 +45,17 @@ pub struct LinkOptions {
     pub search_paths: Vec<String>,
 }
 
-pub fn link_with_cc(object_filenames: &[String], binary_filename: &str, link_options: &LinkOptions) -> bool {
+/// Link `object_filenames` into a binary. `link_runtime` if set links aminicoro.
+pub fn link_with_cc(
+    object_filenames: &[String], binary_filename: &str, link_options: &LinkOptions, link_runtime: bool,
+) -> bool {
     let output = format!("-o{}", binary_filename);
     let mut command = Command::new("cc");
-    command.args(object_filenames).arg(aminicoro_path()).arg("-O0").arg("-lm").arg("-lpthread").arg("-w").arg(output);
+    command.args(object_filenames);
+    if link_runtime {
+        command.arg(aminicoro_path()).arg("-O2");
+    }
+    command.arg("-lm").arg("-lpthread").arg("-w").arg(output);
 
     for path in &link_options.search_paths {
         command.arg(format!("-L{path}"));
