@@ -177,10 +177,7 @@ impl<'a> Rewriter<'a> {
             Instruction::Capability | Instruction::Handle { .. } | Instruction::Perform { .. } => {
                 unreachable!("effects are lowered before existentialization")
             },
-            Instruction::StackAllocBytes(_)
-            | Instruction::MemCopy { .. }
-            | Instruction::PointerOffset { .. }
-            | Instruction::GlobalAddress(_) => {
+            Instruction::MemCopy { .. } | Instruction::GlobalAddress(_) => {
                 unreachable!("existentialization instructions are only created by existentialization")
             },
             other => Some(self.scalar(id, other, &typ)),
