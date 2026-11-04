@@ -723,15 +723,15 @@ impl Builder {
                 self.write(";");
             },
             mir::TerminatorInstruction::Jmp((target, argument)) => {
-                self.write_jmp(*target, argument, mir);
+                self.write_jmp(*target, argument, definition, mir);
             },
             mir::TerminatorInstruction::If { condition, then, else_, end: _ } => {
                 self.write("if (");
                 self.write_value(condition, mir);
                 self.write(") { ");
-                self.write_jmp(then.0, &then.1, mir);
+                self.write_jmp(then.0, &then.1, definition, mir);
                 self.write(" } else { ");
-                self.write_jmp(else_.0, &else_.1, mir);
+                self.write_jmp(else_.0, &else_.1, definition, mir);
                 self.write(" }");
             },
             mir::TerminatorInstruction::Switch { int_value, cases, else_, end: _ } => {
@@ -745,11 +745,11 @@ impl Builder {
                     self.write("case ");
                     self.write_integer_constant(IntConstant::from_bits(kind, *tag));
                     self.write(": { ");
-                    self.write_jmp(target.0, &target.1, mir);
+                    self.write_jmp(target.0, &target.1, definition, mir);
                     self.write(" } ");
                 }
                 self.write("default: { ");
-                self.write_jmp(else_.0, &else_.1, mir);
+                self.write_jmp(else_.0, &else_.1, definition, mir);
                 self.write(" } }");
             },
             mir::TerminatorInstruction::Unreachable => {
@@ -760,14 +760,43 @@ impl Builder {
 
     /// Emit a jump to `target`, first assigning the optional branch argument into the target
     /// block's parameter-0 variable (MIR's equivalent of populating a phi).
-    fn write_jmp(&mut self, target: mir::BlockId, argument: &Option<mir::Value>, mir: &mir::Mir) {
+    ///
+    /// When `target` only passes its parameter on to a `return`, the argument is returned
+    /// directly instead to preserve tail calls.
+    fn write_jmp(
+        &mut self, target: mir::BlockId, argument: &Option<mir::Value>, definition: &mir::Definition, mir: &mir::Mir,
+    ) {
         if let Some(argument) = argument {
+            if Self::forwards_parameter_to_return(target, definition) {
+                self.write("return ");
+                self.write_value(argument, mir);
+                self.write(";");
+                return;
+            }
             self.write_value(&mir::Value::Parameter(target, 0), mir);
             self.write(" = ");
             self.write_value(argument, mir);
             self.write("; ");
         }
         let _ = write!(self.current_item, "goto {target};");
+    }
+
+    /// True if `block` has no instructions and directly or indirectly returns its first parameter.
+    fn forwards_parameter_to_return(mut block: mir::BlockId, definition: &mir::Definition) -> bool {
+        // A chain longer than the block count must revisit a block, so it never reaches a return
+        for _ in 0..definition.blocks.len() {
+            let current = &definition.blocks[block];
+            if !current.instructions.is_empty() {
+                return false;
+            }
+            let parameter = mir::Value::Parameter(block, 0);
+            match current.terminator.as_ref() {
+                Some(mir::TerminatorInstruction::Return(value)) => return *value == parameter,
+                Some(mir::TerminatorInstruction::Jmp((next, Some(value)))) if *value == parameter => block = *next,
+                _ => return false,
+            }
+        }
+        false
     }
 
     /// Write `<result_type> vN = ` for the given instruction so the caller can append its
