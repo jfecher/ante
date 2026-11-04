@@ -156,9 +156,7 @@ where
         .inline_higher_order_functions()
         .optimize_local_handlers()
         .specialize_handle_lambdas()
-        .optimize_tail_resume()
-        .optimize_abort_handlers()
-        .lower_effects(generics == GenericsStrategy::Existential)
+        .optimize_and_lower_effects(generics == GenericsStrategy::Existential)
         .inline_small_functions()
 }
 

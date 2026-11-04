@@ -132,22 +132,22 @@ fn try_optimize_handle(
     created_ids
 }
 
-fn preserve_op_indices(map: &mut FxHashMap<DefinitionId, u32>, cases: &[HandlerCase]) {
+pub(super) fn preserve_op_indices(map: &mut FxHashMap<DefinitionId, u32>, cases: &[HandlerCase]) {
     for (i, case) in cases.iter().enumerate() {
         let i = u32::try_from(i).expect("effect with more than u32::MAX ops");
         map.insert(case.effect_op, i);
     }
 }
 
-struct PreparedBody {
-    fn_id: DefinitionId,
+pub(super) struct PreparedBody {
+    pub(super) fn_id: DefinitionId,
     env_value: Option<Value>,
     bindings: Option<Arc<GenericBindings>>,
     layout: OriginalEnvLayout,
 }
 
 /// Returns the prepared body plus the ids of the body clones created here to be handled later
-fn prepare_body_fn(
+pub(super) fn prepare_body_fn(
     mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_tuple_type: &Type, state: &mut WorklistState,
 ) -> (PreparedBody, Vec<DefinitionId>) {
     let (orig_id, env_value, bindings) =
@@ -168,8 +168,12 @@ fn prepare_body_fn(
 /// inlined handler body becomes `Store(slot, v); longjmp(buf, 1); unreachable`.
 fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index: u32) -> DefinitionId {
     let new_id = next_definition_id();
-    let mut def =
-        clone_handler_for_wrapper(&mir.definitions[&decision.handler_def_id], new_id, &decision.shape, case_index);
+    let mut def = clone_handler_for_wrapper(
+        &mir.definitions[&decision.handler_def_id],
+        new_id,
+        &decision.shape,
+        &format!("abort_wrapper_{case_index}"),
+    );
     let n = decision.shape.op_arg_types.len();
     let env_pointer = Value::Parameter(BlockId::ENTRY_BLOCK, n as u32);
     let old_env_param = Value::Parameter(BlockId::ENTRY_BLOCK, (n + 1) as u32);
@@ -183,8 +187,10 @@ fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index:
     new_id
 }
 
-fn clone_handler_for_wrapper(
-    handler_def: &Definition, new_id: DefinitionId, shape: &CaseShape, case_index: u32,
+/// Clone `handler_def` as `fn op_args.. [Pointer] -> op_return_type` named `{handler}_{suffix}`,
+/// leaving the handler's `resume` and environment parameters to be replaced by the caller
+pub(super) fn clone_handler_for_wrapper(
+    handler_def: &Definition, new_id: DefinitionId, shape: &CaseShape, suffix: &str,
 ) -> Definition {
     let mut def = handler_def.clone_with_id(new_id);
     def.typ = Type::Function(Arc::new(FunctionType {
@@ -192,7 +198,7 @@ fn clone_handler_for_wrapper(
         environment: Type::POINTER,
         return_type: shape.op_return_type.clone(),
     }));
-    def.name = Arc::new(format!("{}_abort_wrapper_{case_index}", handler_def.name));
+    def.name = Arc::new(format!("{}_{suffix}", handler_def.name));
     def.blocks[BlockId::ENTRY_BLOCK].parameter_types =
         shape.op_arg_types.iter().chain([&Type::POINTER]).cloned().collect();
     def
@@ -375,7 +381,7 @@ fn emit_cap_tuple(
 }
 
 /// Build the body's extended env (orig env fields + cap), then PackClosure body_fn with it.
-fn emit_body_closure(e: &mut Emitter, body: PreparedBody, body_fn_type: Type, cap_value: Value) -> Value {
+pub(super) fn emit_body_closure(e: &mut Emitter, body: PreparedBody, body_fn_type: Type, cap_value: Value) -> Value {
     let PreparedBody { fn_id, env_value, bindings, layout } = body;
     let new_env_type = match &body_fn_type {
         Type::Function(ft) => ft.environment.clone(),

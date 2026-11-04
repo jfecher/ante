@@ -1,0 +1,62 @@
+effect Log =
+    log: fn I32 -> Unit
+    tally: fn I32 -> I32
+
+body (n: I32): I32 can Log =
+    log 1
+    a = tally 10
+    log 2
+    b = tally 20
+    // Enough operations to fill the stack chunk and several heap chunks
+    loop (i = 0) (sum = a + b) ->
+        if i == n then sum
+        else recur (i + 1) (sum + tally i)
+
+logged (n: I32): I32 can Print =
+    var events = 0
+    handle body n
+    | log x ->
+        println "before ${x}"
+        events += 1
+        r = resume ()
+        println "after ${x}, events = ${events}"
+        r * 2
+    | tally x ->
+        r = resume (x + 1)
+        r + x
+
+nested (): I32 can Print =
+    handle
+        logged 0 + logged 3
+    | log _ -> resume ()
+    | tally x ->
+        r = resume x
+        r - 1
+
+main () =
+    print_to_stdout do
+    println (logged 0)
+    println (logged 100)
+    println (nested ())
+
+// args: --delete-binary --no-color
+// expected stdout:
+// before 1
+// before 2
+// after 2, events = 2
+// after 1, events = 2
+// 228
+// before 1
+// before 2
+// after 2, events = 2
+// after 1, events = 2
+// 40228
+// before 1
+// before 2
+// after 2, events = 2
+// after 1, events = 2
+// before 1
+// before 2
+// after 2, events = 2
+// after 1, events = 2
+// 492

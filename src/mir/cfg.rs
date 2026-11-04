@@ -205,6 +205,11 @@ impl Definition {
 
     /// True if `block` can be reached again after it is executed
     pub(crate) fn is_in_loop(&self, block: BlockId) -> bool {
+        self.reachable_from(block).contains(&block)
+    }
+
+    /// Every block reachable from `block`'s successors. Includes `block` only if it's in a loop.
+    pub(crate) fn reachable_from(&self, block: BlockId) -> FxHashSet<BlockId> {
         let mut visited = FxHashSet::default();
         let mut stack = Vec::new();
         let push_successors = |block: BlockId, stack: &mut Vec<BlockId>| {
@@ -214,14 +219,11 @@ impl Definition {
         };
         push_successors(block, &mut stack);
         while let Some(next) = stack.pop() {
-            if next == block {
-                return true;
-            }
             if visited.insert(next) {
                 push_successors(next, &mut stack);
             }
         }
-        false
+        visited
     }
 
     /// Replace each instruction which [Definition::resolve]s to another value with an `Id` of it.

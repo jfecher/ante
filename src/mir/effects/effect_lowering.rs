@@ -259,7 +259,9 @@ impl<'local> Emitter<'local> {
         Value::InstructionResult(id)
     }
 
-    fn reuse_instruction(&mut self, id: InstructionId, instruction: Instruction, result_type: Type) -> Value {
+    pub(super) fn reuse_instruction(
+        &mut self, id: InstructionId, instruction: Instruction, result_type: Type,
+    ) -> Value {
         self.definition.instructions[id] = instruction;
         self.definition.instruction_result_types[id] = result_type;
         self.append_instruction(id);
@@ -281,7 +283,7 @@ impl<'local> Emitter<'local> {
         self.push_instruction(Instruction::Call { function: function_value, arguments }, return_type)
     }
 
-    fn emit_size_of(&mut self, typ: &Type) -> Value {
+    pub(super) fn emit_size_of(&mut self, typ: &Type) -> Value {
         self.push_instruction(Instruction::SizeOf(typ.clone()), Type::int(IntegerKind::Usz))
     }
 

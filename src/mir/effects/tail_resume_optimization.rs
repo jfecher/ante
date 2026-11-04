@@ -4,6 +4,7 @@
 //! handler becomes a jump to the continuation block with `v` as its argument.
 //!
 //! If any case uses `resume` outside of a tail-position, the Handle is left for
+//! [crate::mir::effects::resume_once_optimization] if each case resumes exactly once, or else
 //! [crate::mir::effects::effect_lowering] to lower into coroutine primitives.
 
 use std::sync::Arc;
@@ -28,13 +29,13 @@ impl Mir {
 }
 
 #[derive(Clone)]
-struct HandleSite {
-    block: BlockId,
-    index: usize,
-    id: InstructionId,
-    body: Value,
-    cases: Vec<HandlerCase>,
-    result_type: Type,
+pub(super) struct HandleSite {
+    pub(super) block: BlockId,
+    pub(super) index: usize,
+    pub(super) id: InstructionId,
+    pub(super) body: Value,
+    pub(super) cases: Vec<HandlerCase>,
+    pub(super) result_type: Type,
 }
 
 /// Optimize every tail-resumptive Handle in `definition_id`, returning the ids of any new
@@ -46,7 +47,7 @@ fn optimize_in_definition(mir: &mut Mir, definition_id: DefinitionId, state: &mu
         .collect()
 }
 
-fn collect_handle_sites(mir: &Mir, definition_id: DefinitionId) -> Vec<HandleSite> {
+pub(super) fn collect_handle_sites(mir: &Mir, definition_id: DefinitionId) -> Vec<HandleSite> {
     let Some(def) = mir.definitions.get(&definition_id) else { return Vec::new() };
     let mut sites = Vec::new();
     for (block_id, block) in def.blocks.iter() {
