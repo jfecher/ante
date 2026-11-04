@@ -60,9 +60,9 @@ mod state_field {
     pub(super) const CHUNK: u32 = 3;
     /// The number of frames the current chunk holds
     pub(super) const CAPACITY: u32 = 4;
-    /// The size of each frame
+    /// The size of each frame. Only used when the frame type isn't known statically.
     pub(super) const STRIDE: u32 = 5;
-    /// The offset of the tag within each frame
+    /// The offset of the tag within each frame. Only used when the frame type isn't known statically.
     pub(super) const TAG_OFFSET: u32 = 6;
     pub(super) const COUNT: u32 = 7;
 }
@@ -175,7 +175,20 @@ fn try_optimize_handle(
     // `Perform`s targeting these ops after we remove the Handle. See `optimize_tail_resume`.
     preserve_op_indices(&mut mir.preserved_op_indices, &site.cases);
 
-    let pre_ids = mapvec(splits.iter().enumerate(), |(i, split)| build_pre_function(mir, split, helpers, i as u32));
+    // The frame type is always the same if there is only one case or no case's frame
+    // mentions generics. The part before `resume` can then use its size and tag offset as
+    // constants rather than loading them from the frame stack.
+    let static_frame_type = if splits.len() == 1 || splits.iter().all(|split| !split.frame_type.contains_generics()) {
+        let union = Type::Union(Arc::new(mapvec(&splits, |split| split.frame_type.clone())));
+        Some(Type::tuple(vec![union, Type::int(IntegerKind::U32)]))
+    } else {
+        None
+    };
+    let tagged = splits.len() > 1;
+    let pre_ids = mapvec(splits.iter().enumerate(), |(i, split)| {
+        let tag = tagged.then_some(i as u32);
+        build_pre_function(mir, split, helpers, tag, static_frame_type.as_ref())
+    });
     let post_ids = mapvec(&splits, |split| build_post_function(mir, split));
 
     // Types as seen from the Handle's definition
@@ -388,7 +401,12 @@ fn find_only_resume_call(handler: &Definition, resume: Value) -> Option<(BlockId
 
 /// Build `fn op_args.. [Pointer] -> op_return_type`, the part of the handler before `resume`,
 /// called directly by the performer. Its environment points to `(state, handler_env..)`.
-fn build_pre_function(mir: &mut Mir, split: &CaseSplit, helpers: FrameStackHelpers, tag: u32) -> DefinitionId {
+///
+/// `tag` is the case's index if the Handle has several cases. `static_frame_type` is the frame
+/// type of the Handle in terms of this handler's generics, if it can be expressed in them.
+fn build_pre_function(
+    mir: &mut Mir, split: &CaseSplit, helpers: FrameStackHelpers, tag: Option<u32>, static_frame_type: Option<&Type>,
+) -> DefinitionId {
     let id = next_definition_id();
     let handler = &mir.definitions[&split.handler_id];
     let Type::Function(handler_type) = &handler.typ else { unreachable!("handler is a function") };
@@ -411,11 +429,27 @@ fn build_pre_function(mir: &mut Mir, split: &CaseSplit, helpers: FrameStackHelpe
     let state = e.push_instruction(Instruction::IndexTuple { tuple: environment, index: 0 }, Type::POINTER);
     let handler_env =
         handler_env_type.map(|typ| e.push_instruction(Instruction::IndexTuple { tuple: environment, index: 1 }, typ));
-    let push = Instruction::Call {
-        function: Value::Definition(helpers.push),
-        arguments: vec![state, Value::Integer(IntConstant::U32(tag))],
+    let stride = match static_frame_type {
+        Some(frame_type) => e.emit_size_of(frame_type),
+        None => StateAccess::load(&mut e, state).get(&mut e, state_field::STRIDE),
     };
+    let push = Instruction::Call { function: Value::Definition(helpers.push), arguments: vec![state, stride] };
     let frame = e.push_instruction(push, Type::POINTER);
+    if let Some(tag) = tag {
+        let tag_pointer = match static_frame_type {
+            Some(frame_type) => {
+                let tag_pointer =
+                    Instruction::GetFieldPtr { struct_ptr: frame, struct_type: frame_type.clone(), index: 1 };
+                e.push_instruction(tag_pointer, Type::POINTER)
+            },
+            None => {
+                let tag_offset = StateAccess::load(&mut e, state).get(&mut e, state_field::TAG_OFFSET);
+                offset_pointer(&mut e, frame, tag_offset)
+            },
+        };
+        let tag = Value::Integer(IntConstant::U32(tag));
+        e.push_instruction(Instruction::Store { pointer: tag_pointer, value: tag }, Type::UNIT);
+    }
 
     // Save each live value then return the value `resume` was called with
     let block = split.resume_block;
@@ -545,7 +579,8 @@ fn build_unwind_function(
         Some(TerminatorInstruction::Jmp((loop_header, Some(Value::Parameter(entry, 1)))));
 
     let mut e = Emitter::in_block(&mut definition, loop_header);
-    let pop = Instruction::Call { function: Value::Definition(helpers.pop), arguments: vec![state] };
+    let stride = e.emit_size_of(frame_type);
+    let pop = Instruction::Call { function: Value::Definition(helpers.pop), arguments: vec![state, stride] };
     let frame = e.push_instruction(pop, Type::POINTER);
     let is_empty = is_null(&mut e, frame);
     // `end` is `else_` since the branches don't converge
@@ -592,9 +627,9 @@ fn build_unwind_function(
 /// The non-generic functions every Handle optimized by this pass shares to push and pop frames
 #[derive(Clone, Copy)]
 struct FrameStackHelpers {
-    /// `fn (state: Pointer, tag: U32) -> Pointer`: push a frame with the given tag, returning it
+    /// `fn (state: Pointer) (stride: Usz) -> Pointer`: push a frame and return it
     push: DefinitionId,
-    /// `fn (state: Pointer) -> Pointer`: pop a frame, returning it, or null if there are none
+    /// `fn (state: Pointer) (stride: Usz) -> Pointer`: pop a frame and return it or null if there are none
     pop: DefinitionId,
 }
 
@@ -630,11 +665,11 @@ impl StateAccess {
 }
 
 fn build_push_function(mir: &mut Mir) -> DefinitionId {
-    let parameters = vec![Type::POINTER, Type::int(IntegerKind::U32)];
+    let parameters = vec![Type::POINTER, usz_type()];
     let mut definition = new_function("handle_frame_push", 0, parameters, Type::POINTER);
 
     let entry = BlockId::ENTRY_BLOCK;
-    let tag = Value::Parameter(entry, 1);
+    let stride = Value::Parameter(entry, 1);
     let grow = definition.blocks.push(Block::new(Vec::new()));
     let push = definition.blocks.push(Block::new(vec![Type::POINTER]));
 
@@ -642,8 +677,6 @@ fn build_push_function(mir: &mut Mir) -> DefinitionId {
     let state = StateAccess::load(&mut e, Value::Parameter(entry, 0));
     let top = state.get(&mut e, state_field::TOP);
     let end = state.get(&mut e, state_field::END);
-    let stride = state.get(&mut e, state_field::STRIDE);
-    let tag_offset = state.get(&mut e, state_field::TAG_OFFSET);
     let is_full = pointers_equal(&mut e, top, end);
     definition.blocks[entry].terminator =
         Some(TerminatorInstruction::If { condition: is_full, then: (grow, None), else_: (push, Some(top)), end: push });
@@ -671,22 +704,22 @@ fn build_push_function(mir: &mut Mir) -> DefinitionId {
     state.set(&mut e, state_field::CAPACITY, new_capacity);
     definition.blocks[grow].terminator = Some(TerminatorInstruction::Jmp((push, Some(new_base))));
 
-    // push(frame): bump the top past `frame` and tag it
+    // push(frame): bump the top past `frame`
     let frame = Value::Parameter(push, 0);
     let mut e = Emitter::in_block(&mut definition, push);
     let new_top = offset_pointer(&mut e, frame, stride);
     state.set(&mut e, state_field::TOP, new_top);
-    let tag_pointer = offset_pointer(&mut e, frame, tag_offset);
-    e.push_instruction(Instruction::Store { pointer: tag_pointer, value: tag }, Type::UNIT);
     definition.blocks[push].terminator = Some(TerminatorInstruction::Return(frame));
 
     insert_definition(mir, definition)
 }
 
 fn build_pop_function(mir: &mut Mir) -> DefinitionId {
-    let mut definition = new_function("handle_frame_pop", 0, vec![Type::POINTER], Type::POINTER);
+    let parameters = vec![Type::POINTER, usz_type()];
+    let mut definition = new_function("handle_frame_pop", 0, parameters, Type::POINTER);
 
     let entry = BlockId::ENTRY_BLOCK;
+    let stride = Value::Parameter(entry, 1);
     let chunk_empty = definition.blocks.push(Block::new(Vec::new()));
     let empty = definition.blocks.push(Block::new(Vec::new()));
     let free_chunk = definition.blocks.push(Block::new(Vec::new()));
@@ -696,7 +729,6 @@ fn build_pop_function(mir: &mut Mir) -> DefinitionId {
     let state = StateAccess::load(&mut e, Value::Parameter(entry, 0));
     let top = state.get(&mut e, state_field::TOP);
     let base = state.get(&mut e, state_field::BASE);
-    let stride = state.get(&mut e, state_field::STRIDE);
     let at_base = pointers_equal(&mut e, top, base);
     definition.blocks[entry].terminator = Some(TerminatorInstruction::If {
         condition: at_base,
