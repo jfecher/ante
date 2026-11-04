@@ -1,0 +1,55 @@
+// `ask` is performed inside two handlers for other effects, so its message is forwarded through
+// both of their coroutines before reaching its own handler.
+effect Ask =
+    ask: fn I64 String I64 -> (I64, String)
+
+effect Log =
+    log: fn String -> Unit
+
+effect Count =
+    count: fn Unit -> Unit
+
+body (): I64 can Ask, Log, Count =
+    count ()
+    (a, s1) = ask 1 "one" 10
+    log s1
+    count ()
+    (b, s2) = ask 2 "two" 20
+    log s2
+    a + b
+
+with_count (f: fn Unit => I64 can Ask, Log, Count): (I64, I64) can Ask, Log =
+    var counted = 0
+    result = handle f ()
+    | count () ->
+        r = resume ()
+        counted += 1
+        r
+    result, counted
+
+with_log (f: fn Unit => (I64, I64) can Ask, Log): (I64, I64) can Ask, Print =
+    handle f ()
+    | log message ->
+        r = resume ()
+        println "logged ${message}"
+        r
+
+with_ask (f: fn Unit => (I64, I64) can Ask, Print): (I64, I64) can Print =
+    handle f ()
+    | ask x s y ->
+        r = resume (x * y, s ++ "!")
+        println "answered ${x}"
+        r
+
+main () =
+    print_to_stdout do
+    (sum, counted) = with_ask fn () -> with_log fn () -> with_count body
+    println "sum = ${sum}, counted = ${counted}"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// logged two!
+// logged one!
+// answered 2
+// answered 1
+// sum = 50, counted = 2

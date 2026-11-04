@@ -7,10 +7,12 @@
 //! - Creating a `drive` function to resume the coroutine, which gets passed
 //!   as the capability value.
 //!
-//! Each effect performed uses `mco_coro_push` to push the relevant arguments
-//! to the effect, followed by the tag of the effect performed, before calling
-//! the driver function which will resume the handler, match on the effect,
-//! and dispatch to the relevant handler branch.
+//! Each effect performed builds a message on the performer's own stack holding the
+//! target coroutine, the tag of the effect performed, a pointer to its arguments, and a
+//! pointer to a slot for its result (see [message_type]). It stores a pointer to the message
+//! in the running coroutine via `mco_coro_set_message` and suspends. The driver function then
+//! reads the message, matches on the effect, and dispatches to the relevant handler branch,
+//! whose `resume` writes the result into the slot before resuming the performer.
 use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -20,7 +22,7 @@ use crate::{
     lexer::token::IntegerKind,
     mir::{
         Block, BlockId, Definition, DefinitionId, FunctionType, GenericBindings, HandlerCase, Instruction,
-        InstructionId, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
+        InstructionId, IntConstant, Mir, TerminatorInstruction, Type, Value, next_definition_id,
     },
 };
 
@@ -35,20 +37,15 @@ struct AminicoroFns {
     is_suspended: AminicoroFn,
     set_message: AminicoroFn,
     get_message: AminicoroFn,
-    push: AminicoroFn,
-    pop: AminicoroFn,
     suspend: AminicoroFn,
     resume: AminicoroFn,
     get_user_data: AminicoroFn,
     running: AminicoroFn,
-    bytes_stored: AminicoroFn,
-    transfer: AminicoroFn,
 }
 
 fn aminicoro_fns() -> AminicoroFns {
     let ptr = || Type::POINTER;
     let u8_t = || Type::int(IntegerKind::U8);
-    let usize_t = || Type::int(IntegerKind::Usz);
 
     AminicoroFns {
         init: AminicoroFn { name: "mco_coro_init", typ: Type::function(vec![ptr(), ptr()], ptr()) },
@@ -56,14 +53,10 @@ fn aminicoro_fns() -> AminicoroFns {
         is_suspended: AminicoroFn { name: "mco_coro_is_suspended", typ: Type::function(vec![ptr()], Type::BOOL) },
         set_message: AminicoroFn { name: "mco_coro_set_message", typ: Type::function(vec![ptr(), ptr()], u8_t()) },
         get_message: AminicoroFn { name: "mco_coro_get_message", typ: Type::function(vec![ptr()], ptr()) },
-        push: AminicoroFn { name: "mco_coro_push", typ: Type::function(vec![ptr(), ptr(), usize_t()], u8_t()) },
-        pop: AminicoroFn { name: "mco_coro_pop", typ: Type::function(vec![ptr(), ptr(), usize_t()], u8_t()) },
         suspend: AminicoroFn { name: "mco_coro_suspend", typ: Type::function(vec![ptr()], u8_t()) },
         resume: AminicoroFn { name: "mco_coro_resume", typ: Type::function(vec![ptr()], u8_t()) },
         get_user_data: AminicoroFn { name: "mco_coro_get_user_data", typ: Type::function(vec![ptr()], ptr()) },
         running: AminicoroFn { name: "mco_coro_running", typ: Type::function(vec![], ptr()) },
-        bytes_stored: AminicoroFn { name: "mco_coro_bytes_stored", typ: Type::function(vec![ptr()], usize_t()) },
-        transfer: AminicoroFn { name: "mco_coro_transfer", typ: Type::function(vec![ptr(), ptr(), usize_t()], u8_t()) },
     }
 }
 
@@ -229,12 +222,16 @@ struct Context<'local> {
     coroutine_entry: Option<DefinitionId>,
 }
 
-fn is_zero_sized(typ: &Type) -> bool {
-    match typ {
-        Type::Primitive(PrimitiveType::NoClosureEnv) => true,
-        Type::Tuple(fields) => !fields.is_empty() && fields.iter().all(is_zero_sized),
-        _ => false,
-    }
+/// Every effect message is `(target_coro, case_index, arguments, result)`
+fn message_type() -> Type {
+    Type::tuple(vec![Type::POINTER, Type::int(IntegerKind::U32), Type::POINTER, Type::POINTER])
+}
+
+mod message_field {
+    pub(super) const TARGET: u32 = 0;
+    pub(super) const CASE_INDEX: u32 = 1;
+    pub(super) const ARGUMENTS: u32 = 2;
+    pub(super) const RESULT: u32 = 3;
 }
 
 pub(super) enum EmitTarget<'local> {
@@ -306,43 +303,6 @@ impl<'local> Emitter<'local> {
     fn index_tuple(&mut self, tuple: Value, index: u32, field_type: Type) -> Value {
         self.push_instruction(Instruction::IndexTuple { tuple, index }, field_type)
     }
-
-    fn push_bytes(&mut self, mco: &AminicoroFns, coro: Value, value: Value, value_type: &Type) {
-        if is_zero_sized(value_type) {
-            return;
-        }
-        if let Type::Tuple(fields) = value_type {
-            for (index, field_type) in fields.iter().enumerate() {
-                let field = self.push_instruction(
-                    Instruction::IndexTuple { tuple: value, index: index as u32 },
-                    field_type.clone(),
-                );
-                self.push_bytes(mco, coro, field, field_type);
-            }
-            return;
-        }
-        let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
-        let size = self.emit_size_of(value_type);
-        self.call_extern(&mco.push, vec![coro, slot, size]);
-    }
-
-    fn pop_bytes(&mut self, mco: &AminicoroFns, coro: Value, value_type: &Type) -> Value {
-        if is_zero_sized(value_type) {
-            return Value::Unit;
-        }
-        if let Type::Tuple(fields) = value_type {
-            let mut popped = mapvec(fields.iter().rev(), |field_type| self.pop_bytes(mco, coro, field_type));
-            popped.reverse();
-            return self.push_instruction(Instruction::MakeTuple(popped), value_type.clone());
-        }
-        // Allocate a slot sized to value_type. We use StackAllocUninit  instead of
-        // StackAlloc(zeroed_value) so the slot is correctly sized even when
-        // value_type is a generic that mono will later replace with a larger concrete type.
-        let slot = self.push_instruction(Instruction::StackAllocUninit(value_type.clone()), Type::POINTER);
-        let size = self.emit_size_of(value_type);
-        self.call_extern(&mco.pop, vec![coro, slot, size]);
-        self.push_instruction(Instruction::Deref(slot), value_type.clone())
-    }
 }
 
 /// Walk every instruction in `definition`, calling `extract` on each. Sites are
@@ -373,13 +333,6 @@ fn rewrite_sites_in_definition<S>(
     for site in sites {
         rewrite(mir, definition_id, site, context);
     }
-}
-
-/// Reverses the pop order since aminicoro's channel is LIFO.
-fn pop_operation_arguments(emitter: &mut Emitter, context: Context, coro: Value, arg_types: &[Type]) -> Vec<Value> {
-    let mut popped = mapvec(arg_types.iter().rev(), |typ| emitter.pop_bytes(context.mco, coro, typ));
-    popped.reverse();
-    popped
 }
 
 struct PerformSite {
@@ -662,10 +615,11 @@ fn expand_handler_caps_in_body(
 }
 
 /// Generate `wrap_i op_args.. (env: Pointer) -> ret_i`. The closure env carries the target coro.
-/// The wrapper pushes (op_args, case_index, target) onto whichever coro is currently running and
-/// suspends that coro. Each intermediate drive then either dispatches (if its own coro == target)
-/// or forwards the message up through `mco_coro_transfer` until it reaches the target's drive.
-/// After being resumed, the result has been pushed back onto the originally-running coro.
+/// The wrapper builds a message on its own stack, points the currently
+/// running coro's message at it, and suspends that coro. Each intermediate drive then either
+/// dispatches if it matches or forwards the same message pointer up until it finds one that does.
+/// The handler's resume writes the result into the message's result slot before resuming, so the
+/// wrapper reads it from there once it is resumed.
 fn generate_capability_wrapper(
     mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context, caller_generic_count: u32,
 ) -> DefinitionId {
@@ -698,18 +652,23 @@ fn generate_capability_wrapper(
 
     let current = emitter.call_extern(&context.mco.running, vec![]);
 
-    for (arg, arg_type) in op_arg_values.iter().zip(shape.op_arg_types.iter()) {
-        emitter.push_bytes(context.mco, current, *arg, arg_type);
-    }
-    emitter.push_bytes(
-        context.mco,
-        current,
-        Value::Integer(IntConstant::U32(case_index)),
-        &Type::int(IntegerKind::U32),
-    );
-    emitter.push_bytes(context.mco, current, target, &Type::POINTER);
+    let arguments = if op_arg_values.is_empty() {
+        emitter.push_instruction(Instruction::Transmute(Value::Integer(IntConstant::Usz(0))), Type::POINTER)
+    } else {
+        let argument_tuple_type = Type::tuple(shape.op_arg_types.clone());
+        let argument_tuple = emitter.push_instruction(Instruction::MakeTuple(op_arg_values), argument_tuple_type);
+        emitter.push_instruction(Instruction::StackAlloc(argument_tuple), Type::POINTER)
+    };
+    let result_slot =
+        emitter.push_instruction(Instruction::StackAllocUninit(shape.op_return_type.clone()), Type::POINTER);
+
+    let fields = vec![target, Value::Integer(IntConstant::U32(case_index)), arguments, result_slot];
+    let message = emitter.push_instruction(Instruction::MakeTuple(fields), message_type());
+    let message = emitter.push_instruction(Instruction::StackAlloc(message), Type::POINTER);
+
+    emitter.call_extern(&context.mco.set_message, vec![current, message]);
     emitter.call_extern(&context.mco.suspend, vec![current]);
-    let result = emitter.pop_bytes(context.mco, current, &shape.op_return_type);
+    let result = emitter.push_instruction(Instruction::Deref(result_slot), shape.op_return_type.clone());
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(result));
     mir.definitions.insert(wrap_id, definition);
@@ -826,11 +785,11 @@ fn generate_body_wrapper(
     wrapper_id
 }
 
-/// Per-Handle drive. The body coroutine is resumed in a loop. Each yield carries
-/// (args, case_idx, target_coro) on the running coro's storage. The drive checks
-/// `target == my_coro`, if so, it dispatches to the matching handler by `case_idx`,
-/// otherwise it forwards the entire message bytewise to the parent coro, suspends the
-/// parent, then transfers the result back and loops.
+/// Per-Handle drive. The body coroutine is resumed in a loop. Each yield leaves a pointer to a
+/// message in the coro. The drive checks `target == my_coro`, if so, it
+/// dispatches to the matching handler by `case_idx`, otherwise it forwards the same message
+/// pointer to the parent coro and suspends the parent. Whichever drive handles the message
+/// writes the result directly into the performer's result slot.
 fn generate_drive_function(
     mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], case_shapes: &[CaseShape], result_type: &Type,
     context: Context, caller_generic_count: u32,
@@ -849,7 +808,6 @@ fn generate_drive_function(
             drive_type.clone(),
             handler_types,
             result_type,
-            context,
             caller_generic_count,
         )
     });
@@ -891,12 +849,16 @@ fn generate_drive_function(
     let result = emitter.push_instruction(Instruction::Deref(result_slot), result_type.clone());
     definition.blocks[complete_block].terminator = Some(TerminatorInstruction::Jmp((final_block, Some(result))));
 
-    // dispatch_block: pop target, pop case_idx, branch on (target == my_coro)
+    // dispatch_block: read the message, branch on (target == my_coro)
     let usz_t = Type::int(IntegerKind::Usz);
-    let (target, case_idx) = {
+    let (message, case_idx, arguments, result_slot) = {
         let mut emitter = Emitter::in_block(&mut definition, dispatch_block);
-        let target = emitter.pop_bytes(context.mco, coro, &Type::POINTER);
-        let case_idx = emitter.pop_bytes(context.mco, coro, &Type::int(IntegerKind::U32));
+        let message = emitter.call_extern(&context.mco.get_message, vec![coro]);
+        let header = emitter.push_instruction(Instruction::Deref(message), message_type());
+        let target = emitter.index_tuple(header, message_field::TARGET, Type::POINTER);
+        let case_idx = emitter.index_tuple(header, message_field::CASE_INDEX, Type::int(IntegerKind::U32));
+        let arguments = emitter.index_tuple(header, message_field::ARGUMENTS, Type::POINTER);
+        let result_slot = emitter.index_tuple(header, message_field::RESULT, Type::POINTER);
         let target_int = emitter.push_instruction(Instruction::Transmute(target), usz_t.clone());
         let my_int = emitter.push_instruction(Instruction::Transmute(coro), usz_t.clone());
         let eq = emitter.push_instruction(Instruction::EqInt(target_int, my_int), Type::BOOL);
@@ -908,7 +870,7 @@ fn generate_drive_function(
             else_: (forward_block, None),
             end: forward_block,
         });
-        (target, case_idx)
+        (message, case_idx, arguments, result_slot)
     };
 
     // my_dispatch_block: switch case_idx over our local case indices.
@@ -921,6 +883,8 @@ fn generate_drive_function(
             &mut definition,
             case_block,
             coro,
+            arguments,
+            result_slot,
             resume_functions[case_index],
             handler_parameters[case_index],
             &handler_parameters,
@@ -928,7 +892,6 @@ fn generate_drive_function(
             result_type,
             final_block,
             mir,
-            context,
             caller_generic_count,
         );
     }
@@ -943,16 +906,11 @@ fn generate_drive_function(
         end: final_block,
     });
 
-    // forward_block: relay to parent, then transfer the result back and loop.
+    // forward_block: relay the message to the parent, then loop once the parent is resumed.
     let mut emitter = Emitter::in_block(&mut definition, forward_block);
     let parent = emitter.call_extern(&context.mco.running, vec![]);
-    let n_args = emitter.call_extern(&context.mco.bytes_stored, vec![coro]);
-    emitter.call_extern(&context.mco.transfer, vec![coro, parent, n_args]);
-    emitter.push_bytes(context.mco, parent, case_idx, &Type::int(IntegerKind::U32));
-    emitter.push_bytes(context.mco, parent, target, &Type::POINTER);
+    emitter.call_extern(&context.mco.set_message, vec![parent, message]);
     emitter.call_extern(&context.mco.suspend, vec![parent]);
-    let n_result = emitter.call_extern(&context.mco.bytes_stored, vec![parent]);
-    emitter.call_extern(&context.mco.transfer, vec![parent, coro, n_result]);
 
     definition.blocks[forward_block].terminator = Some(TerminatorInstruction::jmp_no_args(loop_header));
     definition.blocks[final_block].terminator = Some(TerminatorInstruction::Return(Value::Parameter(final_block, 0)));
@@ -962,23 +920,33 @@ fn generate_drive_function(
 
 #[allow(clippy::too_many_arguments)]
 fn emit_handler_case(
-    definition: &mut Definition, case_block: BlockId, coro: Value, resume_function_id: DefinitionId,
-    handler_parameter: Value, all_handler_parameters: &[Value], shape: &CaseShape, result_type: &Type,
-    final_block: BlockId, mir: &Mir, context: Context, caller_generic_count: u32,
+    definition: &mut Definition, case_block: BlockId, coro: Value, arguments: Value, result_slot: Value,
+    resume_function_id: DefinitionId, handler_parameter: Value, all_handler_parameters: &[Value], shape: &CaseShape,
+    result_type: &Type, final_block: BlockId, mir: &Mir, caller_generic_count: u32,
 ) {
     let resume_function_type = mir.definitions.get(&resume_function_id).map(|d| d.typ.clone()).unwrap_or(Type::ERROR);
 
     let param_types =
         all_handler_parameters.iter().map(|value| definition.type_of_value(value, &mir.externals, &mir.definitions));
 
-    let state_field_types = std::iter::once(Type::POINTER).chain(param_types).collect::<Vec<_>>();
+    let state_field_types = [Type::POINTER, Type::POINTER].into_iter().chain(param_types).collect::<Vec<_>>();
 
     let mut emitter = Emitter::in_block(definition, case_block);
-    let popped_arguments = pop_operation_arguments(&mut emitter, context, coro, &shape.op_arg_types);
+
+    // Copy the arguments out of the message now, since resuming the performer invalidates it
+    let mut handler_arguments = if shape.op_arg_types.is_empty() {
+        Vec::new()
+    } else {
+        let argument_tuple_type = Type::tuple(shape.op_arg_types.clone());
+        let argument_tuple = emitter.push_instruction(Instruction::Deref(arguments), argument_tuple_type);
+        mapvec(shape.op_arg_types.iter().enumerate(), |(index, typ)| {
+            emitter.index_tuple(argument_tuple, index as u32, typ.clone())
+        })
+    };
 
     // resume's MIR-declared env type is Pointer, so its state is packed into a stack-allocated tuple.
-    let mut state_elements = Vec::with_capacity(1 + all_handler_parameters.len());
-    state_elements.push(coro);
+    let mut state_elements = Vec::with_capacity(2 + all_handler_parameters.len());
+    state_elements.extend([coro, result_slot]);
     state_elements.extend(all_handler_parameters.iter().copied());
     let state =
         emitter.push_instruction(Instruction::MakeTuple(state_elements), Type::Tuple(Arc::new(state_field_types)));
@@ -994,7 +962,6 @@ fn emit_handler_case(
         resume_function_type,
     );
 
-    let mut handler_arguments = popped_arguments;
     handler_arguments.push(resume_closure);
     let call_instruction = if shape.handler_is_closure {
         Instruction::CallClosure { closure: handler_parameter, arguments: handler_arguments }
@@ -1006,14 +973,15 @@ fn emit_handler_case(
     definition.blocks[case_block].terminator = Some(TerminatorInstruction::Jmp((final_block, Some(handler_result))));
 }
 
-/// `resume: fn r1 [Pointer] -> r2`; env is `&(coro, handler_0, .., handler_{N-1})`.
+/// `resume: fn r1 [Pointer] -> r2`; env is `&(coro, result_slot, handler_0, .., handler_{N-1})`.
+/// Writes the resumed value into the performer's result slot, then drives the coro again.
 #[allow(clippy::too_many_arguments)]
 fn generate_resume_function(
     mir: &mut Mir, r1_type: Type, drive_function_id: DefinitionId, drive_function_type: Type, handler_types: &[Type],
-    result_type: &Type, context: Context, caller_generic_count: u32,
+    result_type: &Type, caller_generic_count: u32,
 ) -> DefinitionId {
-    let mut state_field_types = Vec::with_capacity(1 + handler_types.len());
-    state_field_types.push(Type::POINTER);
+    let mut state_field_types = Vec::with_capacity(2 + handler_types.len());
+    state_field_types.extend([Type::POINTER, Type::POINTER]);
     state_field_types.extend(handler_types.iter().cloned());
     let state_tuple_type = Type::Tuple(Arc::new(state_field_types));
 
@@ -1035,12 +1003,13 @@ fn generate_resume_function(
     let mut emitter = Emitter::in_block(&mut definition, entry);
 
     let state = emitter.push_instruction(Instruction::Deref(environment_pointer), state_tuple_type);
-    let coro = emitter.push_instruction(Instruction::IndexTuple { tuple: state, index: 0 }, Type::POINTER);
+    let coro = emitter.index_tuple(state, 0, Type::POINTER);
+    let result_slot = emitter.index_tuple(state, 1, Type::POINTER);
     let handler_values = mapvec(handler_types.iter().enumerate(), |(i, handler_type)| {
-        emitter.push_instruction(Instruction::IndexTuple { tuple: state, index: (i + 1) as u32 }, handler_type.clone())
+        emitter.index_tuple(state, (i + 2) as u32, handler_type.clone())
     });
 
-    emitter.push_bytes(context.mco, coro, v_value, &r1_type);
+    emitter.push_instruction(Instruction::Store { pointer: result_slot, value: v_value }, Type::UNIT);
 
     let mut drive_arguments = Vec::with_capacity(1 + handler_values.len());
     drive_arguments.push(coro);
