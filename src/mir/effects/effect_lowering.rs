@@ -33,6 +33,8 @@ struct AminicoroFns {
     init: AminicoroFn,
     free: AminicoroFn,
     is_suspended: AminicoroFn,
+    set_message: AminicoroFn,
+    get_message: AminicoroFn,
     push: AminicoroFn,
     pop: AminicoroFn,
     suspend: AminicoroFn,
@@ -52,6 +54,8 @@ fn aminicoro_fns() -> AminicoroFns {
         init: AminicoroFn { name: "mco_coro_init", typ: Type::function(vec![ptr(), ptr()], ptr()) },
         free: AminicoroFn { name: "mco_coro_free", typ: Type::function(vec![ptr()], u8_t()) },
         is_suspended: AminicoroFn { name: "mco_coro_is_suspended", typ: Type::function(vec![ptr()], Type::BOOL) },
+        set_message: AminicoroFn { name: "mco_coro_set_message", typ: Type::function(vec![ptr(), ptr()], u8_t()) },
+        get_message: AminicoroFn { name: "mco_coro_get_message", typ: Type::function(vec![ptr()], ptr()) },
         push: AminicoroFn { name: "mco_coro_push", typ: Type::function(vec![ptr(), ptr(), usize_t()], u8_t()) },
         pop: AminicoroFn { name: "mco_coro_pop", typ: Type::function(vec![ptr(), ptr(), usize_t()], u8_t()) },
         suspend: AminicoroFn { name: "mco_coro_suspend", typ: Type::function(vec![ptr()], u8_t()) },
@@ -297,6 +301,10 @@ impl<'local> Emitter<'local> {
         } else {
             Value::Definition(target_id)
         }
+    }
+
+    fn index_tuple(&mut self, tuple: Value, index: u32, field_type: Type) -> Value {
+        self.push_instruction(Instruction::IndexTuple { tuple, index }, field_type)
     }
 
     fn push_bytes(&mut self, mco: &AminicoroFns, coro: Value, value: Value, value_type: &Type) {
@@ -577,7 +585,9 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
         CoroutineInit::Direct => (body_wrapper_value, vec![]),
         CoroutineInit::Indirect(entry) => (Value::Definition(entry), vec![body_wrapper_value]),
     };
-    user_data_fields.extend([cap_tuple, env_value]);
+
+    let body_result_slot = emitter.push_instruction(Instruction::StackAllocUninit(result_type.clone()), Type::POINTER);
+    user_data_fields.extend([cap_tuple, env_value, body_result_slot]);
     let user_data_type = layout.typ(&cap_tuple_type, &env_type);
     let user_data = emitter.push_instruction(Instruction::MakeTuple(user_data_fields), user_data_type);
     let user_data_ptr = emitter.push_instruction(Instruction::StackAlloc(user_data), Type::POINTER);
@@ -710,12 +720,12 @@ fn generate_capability_wrapper(
 /// we can't pass it to C to initialize the coroutine without a non-generic wrapper.
 #[derive(Clone, Copy)]
 enum CoroutineInit {
-    /// The coroutine starts in the body wrapper, `user_data` is `(capability, environment)`
+    /// The coroutine starts in the body wrapper, `user_data` is `(capability, environment, result_slot)`
     Direct,
 
     /// This generic function needs type information C cannot pass, so we need to start in the
     /// given non-generic entry function which calls the wrapper held in user_data.
-    /// `user_data` is `(body_wrapper, capability, environment)`.
+    /// `user_data` is `(body_wrapper, capability, environment, result_slot)`.
     Indirect(DefinitionId),
 }
 
@@ -725,7 +735,7 @@ impl CoroutineInit {
             CoroutineInit::Direct => vec![],
             CoroutineInit::Indirect(_) => vec![Type::function(vec![Type::POINTER], Type::UNIT)],
         };
-        fields.extend([cap_type.clone(), env_type.clone()]);
+        fields.extend([cap_type.clone(), env_type.clone(), Type::POINTER]);
         Type::tuple(fields)
     }
 
@@ -738,6 +748,11 @@ impl CoroutineInit {
 
     fn env_index(self) -> u32 {
         self.cap_index() + 1
+    }
+
+    /// Points to where the body wrapper writes the handled expression's result
+    fn result_slot_index(self) -> u32 {
+        self.cap_index() + 2
     }
 }
 
@@ -760,7 +775,8 @@ fn generate_coroutine_entry(mir: &mut Mir, mco: &AminicoroFns) -> DefinitionId {
     entry_id
 }
 
-/// Generates `fn (coro: Pointer) -> Unit`, which calls the body and pushes its result for `drive` to pop.
+/// Generates `fn (coro: Pointer) -> Unit`, which calls the body, writes its result into the
+/// result slot from user_data, and points the coroutine's message at it for `drive` to read.
 #[allow(clippy::too_many_arguments)]
 fn generate_body_wrapper(
     mir: &mut Mir, body_fn_id: DefinitionId, body_bindings: Option<Arc<GenericBindings>>, env_type: &Type,
@@ -799,7 +815,11 @@ fn generate_body_wrapper(
             result_type.clone(),
         )
     };
-    emitter.push_bytes(context.mco, coro, result, result_type);
+    let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
+    let user_data = emitter.push_instruction(Instruction::Deref(user_data), layout.typ(cap_type, env_type));
+    let result_slot = emitter.index_tuple(user_data, layout.result_slot_index(), Type::POINTER);
+    emitter.push_instruction(Instruction::Store { pointer: result_slot, value: result }, Type::UNIT);
+    emitter.call_extern(&context.mco.set_message, vec![coro, result_slot]);
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(Value::Unit));
     mir.definitions.insert(wrapper_id, definition);
@@ -865,8 +885,11 @@ fn generate_drive_function(
         end: complete_block,
     });
 
-    // complete_block: pop R, jmp final_block(R)
-    emit_pop_and_jmp(&mut definition, complete_block, coro, result_type, final_block, context);
+    // complete_block: the result slot should be in the message
+    let mut emitter = Emitter::in_block(&mut definition, complete_block);
+    let result_slot = emitter.call_extern(&context.mco.get_message, vec![coro]);
+    let result = emitter.push_instruction(Instruction::Deref(result_slot), result_type.clone());
+    definition.blocks[complete_block].terminator = Some(TerminatorInstruction::Jmp((final_block, Some(result))));
 
     // dispatch_block: pop target, pop case_idx, branch on (target == my_coro)
     let usz_t = Type::int(IntegerKind::Usz);
@@ -935,14 +958,6 @@ fn generate_drive_function(
     definition.blocks[final_block].terminator = Some(TerminatorInstruction::Return(Value::Parameter(final_block, 0)));
     mir.definitions.insert(drive_id, definition);
     drive_id
-}
-
-fn emit_pop_and_jmp(
-    definition: &mut Definition, block: BlockId, coro: Value, value_type: &Type, jmp_target: BlockId, context: Context,
-) {
-    let mut emitter = Emitter::in_block(definition, block);
-    let value = emitter.pop_bytes(context.mco, coro, value_type);
-    definition.blocks[block].terminator = Some(TerminatorInstruction::Jmp((jmp_target, Some(value))));
 }
 
 #[allow(clippy::too_many_arguments)]
