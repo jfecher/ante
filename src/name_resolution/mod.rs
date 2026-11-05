@@ -1085,6 +1085,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_place_root(path.root, declare_type_vars);
                 }
             },
+            TypeKind::PlaceMode(_, place) => self.resolve_type(place, declare_type_vars),
             TypeKind::Function(function) => {
                 for parameter in &function.parameters {
                     self.resolve_type(&parameter.typ, declare_type_vars);

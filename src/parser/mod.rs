@@ -1101,8 +1101,7 @@ impl<'tokens> Parser<'tokens> {
         let kind = match self.current_token() {
             Token::Ref => cst::ReferenceKind::Ref,
             Token::Mut => cst::ReferenceKind::Mut,
-            Token::Imm => cst::ReferenceKind::Imm,
-            Token::Uniq => cst::ReferenceKind::Uniq,
+            Token::Read => cst::ReferenceKind::Read,
             _ => return self.expected("a reference type"),
         };
 
@@ -1111,9 +1110,17 @@ impl<'tokens> Parser<'tokens> {
         self.parse_reference_element_type(kind, start, unstable)
     }
 
-    fn parse_reference_element_type(&mut self, kind: cst::ReferenceKind, ref_location: Location, unstable: bool,
+    fn parse_reference_element_type(
+        &mut self, kind: cst::ReferenceKind, ref_location: Location, unstable: bool,
     ) -> Result<Type> {
-        let place = if matches!(self.current_token(), Token::Apostrophe) {
+        // `(mut 'p)` may also start an element type like `(mut 'p t)`
+        let place_mode =
+            if self.at_place_mode() && !unstable { self.try_(Self::parse_place_or_place_mode).ok() } else { None };
+
+        let explicit_place = place_mode.is_some() || matches!(self.current_token(), Token::Apostrophe);
+        let place = if let Some(place) = place_mode {
+            place
+        } else if explicit_place {
             if unstable {
                 return self.expected("a type, since `!` after a reference keyword elides the place");
             }
@@ -1128,8 +1135,35 @@ impl<'tokens> Parser<'tokens> {
                 let ref_type = Type::new(TypeKind::Reference(kind), ref_location);
                 Ok(Type::new(TypeKind::Application(Box::new(ref_type), vec![place, application]), location))
             },
+            // `mut 'a` with no element is a place, as in `Slice (mut 'a) t`
+            Err(_) if explicit_place => {
+                let location = ref_location.to(&place.location);
+                Ok(Type::new(TypeKind::PlaceMode(kind, Box::new(place)), location))
+            },
             Err(_) => Ok(Type::new(TypeKind::Reference(kind), ref_location)),
         }
+    }
+
+    /// Are we at a parenthesized place like `(mut 'a)`?
+    fn at_place_mode(&self) -> bool {
+        matches!(self.current_token(), Token::ParenthesisLeft)
+            && matches!(self.try_peek_next_token(), Some(Token::Ref | Token::Mut | Token::Read))
+            && self.tokens.get(self.token_index + 2).map(|(token, _)| token) == Some(&Token::Apostrophe)
+    }
+
+    /// place_or_place_mode: place_type | '(' ('ref' | 'mut' | 'read') place_type ')'
+    fn parse_place_or_place_mode(&mut self) -> Result<Type> {
+        if !self.at_place_mode() {
+            return self.parse_place_type();
+        }
+        let start = self.current_token_location();
+        self.advance();
+        let kind = cst::ReferenceKind::from_token(self.current_token());
+        self.advance();
+        let place = self.parse_place_or_place_mode()?;
+        self.expect(Token::ParenthesisRight, "a `)` to close the place")?;
+        let location = start.to(&self.previous_token_location());
+        Ok(Type::new(TypeKind::PlaceMode(kind, Box::new(place)), location))
     }
 
     /// place_type: "'" place_path
@@ -1255,7 +1289,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_type_no_pair(&mut self) -> Result<Type> {
         match self.current_token() {
             Token::Fn => self.parse_function_type(),
-            Token::Ref | Token::Mut | Token::Imm | Token::Uniq => self.parse_reference_type(),
+            Token::Ref | Token::Mut | Token::Read => self.parse_reference_type(),
             Token::Forall => self.parse_forall_type(),
             _ => self.parse_effect_union_type(),
         }
@@ -2061,7 +2095,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_term_inner(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         match self.current_token() {
-            Token::Subtract | Token::Ref | Token::Mut | Token::Imm | Token::Uniq | Token::Not => {
+            Token::Subtract | Token::Ref | Token::Mut | Token::Read | Token::Not => {
                 self.parse_left_unary(min_prec, ban_do)
             },
             _ => self.parse_function_call_or_atom(min_prec, ban_do),
@@ -2070,7 +2104,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_left_unary(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         match self.current_token() {
-            operator @ (Token::Ref | Token::Mut | Token::Imm | Token::Uniq) => {
+            operator @ (Token::Ref | Token::Mut | Token::Read) => {
                 let kind = ReferenceKind::from_token(operator);
                 let id = self.reserve_expr();
 
@@ -2079,7 +2113,7 @@ impl<'tokens> Parser<'tokens> {
                 let rhs = self.parse_left_unary(min_prec, ban_do)?;
                 let location = operator_location.to(&self.expr_location(rhs));
 
-                let reference = Expr::Reference(cst::Reference { kind, rhs });
+                let reference = Expr::Reference(cst::Reference { kind, rhs, implicit: false });
                 self.insert_expr(id, reference, location);
                 Ok(id)
             },
@@ -2440,8 +2474,6 @@ impl<'tokens> Parser<'tokens> {
     /// we rewrite it into a call in the form `(.[]:=) collection index rhs`.
     fn make_assignment(&mut self, lhs: ExprId, rhs: ExprId, location: Location) -> ExprId {
         if let Some((collection, index)) = self.index_call_args(lhs) {
-            let collection = self.mutify_receiver(collection);
-
             let path = Path::ident(self.static_name(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME), location.clone());
             let path = self.push_path(path, location.clone());
             let function = self.push_expr(Expr::Variable(path), location.clone());
@@ -2450,25 +2482,6 @@ impl<'tokens> Parser<'tokens> {
         }
 
         self.push_expr(Expr::Assignment(cst::Assignment { lhs, rhs, op: None }), location)
-    }
-
-    /// Borrow the base of a (possibly nested) index expression mutably so that
-    /// `a.[i].[j] := v` threads `mut` references through each `.[` read:
-    ///   `arr`        -> `mut arr`
-    ///   `board.[r]`  -> `(.[) (mut board) r`
-    ///   `a.[i].[j]`  -> `(.[) ((.[) (mut a) i) j`
-    fn mutify_receiver(&mut self, expr: ExprId) -> ExprId {
-        let location = self.expr_location(expr);
-        if let Some((receiver, index)) = self.index_call_args(expr) {
-            let receiver = self.mutify_receiver(receiver);
-            let path = Path::ident(self.static_name(INDEX_OPERATOR_FUNCTION_NAME), location.clone());
-            let path = self.push_path(path, location.clone());
-            let function = self.push_expr(Expr::Variable(path), location.clone());
-            let arguments = vec![Argument::explicit(receiver), Argument::explicit(index)];
-            self.push_expr(Expr::Call(Call { function, arguments }), location)
-        } else {
-            self.push_expr(Expr::Reference(cst::Reference { kind: ReferenceKind::Mut, rhs: expr }), location)
-        }
     }
 
     /// If `expr` is exactly an index call `collection.[index]` (a call to the `(.[)` operator),

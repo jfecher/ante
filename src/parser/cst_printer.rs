@@ -681,6 +681,13 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Application(constructor, args) => self.fmt_type_application(constructor, args, context, f),
             TypeKind::Char => write!(f, "Char"),
             TypeKind::Reference(kind) => self.fmt_reference_type(*kind, f),
+            TypeKind::PlaceMode(kind, place) => {
+                write!(f, "(")?;
+                self.fmt_reference_type(*kind, f)?;
+                write!(f, " ")?;
+                self.fmt_type(place, context, f)?;
+                write!(f, ")")
+            },
             TypeKind::NoClosureEnv => write!(f, "{}", NO_CLOSURE_ENV_STRING),
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
             TypeKind::EffectUnion(operands) => {
@@ -717,8 +724,7 @@ impl<'a> CstDisplay<'a> {
         match kind {
             ReferenceKind::Ref => write!(f, "ref"),
             ReferenceKind::Mut => write!(f, "mut"),
-            ReferenceKind::Imm => write!(f, "imm"),
-            ReferenceKind::Uniq => write!(f, "uniq"),
+            ReferenceKind::Read => write!(f, "read"),
         }
     }
 

@@ -13,7 +13,7 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
-        cst::{self, KindAnnotation, PlaceSegment, ReferenceKind},
+        cst::{self, KindAnnotation, PlaceSegment},
         desugar_context::DesugarContext,
         get_item::{IMPL_GENERIC_DISPLAY_NAME, TraitDefinition},
         ids::{NameId, NameStore, TopLevelName},
@@ -24,7 +24,7 @@ use crate::{
         generics::Generic,
         get_type,
         kinds::Kind,
-        places::Place,
+        places::{Place, PlaceAccess, PlaceMode},
         row::{
             Row, RowKind, canonicalize_row, construct_row, flatten_row_into, follow_row, is_open, sort_and_dedup_row,
         },
@@ -86,7 +86,7 @@ pub enum Type {
 
     /// A single concrete place a reference may point to. Only ever appears as an entry
     /// inside a [Type::Places] row
-    Place(Place),
+    Place(Place, PlaceAccess),
 
     /// The set of places a reference may borrow from, sorted & deduplicated.
     /// Each entry is a [Type::Place] or generic when concrete or a [Type::Variable] when not.
@@ -95,7 +95,7 @@ pub enum Type {
     Places(Row<Type>),
 
     /// A generic or unbound place followed by fields and `!`s, like `'a!`
-    PlaceProjection(Shared<Type>, Shared<Vec<PlaceSegment>>),
+    PlaceProjection(Shared<Type>, Shared<Vec<PlaceSegment>>, Option<PlaceMode>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -137,12 +137,14 @@ pub enum PrimitiveType {
     Error,
     Unit,
     Bool,
-    // * -> *
+    /// * -> *
     Pointer,
     Char,
     Int(IntegerKind),
     Float(FloatKind),
-    Reference(ReferenceKind),
+
+    /// place -> * -> *
+    Reference,
 
     /// Built-in fixed-size unboxed array constructor of kind `U32 -> * -> *`.
     /// Applied form: `Type::Application(Type::ARRAY, [TypeLevelU32(n), t])`.
@@ -190,10 +192,7 @@ impl Type {
     pub const F32: Type = Type::Primitive(PrimitiveType::Float(FloatKind::F32));
     pub const F64: Type = Type::Primitive(PrimitiveType::Float(FloatKind::F64));
 
-    pub const REF: Type = Type::Primitive(PrimitiveType::Reference(ReferenceKind::Ref));
-    pub const MUT: Type = Type::Primitive(PrimitiveType::Reference(ReferenceKind::Mut));
-    pub const IMM: Type = Type::Primitive(PrimitiveType::Reference(ReferenceKind::Imm));
-    pub const UNIQ: Type = Type::Primitive(PrimitiveType::Reference(ReferenceKind::Uniq));
+    pub const REF: Type = Type::Primitive(PrimitiveType::Reference);
 
     pub const ARRAY: Type = Type::Primitive(PrimitiveType::Array);
 
@@ -233,8 +232,8 @@ impl Type {
         }
     }
 
-    pub fn reference(kind: ReferenceKind) -> Type {
-        Type::Primitive(PrimitiveType::Reference(kind))
+    pub fn reference(places: Type, element: Type) -> Type {
+        Type::Application(Shared::new(Type::REF), Shared::new(vec![places, element]))
     }
 
     /// Convert this type to a string (without any coloring)
@@ -272,6 +271,7 @@ impl Type {
             hide_environments: false,
             optional_args: OptionalArgs::Unbound,
             number_elided: false,
+            in_effect: std::cell::Cell::new(false),
             names,
             db,
         }
@@ -289,7 +289,7 @@ impl Type {
 
     /// True if this is a place, a places row, or a projection of one
     pub(crate) fn is_place_row(&self) -> bool {
-        matches!(self, Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..))
+        matches!(self, Type::Places(_) | Type::Place(..) | Type::PlaceProjection(..))
     }
 
     /// Follow all of this type's type variable bindings so that we only return
@@ -338,7 +338,7 @@ impl Type {
             | Type::Generic(_)
             | Type::UserDefined(_)
             | Type::U32(_)
-            | Type::Place(_)
+            | Type::Place(..)
             | Type::Effects(_)
             | Type::Places(_)
             | Type::PlaceProjection(..) => false,
@@ -370,7 +370,7 @@ impl Type {
     /// when the subtree is unchanged so the caller can reuse the original `Arc` instead of allocating.
     pub(super) fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
         match self {
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => None,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(..) => None,
             Type::Variable(id) => {
                 let binding = bindings.get(id).or_else(|| more_bindings.get(id))?;
                 Some(binding.follow_all_two(bindings, more_bindings))
@@ -423,9 +423,9 @@ impl Type {
                 let places = Self::follow_all_each(places.as_ref()?, |p| p.follow_all_opt(bindings, more_bindings))?;
                 Some(Type::places(&places, bindings, more_bindings))
             },
-            Type::PlaceProjection(base, segments) => {
+            Type::PlaceProjection(base, segments, mode) => {
                 let base = base.follow_all_opt(bindings, more_bindings)?;
-                Some(Type::project_place(&base, segments, bindings, more_bindings))
+                Some(Type::project_place_with_mode(&base, segments, *mode, bindings, more_bindings))
             },
         }
     }
@@ -462,7 +462,7 @@ impl Type {
         let self_is_var = matches!(self, Type::Variable(_));
 
         match self.follow(bindings_in_scope) {
-            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => None,
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(..) => None,
             Type::Generic(generic) => bindings_to_substitute.get(generic).cloned(),
             Type::Variable(id) => bindings_to_substitute.get(&Generic::Inferred(*id)).cloned(),
             Type::Function(function) => {
@@ -552,13 +552,13 @@ impl Type {
                 };
                 Some(Type::places(entries, bindings_in_scope, &Default::default()))
             },
-            Type::PlaceProjection(base, segments) => {
+            Type::PlaceProjection(base, segments, mode) => {
                 let new_base = base.substitute_opt(bindings_to_substitute, bindings_in_scope);
                 if new_base.is_none() && !self_is_var {
                     return None;
                 }
                 let base = new_base.as_ref().unwrap_or(base.as_ref());
-                Some(Type::project_place(base, segments, bindings_in_scope, &Default::default()))
+                Some(Type::project_place_with_mode(base, segments, *mode, bindings_in_scope, &Default::default()))
             },
         }
     }
@@ -923,11 +923,32 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
+                let reference_mode = match &f.kind {
+                    crate::parser::cst::TypeKind::Reference(kind) => PlaceMode::of_reference(*kind),
+                    _ => None,
+                };
                 let (f, f_kind) = self.convert(f, None);
-                self.convert_application(f, f_kind, args, &typ.location)
+                let (typ, kind) = self.convert_application(f, f_kind, args, &typ.location);
+                match (reference_mode, typ) {
+                    // `mut 'p t` is `ref (mut 'p) t`
+                    (Some(mode), Type::Application(_, args)) if args.len() == 2 => {
+                        let none = TypeBindings::default();
+                        let places = Type::apply_place_mode(&args[0], mode, &none, &none);
+                        (Type::reference(places, args[1].clone()), kind)
+                    },
+                    (_, typ) => (typ, kind),
+                }
             },
-            crate::parser::cst::TypeKind::Reference(kind) => {
-                (Type::Primitive(PrimitiveType::Reference(*kind)), Kind::from_args(vec![Kind::Place, Kind::Type]))
+            crate::parser::cst::TypeKind::Reference(_) => (Type::REF, Kind::from_args(vec![Kind::Place, Kind::Type])),
+            crate::parser::cst::TypeKind::PlaceMode(kind, place) => {
+                let place = self.convert_with_kind(place, Kind::Place);
+                match PlaceMode::of_reference(*kind) {
+                    Some(mode) => {
+                        let none = TypeBindings::default();
+                        (Type::apply_place_mode(&place, mode, &none, &none), Kind::Place)
+                    },
+                    None => (place, Kind::Place),
+                }
             },
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
             crate::parser::cst::TypeKind::Tuple(elements) => {
@@ -1443,9 +1464,9 @@ impl Type {
     fn collect_place_kinded_generics(&self, out: &mut FxHashSet<Generic>) {
         match self {
             Type::Application(constructor, args) => {
-                if constructor.reference_constructor(&TypeBindings::default()).is_some() {
+                if constructor.is_reference_constructor(&TypeBindings::default()) {
                     let place = match args.first() {
-                        Some(Type::PlaceProjection(base, _)) => Some(base.as_ref()),
+                        Some(Type::PlaceProjection(base, ..)) => Some(base.as_ref()),
                         other => other,
                     };
                     if let Some(Type::Generic(g)) = place {
@@ -1475,7 +1496,7 @@ impl Type {
             | Type::UserDefined(_)
             | Type::U32(_)
             | Type::Effects(_)
-            | Type::Place(_)
+            | Type::Place(..)
             | Type::Places(_)
             | Type::PlaceProjection(..) => (),
         }
@@ -1532,7 +1553,7 @@ impl Type {
             | Type::Variable(_)
             | Type::Generic(_)
             | Type::U32(_)
-            | Type::Place(_) => (),
+            | Type::Place(..) => (),
             Type::Function(function) => {
                 for parameter in &function.parameters {
                     parameter.typ.for_each_subterm(bindings, f);
@@ -1569,7 +1590,7 @@ impl Type {
                     }
                 }
             },
-            Type::PlaceProjection(base, _) => base.for_each_subterm(bindings, f),
+            Type::PlaceProjection(base, ..) => base.for_each_subterm(bindings, f),
         }
     }
 
@@ -1686,21 +1707,18 @@ impl Type {
         }
     }
 
-    /// `Some(kind)` if the passed type is a reference type constructor.
-    /// Note that this returns `None` for `Application(Reference, _)`,
-    /// it is only `Some` for references directly.
-    pub(super) fn reference_constructor(&self, bindings: &TypeBindings) -> Option<ReferenceKind> {
-        match self.follow(bindings) {
-            Type::Primitive(PrimitiveType::Reference(kind)) => Some(*kind),
-            _ => None,
-        }
+    /// True if this is the reference type constructor itself, not an application of it
+    pub(super) fn is_reference_constructor(&self, bindings: &TypeBindings) -> bool {
+        matches!(self.follow(bindings), Type::Primitive(PrimitiveType::Reference))
     }
 
-    /// If this is a reference type, return the reference kind and its element type
-    pub fn reference_element(&self, bindings: &TypeBindings) -> Option<(ReferenceKind, Type)> {
+    /// If this is a reference type, return its places and its element type
+    pub fn reference_element(&self, bindings: &TypeBindings) -> Option<(Type, Type)> {
         match self.follow(bindings) {
-            Type::Application(constructor, args) if args.len() >= 2 => {
-                constructor.reference_constructor(bindings).map(|kind| (kind, args[1].clone()))
+            Type::Application(constructor, args)
+                if args.len() >= 2 && constructor.is_reference_constructor(bindings) =>
+            {
+                Some((args[0].clone(), args[1].clone()))
             },
             _ => None,
         }
@@ -1724,7 +1742,7 @@ impl Type {
     pub fn reference_or_pointer_element<'a>(&'a self, bindings: &'a TypeBindings) -> Option<&'a Type> {
         match self.follow(bindings) {
             Type::Application(constructor, args) => {
-                if constructor.reference_constructor(bindings).is_some() {
+                if constructor.is_reference_constructor(bindings) {
                     args.get(1)
                 } else if constructor.pointer_constructor(bindings) {
                     args.first()
@@ -1841,6 +1859,8 @@ pub struct TypePrinter<'a, Db, Names> {
     optional_args: OptionalArgs,
     /// Print each [Generic::Elided] with its id rather than as `_`, to tell them apart
     number_elided: bool,
+    /// Set while printing an effect, whose places like the `'p` in `Mutate 'p` have no mutability
+    pub(super) in_effect: std::cell::Cell<bool>,
     pub(super) names: &'a Names,
     db: &'a Db,
 }
@@ -1975,18 +1995,26 @@ where
                         self.fmt_type(&args[1], true, f)
                     } else {
                         let is_reference = args.len() == 2
-                            && matches!(
-                                constructor.follow(self.bindings),
-                                Type::Primitive(PrimitiveType::Reference(_))
-                            );
+                            && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference));
                         let generics = definition.map_or(&[][..], |definition| definition.generics.as_slice());
 
-                        self.fmt_type(constructor, true, f)?;
+                        if is_reference {
+                            // `ref (mut 'p) t` is written `mut 'p t`
+                            match self.uniform_place_mode(&args[0]) {
+                                Some(mode) => write!(f, "{mode}")?,
+                                None => write!(f, "ref")?,
+                            }
+                        } else {
+                            self.fmt_type(constructor, true, f)?;
+                        }
                         for (i, arg) in args[..shown].iter().enumerate() {
                             let place_param =
                                 generics.get(i).is_some_and(|param| param.kind == Some(KindAnnotation::Place));
-                            if (is_reference && i == 0) || place_param || arg.follow(self.bindings).is_place_row() {
-                                self.fmt_place_arg(arg, is_reference, f)?;
+                            if is_reference && i == 0 {
+                                let strip_modes = self.uniform_place_mode(arg).is_some();
+                                self.fmt_place_arg(arg, true, strip_modes, f)?;
+                            } else if place_param || arg.follow(self.bindings).is_place_row() {
+                                self.fmt_moded_place_arg(arg, f)?;
                             } else {
                                 write!(f, " ")?;
                                 self.fmt_type(arg, true, f)?;
@@ -2016,14 +2044,10 @@ where
             }),
             Type::U32(n) => write!(f, "{n}"),
             Type::Effects(effects) => self.fmt_effects(effects, parenthesize, f),
-            Type::Place(atom) => write!(f, "{}", atom.display_name(self.names)),
+            Type::Place(..) | Type::PlaceProjection(..) => self.fmt_place_entry(typ, false, f),
             Type::Places(_) => {
                 let entries = self.printed_places(typ).unwrap_or_default();
-                if entries.is_empty() { write!(f, "()") } else { self.fmt_place_entries(&entries, f) }
-            },
-            Type::PlaceProjection(base, segments) => {
-                self.fmt_type(base, false, f)?;
-                write!(f, "{}", cst::Segments(segments))
+                if entries.is_empty() { write!(f, "()") } else { self.fmt_place_entries(&entries, false, f) }
             },
         }
     }
@@ -2056,11 +2080,14 @@ where
         &self, effects: &Option<Shared<Vec<Type>>>, parenthesize: bool, f: &mut std::fmt::Formatter,
     ) -> std::fmt::Result {
         let effects = self.canonicalize(effects);
-        match effects.as_slice() {
+        let outer = self.in_effect.replace(true);
+        let result = match effects.as_slice() {
             [] => write!(f, "pure"),
             [effect] => self.fmt_type(effect, parenthesize, f),
             _ => try_parenthesize(parenthesize, f, |f| self.fmt_non_empty_effects(&effects, f)),
-        }
+        };
+        self.in_effect.set(outer);
+        result
     }
 
     /// Canonicalize a row for printing, showing any number of open ends as one `_`
@@ -2076,12 +2103,14 @@ where
 
     /// Print each entry of an already-canonicalized, non-empty row
     fn fmt_non_empty_effects(&self, effects: &[Type], f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let outer = self.in_effect.replace(true);
         for (i, effect) in effects.iter().enumerate() {
             if i != 0 {
                 write!(f, ", ")?;
             }
             self.fmt_type(effect, false, f)?;
         }
+        self.in_effect.set(outer);
         Ok(())
     }
 
@@ -2161,22 +2190,11 @@ impl std::fmt::Display for PrimitiveType {
             PrimitiveType::Float(kind) => write!(f, "{kind}"),
             PrimitiveType::Char => write!(f, "Char"),
             PrimitiveType::Never => write!(f, "Never"),
-            PrimitiveType::Reference(kind) => write!(f, "{kind}"),
+            PrimitiveType::Reference => write!(f, "ref"),
             PrimitiveType::Array => write!(f, "Array"),
             PrimitiveType::NoClosureEnv => write!(f, "{NO_CLOSURE_ENV_STRING}"),
             PrimitiveType::ResumeEnv => write!(f, "ResumeEnv"),
             PrimitiveType::ImplData(_) => write!(f, "(impl)"),
-        }
-    }
-}
-
-impl std::fmt::Display for ReferenceKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReferenceKind::Ref => write!(f, "ref"),
-            ReferenceKind::Mut => write!(f, "mut"),
-            ReferenceKind::Imm => write!(f, "imm"),
-            ReferenceKind::Uniq => write!(f, "uniq"),
         }
     }
 }

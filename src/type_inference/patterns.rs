@@ -521,7 +521,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::Tuple(_)
             | Type::U32(_)
             | Type::Effects(..)
-            | Type::Place(_)
+            | Type::Place(..)
             | Type::Places(..)
             | Type::PlaceProjection(..) => {
                 let typ = self.checker.type_to_string(definition_type);

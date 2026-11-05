@@ -234,10 +234,15 @@ pub enum TypeKind {
 
     /// When `ref t` or similar are used the parser fills in `ImplicitPlace`s for the missing
     /// places. If `unstable` is true, this is `ref! t` or similar.
-    ImplicitPlace { unstable: bool },
+    ImplicitPlace {
+        unstable: bool,
+    },
 
     /// A place written with `'`, e.g. `'a`, `'p.f!` or `'(a, b!)`
     Place(Vec<PlacePath>),
+
+    /// A place with a mutability modifier, e.g. the `mut 'a` in `Slice (mut 'a) t`
+    PlaceMode(ReferenceKind, Box<Type>),
 
     /// An explicit `forall (n: U32) t. T` polytype
     Forall(Generics, Box<Type>),
@@ -284,8 +289,7 @@ impl std::fmt::Display for Segments<'_> {
 pub enum ReferenceKind {
     Ref,
     Mut,
-    Imm,
-    Uniq,
+    Read,
 }
 
 impl ReferenceKind {
@@ -295,8 +299,7 @@ impl ReferenceKind {
         match operator {
             Token::Ref => Self::Ref,
             Token::Mut => Self::Mut,
-            Token::Imm => Self::Imm,
-            Token::Uniq => Self::Uniq,
+            Token::Read => Self::Read,
             other => panic!("Non-reference token given: {other}"),
         }
     }
@@ -701,11 +704,13 @@ pub struct Do {
     pub body: ExprId,
 }
 
-/// `&rhs`, `!rhs`
+/// `ref rhs`, `mut rhs`, `read rhs`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Reference {
     pub kind: ReferenceKind,
     pub rhs: ExprId,
+    /// Inserted by desugaring `a.[i] := b` to borrow `a`
+    pub implicit: bool,
 }
 
 /// A constructor with named fields such as `Foo with bar = 1, baz = 2`

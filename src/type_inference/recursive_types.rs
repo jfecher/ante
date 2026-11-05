@@ -95,7 +95,7 @@ impl<'local, 'inner> InlineWalk<'local, 'inner> {
             },
             Type::UserDefined(Origin::TopLevelDefinition(name)) => self.visit_type(*name, &[], generics),
             Type::Application(constructor, args) => match constructor.as_ref() {
-                Type::Primitive(PrimitiveType::Pointer | PrimitiveType::Reference(_) | PrimitiveType::Error) => (),
+                Type::Primitive(PrimitiveType::Pointer | PrimitiveType::Reference | PrimitiveType::Error) => (),
                 Type::UserDefined(Origin::TopLevelDefinition(name)) => self.visit_type(*name, args, generics),
                 // We conservatively assume a generic constructor `f` in `f t` may store `t` inline.
                 other => {
@@ -118,7 +118,7 @@ impl<'local, 'inner> InlineWalk<'local, 'inner> {
             | Type::UserDefined(_)
             | Type::U32(_)
             | Type::Effects(_)
-            | Type::Place(_)
+            | Type::Place(..)
             | Type::Places(_)
             | Type::PlaceProjection(..) => (),
         }

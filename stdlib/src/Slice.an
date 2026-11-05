@@ -1,8 +1,28 @@
-export Slice, slice
+import Std.Fail.Fail, fail
 
+export Slice, MutSlice, slice, Slice.get, Slice.get_unchecked
+
+/// A contiguous series of elements from 'a.
+// TODO: `('a = _)` but this fails to parse & we'd have to reorder it to the back
 type Slice 'a t =
     data: ref 'a t
     len: Usz
 
+/// A mutable, continguous series of elements from 'a.
+type MutSlice 'a t = Slice (mut 'a) t
+
 slice (array: ref 'a Array n t): Slice 'a t =
     Slice (transmute array) (array_len array)
+
+/// A reference to the element at the given 0-based index.
+/// Fails if the index is out of bounds
+Slice.get (s: Slice 'a t) (i: Usz): ref 'a t can Fail =
+    if i < s.len
+    then s.get_unchecked i
+    else fail ()
+
+/// A reference to the element at the given 0-based index.
+/// Unsafe: Does not perform any bounds checking!
+Slice.get_unchecked (s: Slice 'a t) (i: Usz): ref 'a t =
+    data: Ptr t = transmute s.data
+    transmute (offset data i)

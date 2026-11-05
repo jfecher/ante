@@ -15,15 +15,15 @@ use crate::{
     },
     shared_arc::Shared,
     type_inference::{
-        TypeChecker,
-        row::{RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into, is_open},
+        TypeChecker, Variance,
+        row::{RowEnd, RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into, is_open},
     },
 };
 
 use super::{
     TypeErrorKind,
     generics::Generic,
-    types::{FunctionType, Type, TypeBindings, TypePrinter, TypeVariableId},
+    types::{FunctionType, PrimitiveType, Type, TypeBindings, TypePrinter, TypeVariableId},
 };
 
 /// Anonymous references record the scope depth they're valid in for escape analysis
@@ -33,6 +33,157 @@ pub struct ScopeDepth(pub(crate) u32);
 impl ScopeDepth {
     pub fn deeper(self) -> Self {
         Self(self.0 + 1)
+    }
+}
+
+/// An explicit mutability modifier on a place, as in `mut 'p` or `read 'p`
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum PlaceMode {
+    Mut,
+    Read,
+}
+
+impl PlaceMode {
+    /// The mode a reference keyword applies to its place, `None` for the polymorphic `ref`
+    pub fn of_reference(kind: ReferenceKind) -> Option<PlaceMode> {
+        match kind {
+            ReferenceKind::Ref => None,
+            ReferenceKind::Mut => Some(PlaceMode::Mut),
+            ReferenceKind::Read => Some(PlaceMode::Read),
+        }
+    }
+
+    fn mutability(self) -> Mutability {
+        match self {
+            PlaceMode::Mut => Mutability::Mutable,
+            PlaceMode::Read => Mutability::ReadOnly,
+        }
+    }
+}
+
+impl std::fmt::Display for PlaceMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PlaceMode::Mut => write!(f, "mut"),
+            PlaceMode::Read => write!(f, "read"),
+        }
+    }
+}
+
+/// How a reference may access a concrete place
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum PlaceAccess {
+    Plain {
+        mutable: bool,
+    },
+    Mode(PlaceMode),
+}
+
+impl PlaceAccess {
+    fn mutability(self) -> Mutability {
+        match self {
+            PlaceAccess::Plain { mutable: true } => Mutability::Mutable,
+            PlaceAccess::Plain { mutable: false } => Mutability::ReadOnly,
+            PlaceAccess::Mode(mode) => mode.mutability(),
+        }
+    }
+}
+
+/// What a reference may do through a places row entry
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Mutability {
+    Mutable,
+    ReadOnly,
+    Polymorphic,
+}
+
+impl Mutability {
+    /// The mutability of a reference through any of `entries`: mutable only if all are
+    pub fn join(entries: impl IntoIterator<Item = Mutability>) -> Mutability {
+        entries.into_iter().fold(Mutability::Mutable, |joined, entry| match (joined, entry) {
+            (Mutability::ReadOnly, _) | (_, Mutability::ReadOnly) => Mutability::ReadOnly,
+            (Mutability::Polymorphic, _) | (_, Mutability::Polymorphic) => Mutability::Polymorphic,
+            _ => Mutability::Mutable,
+        })
+    }
+
+    /// May an entry with mutability `self` be used where one with `expected` is?
+    /// Both must refer to the same place.
+    pub(super) fn subtype(self, expected: Mutability, row_mode: RowMode) -> bool {
+        match row_mode {
+            RowMode::Exact => self == expected,
+            RowMode::Coercible => match expected {
+                Mutability::ReadOnly => true,
+                Mutability::Mutable => self == Mutability::Mutable,
+                Mutability::Polymorphic => self != Mutability::ReadOnly,
+            },
+        }
+    }
+}
+
+/// The mutability of a flattened, followed places row entry
+pub(crate) fn entry_mutability(entry: &Type) -> Mutability {
+    match entry {
+        Type::Place(_, access) => access.mutability(),
+        Type::PlaceProjection(_, _, Some(mode)) => mode.mutability(),
+        // Errors are mutable to avoid cascading diagnostics
+        Type::Primitive(PrimitiveType::Error) => Mutability::Mutable,
+        _ => Mutability::Polymorphic,
+    }
+}
+
+/// The modifier written on an entry, if any, for printing
+pub(crate) fn entry_mode(entry: &Type) -> Option<PlaceMode> {
+    match entry {
+        Type::Place(_, PlaceAccess::Mode(mode)) | Type::PlaceProjection(_, _, Some(mode)) => Some(*mode),
+        _ => None,
+    }
+}
+
+/// The modifier every entry besides open tails shares, if there are any and they all have one
+fn uniform_mode(entries: &[Type]) -> Option<PlaceMode> {
+    let mut entries = entries.iter().filter(|entry| !is_unbound_place(entry));
+    let mode = entry_mode(entries.next()?)?;
+    entries.all(|entry| entry_mode(entry) == Some(mode)).then_some(mode)
+}
+
+/// `entry` without any modifier, for rows where mutability is irrelevant like `Mutate 'p`
+fn without_mode(entry: Type) -> Type {
+    match entry {
+        Type::Place(place, PlaceAccess::Mode(_)) => Type::Place(place, PlaceAccess::Plain { mutable: true }),
+        Type::PlaceProjection(base, segments, Some(_)) if segments.is_empty() => base.as_ref().clone(),
+        Type::PlaceProjection(base, segments, Some(_)) => Type::PlaceProjection(base, segments, None),
+        other => other,
+    }
+}
+
+/// True if `a` and `b` are the same place, ignoring how each is accessed
+pub(super) fn same_place(a: &Type, b: &Type) -> bool {
+    match (a, b) {
+        (Type::Place(a, _), Type::Place(b, _)) => a == b,
+        (Type::PlaceProjection(a_base, a_segments, _), Type::PlaceProjection(b_base, b_segments, _)) => {
+            a_base == b_base && a_segments == b_segments
+        },
+        (Type::PlaceProjection(base, segments, _), other) | (other, Type::PlaceProjection(base, segments, _)) => {
+            segments.is_empty() && base.as_ref() == other
+        },
+        _ => a == b,
+    }
+}
+
+/// Join two entries for the same place into one usable however either is
+pub(super) fn join_entries(a: Type, b: Type) -> Type {
+    let (a_mutability, b_mutability) = (entry_mutability(&a), entry_mutability(&b));
+    if a_mutability == b_mutability {
+        // Prefer the entry without a modifier for printing
+        return if entry_mode(&b).is_none() { b } else { a };
+    }
+    match Mutability::join([a_mutability, b_mutability]) {
+        Mutability::ReadOnly if a_mutability == Mutability::ReadOnly => a,
+        Mutability::ReadOnly => b,
+        // Mutable and polymorphic join to the polymorphic entry
+        _ if a_mutability == Mutability::Polymorphic => a,
+        _ => b,
     }
 }
 
@@ -108,8 +259,8 @@ impl PlaceEntry {
     /// Split a flattened places row entry into its root and segments
     pub fn new(entry: &Type) -> Option<PlaceEntry> {
         let (root, segments) = match entry {
-            Type::Place(place) => (EntryRoot::Concrete(place.root), place.segments.clone()),
-            Type::PlaceProjection(base, segments) => match base.as_ref() {
+            Type::Place(place, _) => (EntryRoot::Concrete(place.root), place.segments.clone()),
+            Type::PlaceProjection(base, segments, _) => match base.as_ref() {
                 Type::Generic(generic) => (EntryRoot::Generic(*generic), segments.to_vec()),
                 Type::Variable(id) => (EntryRoot::Unbound(*id), segments.to_vec()),
                 _ => return None,
@@ -228,22 +379,42 @@ impl Type {
     pub(crate) fn project_place(
         base: &Type, segments: &[PlaceSegment], bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) -> Type {
-        if segments.is_empty() {
+        Type::project_place_with_mode(base, segments, None, bindings, more_bindings)
+    }
+
+    /// Apply `mode` to every entry of the places row `places`
+    pub(crate) fn apply_place_mode(
+        places: &Type, mode: PlaceMode, bindings: &TypeBindings, more_bindings: &TypeBindings,
+    ) -> Type {
+        Type::project_place_with_mode(places, &[], Some(mode), bindings, more_bindings)
+    }
+
+    /// `base` followed by `segments` and accessed through `mode` if any (which overrides any
+    /// mode the base has), applied to each place `base` is bound to
+    pub(crate) fn project_place_with_mode(
+        base: &Type, segments: &[PlaceSegment], mode: Option<PlaceMode>, bindings: &TypeBindings,
+        more_bindings: &TypeBindings,
+    ) -> Type {
+        if segments.is_empty() && mode.is_none() {
             return base.clone();
         }
         match base.follow_two(bindings, more_bindings) {
-            Type::Place(place) => Type::Place(place.project(segments)),
+            Type::Place(place, access) => {
+                let access = mode.map_or(access, PlaceAccess::Mode);
+                Type::Place(place.project(segments), access)
+            },
             Type::Places(Some(entries)) => {
-                let entries =
-                    mapvec(entries.iter(), |entry| Type::project_place(entry, segments, bindings, more_bindings));
+                let entries = mapvec(entries.iter(), |entry| {
+                    Type::project_place_with_mode(entry, segments, mode, bindings, more_bindings)
+                });
                 Type::places(&entries, bindings, more_bindings)
             },
-            Type::PlaceProjection(inner, inner_segments) => {
+            Type::PlaceProjection(inner, inner_segments, inner_mode) => {
                 let segments = [inner_segments.as_slice(), segments].concat();
-                Type::project_place(&inner, &segments, bindings, more_bindings)
+                Type::project_place_with_mode(&inner, &segments, mode.or(inner_mode), bindings, more_bindings)
             },
             base @ (Type::Variable(_) | Type::Generic(_)) => {
-                Type::PlaceProjection(Shared::new(base), Shared::new(segments.to_vec()))
+                Type::PlaceProjection(Shared::new(base), Shared::new(segments.to_vec()), mode)
             },
             // Any other type is a kind error reported elsewhere
             other => other,
@@ -253,8 +424,10 @@ impl Type {
     /// If this is a reference application, return its places argument
     pub fn reference_places(&self, bindings: &TypeBindings) -> Option<Type> {
         match self.follow(bindings) {
-            Type::Application(constructor, args) if args.len() >= 2 => {
-                constructor.reference_constructor(bindings).map(|_| args[0].clone())
+            Type::Application(constructor, args)
+                if args.len() >= 2 && constructor.is_reference_constructor(bindings) =>
+            {
+                Some(args[0].clone())
             },
             _ => None,
         }
@@ -276,43 +449,89 @@ where
         Some(entries)
     }
 
-    /// Print a place argument as ` 'p`, ` '()` if closed and empty, or ` _` if unbound and not `elidable`
-    pub(super) fn fmt_place_arg(&self, places: &Type, elidable: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    /// The modifier every entry of `places` shares, if it has entries and they all have one
+    pub(super) fn uniform_place_mode(&self, places: &Type) -> Option<PlaceMode> {
+        let entries = Type::canonicalize_places(std::slice::from_ref(places), self.bindings, &Default::default());
+        uniform_mode(&entries)
+    }
+
+    /// Print a place argument as ` 'p`, ` '()` if closed and empty, or ` _` if unbound and not `elidable`.
+    /// If `strip_modes` is set, entries are printed without their modifiers.
+    pub(super) fn fmt_place_arg(
+        &self, places: &Type, elidable: bool, strip_modes: bool, f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
         match self.printed_places(places) {
             None => write!(f, " '()"),
             Some(entries) if !entries.is_empty() => {
                 write!(f, " '")?;
-                self.fmt_place_entries(&entries, f)
+                self.fmt_place_entries(&entries, strip_modes, f)
             },
             Some(_) if elidable => Ok(()),
             Some(_) => write!(f, " _"),
         }
     }
 
-    pub(super) fn fmt_place_entries(&self, entries: &[Type], f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    /// Print a place argument outside a reference, as ` (mut 'p)` if every entry is mutable
+    pub(super) fn fmt_moded_place_arg(&self, places: &Type, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.in_effect.get() {
+            return self.fmt_place_arg(places, false, true, f);
+        }
+        match self.uniform_place_mode(places) {
+            Some(mode) => {
+                write!(f, " ({mode}")?;
+                self.fmt_place_arg(places, false, true, f)?;
+                write!(f, ")")
+            },
+            None => self.fmt_place_arg(places, false, false, f),
+        }
+    }
+
+    pub(super) fn fmt_place_entries(
+        &self, entries: &[Type], strip_modes: bool, f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
         if entries.len() == 1 {
-            self.fmt_type(&entries[0], false, f)
+            self.fmt_place_entry(&entries[0], strip_modes, f)
         } else {
             write!(f, "(")?;
             for (i, entry) in entries.iter().enumerate() {
                 if i != 0 {
                     write!(f, ", ")?;
                 }
-                self.fmt_type(entry, false, f)?;
+                self.fmt_place_entry(entry, strip_modes, f)?;
             }
             write!(f, ")")
+        }
+    }
+
+    /// Print a single places row entry like `x.a!` or `mut p`
+    pub(super) fn fmt_place_entry(
+        &self, entry: &Type, strip_mode: bool, f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
+        if let Some(mode) = entry_mode(entry).filter(|_| !strip_mode) {
+            write!(f, "{mode} ")?;
+        }
+        match entry {
+            Type::Place(atom, _) => write!(f, "{}", atom.display_name(self.names)),
+            Type::PlaceProjection(base, segments, _) => {
+                self.fmt_type(base, false, f)?;
+                write!(f, "{}", Segments(segments))
+            },
+            other => self.fmt_type(other, false, f),
         }
     }
 }
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    /// Flattens two places rows and matches `a`'s concrete places against `b`'s
-    fn match_places(&self, a: &Type, b: &Type, row_mode: RowMode, new_bindings: &TypeBindings) -> Option<RowMatch> {
+    /// Flattens two places rows and matches `a`'s concrete places against `b`'s.
+    /// Returns `Err` if a place both rows share is accessed incompatibly per `mutability`.
+    fn match_places(
+        &self, a: &Type, b: &Type, row_mode: RowMode, mutability: RowMode, new_bindings: &TypeBindings,
+    ) -> Result<Option<RowMatch>, ()> {
         let mut a_list = self.collect_and_merge_places(a, new_bindings);
         let b_list = self.collect_and_merge_places(b, new_bindings);
 
         if a_list.iter().chain(b_list.iter()).any(|place| place.is_error()) {
-            return None;
+            return Ok(None);
         }
 
         // A place is a subtype of any stable place containing it, like `'m.value <: 'm`
@@ -324,25 +543,46 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             });
         }
 
-        Some(Self::match_row_entries(a_list, b_list, |a_place, b_place| a_place == b_place))
+        let mut compatible = true;
+        let m = Self::match_row_entries(a_list, b_list, |a_place, b_place| {
+            let same = same_place(a_place, b_place);
+            if same {
+                compatible &= entry_mutability(a_place).subtype(entry_mutability(b_place), mutability);
+            }
+            same
+        });
+        if compatible { Ok(Some(m)) } else { Err(()) }
     }
 
     /// Row-subtype two places rows: is `a`'s actual set of places permitted by `b`'s expected set?
-    pub(super) fn place_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(mut m) = self.match_places(a, b, RowMode::Coercible, new_bindings) else { return Ok(()) };
+    fn place_subtype(
+        &self, a: &Type, b: &Type, mutability: RowMode, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let Some(mut m) = self.match_places(a, b, RowMode::Coercible, mutability, new_bindings)? else { return Ok(()) };
+        let sides = Self::end_sides(mutability);
         if m.b_open.is_empty() {
-            self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, RowMode::Coercible, new_bindings)?;
-            self.bind_projections(&mut m.a_leftover, &m.b_leftover, new_bindings)?;
+            self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, true, sides.1, new_bindings)?;
+            self.bind_projections(&mut m.a_leftover, &m.b_leftover, sides.0, new_bindings)?;
         }
-        self.row_subtype_generic(RowKind::Places, m, new_bindings)
+        self.row_subtype_generic(RowKind::Places, m, sides, new_bindings)
     }
 
-    /// Bind each open projection like `?t!` in `absorbers` to the `entries` ending in its segments
+    /// How the ends of an actual and expected places row are bound when comparing mutability per `mutability`
+    fn end_sides(mutability: RowMode) -> (RowEnd, RowEnd) {
+        match mutability {
+            RowMode::Coercible => (RowEnd::Actual, RowEnd::Expected),
+            RowMode::Exact => (RowEnd::Exact, RowEnd::Exact),
+        }
+    }
+
+    /// Bind each open projection like `?t!` in `absorbers` to the `entries` ending in its segments.
+    /// If `widen` is set, each absorber may still grow afterward.
     fn absorb_into_projections(
-        &self, absorbers: &mut Vec<Type>, entries: &mut Vec<Type>, row_mode: RowMode, new_bindings: &mut TypeBindings,
+        &self, absorbers: &mut Vec<Type>, entries: &mut Vec<Type>, widen: bool, side: RowEnd,
+        new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         for absorber in std::mem::take(absorbers) {
-            let Some((base, segments)) = open_projection(&absorber) else {
+            let Some((end, segments)) = open_projection(&absorber) else {
                 absorbers.push(absorber);
                 continue;
             };
@@ -360,26 +600,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 continue;
             }
 
-            if row_mode == RowMode::Coercible {
+            if widen {
                 absorbed.push(self.next_type_variable());
             }
-            self.bind_row_end(RowKind::Places, base, &absorbed, new_bindings)?;
+            self.bind_places_end(&end, &absorbed, side, new_bindings)?;
         }
         Ok(())
     }
 
     /// Bind and remove each open projection in `entries` using the `candidates` ending in its segments
     fn bind_projections(
-        &self, entries: &mut Vec<Type>, candidates: &[Type], new_bindings: &mut TypeBindings,
+        &self, entries: &mut Vec<Type>, candidates: &[Type], side: RowEnd, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         for entry in std::mem::take(entries) {
-            let Some((base, segments)) = open_projection(&entry) else {
+            let Some((end, segments)) = open_projection(&entry) else {
                 entries.push(entry);
                 continue;
             };
             let stripped: Vec<_> =
                 candidates.iter().filter_map(|candidate| strip_segments(candidate, segments)).collect();
-            self.bind_row_end(RowKind::Places, base, &stripped, new_bindings)?;
+            self.bind_places_end(&end, &stripped, side, new_bindings)?;
         }
         Ok(())
     }
@@ -398,12 +638,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Places(_) => Some(self.reopen_places(typ, new_bindings)),
             Type::Application(constructor, args) => {
                 let constructor_type = constructor.follow_two(&self.bindings, new_bindings);
-                let kind = constructor_type.reference_constructor(&self.bindings)?;
+                if !constructor_type.is_reference_constructor(&self.bindings) {
+                    return None;
+                }
                 let mut args = args.as_ref().clone();
                 args[0] = self.reopen_places(&args[0], new_bindings);
 
-                // A `mut` element must stay shared so stores through it widen the original
-                if matches!(kind, ReferenceKind::Ref | ReferenceKind::Imm) {
+                // A possibly mutable element must stay shared so stores through it widen the original
+                if self.places_mutability(&args[0], new_bindings) == Mutability::ReadOnly {
                     let element = args[1].follow_two(&self.bindings, new_bindings);
                     if let Some(element) = self.reopen_covariant_places(&element, new_bindings) {
                         args[1] = element;
@@ -421,32 +663,35 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.reopen_covariant_places(followed, &TypeBindings::default()).unwrap_or(typ)
     }
 
-    /// Subtype or unify two places rows depending on `row_mode`
+    /// Subtype or unify two places rows depending on `row_mode`. Mutability is compared
+    /// by subtyping unless `variance` is invariant.
     pub(super) fn relate_places(
-        &self, a: &Type, b: &Type, row_mode: RowMode, new_bindings: &mut TypeBindings,
+        &self, a: &Type, b: &Type, row_mode: RowMode, variance: Variance, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
+        let mutability = if variance == Variance::Invariant { RowMode::Exact } else { RowMode::Coercible };
         match row_mode {
-            RowMode::Coercible => self.place_subtype(a, b, new_bindings),
-            RowMode::Exact => self.place_unify(a, b, new_bindings),
+            RowMode::Coercible => self.place_subtype(a, b, mutability, new_bindings),
+            RowMode::Exact => self.place_unify(a, b, mutability, new_bindings),
         }
     }
 
     /// Unify two places rows: both must end up with the same set of places.
-    pub(super) fn place_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(mut m) = self.match_places(a, b, RowMode::Exact, new_bindings) else { return Ok(()) };
+    fn place_unify(&self, a: &Type, b: &Type, mutability: RowMode, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let Some(mut m) = self.match_places(a, b, RowMode::Exact, mutability, new_bindings)? else { return Ok(()) };
+        let sides = Self::end_sides(mutability);
         if m.b_open.is_empty() {
-            self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, RowMode::Exact, new_bindings)?;
+            self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, false, sides.1, new_bindings)?;
         }
         if m.a_open.is_empty() {
-            self.absorb_into_projections(&mut m.a_leftover, &mut m.b_leftover, RowMode::Exact, new_bindings)?;
+            self.absorb_into_projections(&mut m.a_leftover, &mut m.b_leftover, false, sides.0, new_bindings)?;
         }
         if m.b_open.is_empty() {
-            self.bind_projections(&mut m.a_leftover, &[], new_bindings)?;
+            self.bind_projections(&mut m.a_leftover, &[], sides.0, new_bindings)?;
         }
         if m.a_open.is_empty() {
-            self.bind_projections(&mut m.b_leftover, &[], new_bindings)?;
+            self.bind_projections(&mut m.b_leftover, &[], sides.1, new_bindings)?;
         }
-        self.row_unify_generic(RowKind::Places, m, new_bindings)
+        self.row_unify_generic(RowKind::Places, m, sides, new_bindings)
     }
 
     /// True if the unbound `variable` is itself an entry of `places`
@@ -461,7 +706,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         match places.follow_two(&self.bindings, new_bindings) {
             typ @ (Type::Places(_)
             | Type::PlaceProjection(..)
-            | Type::Place(_)
+            | Type::Place(..)
             | Type::Generic(_)
             | Type::Variable(_)) => Type::canonicalize_places(std::slice::from_ref(&typ), &self.bindings, new_bindings),
             // Any remaining variant should be a kind error emitted elsewhere
@@ -471,6 +716,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// `Mutate places`
     pub(super) fn mutate_effect(&self, places: Type) -> Type {
+        // Whether a mutated place is mutable was checked already
+        let none = TypeBindings::default();
+        let entries = mapvec(Type::canonicalize_places(&[places], &self.bindings, &none), without_mode);
+        let places = Type::places(&entries, &self.bindings, &none);
         let mutate = Type::UserDefined(Origin::TopLevelDefinition(self.mutate_name));
         Type::Application(Shared::new(mutate), Shared::new(vec![places]))
     }
@@ -594,7 +843,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         match typ.follow(&self.bindings) {
             // A reference's place may also be a lone generic or variable
             Type::Application(constructor, args)
-                if args.len() == 2 && constructor.reference_constructor(&self.bindings).is_some() =>
+                if args.len() == 2 && constructor.is_reference_constructor(&self.bindings) =>
             {
                 out.extend(self.place_entries(&args[0]));
                 self.collect_place_entries(&args[1], out);
@@ -610,7 +859,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.collect_place_entries(element, out);
                 }
             },
-            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => out.extend(self.place_entries(typ)),
+            Type::Places(_) | Type::Place(..) | Type::PlaceProjection(..) => out.extend(self.place_entries(typ)),
             Type::Forall(_, typ) => self.collect_place_entries(typ, out),
             // Mutating a place doesn't need it to still be alive
             Type::Effects(effects) => {
@@ -690,10 +939,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Split `typ` into the type a pattern matches and the reference it matches through, if any
     pub(super) fn match_through_reference(&self, typ: &Type) -> (Type, Option<MatchedReference>) {
-        if let Type::Application(constructor, args) = typ.follow(&self.bindings)
-            && let Some(kind) = constructor.reference_constructor(&self.bindings)
-        {
-            return (args[1].clone(), Some(MatchedReference { kind, places: args[0].clone() }));
+        if let Some((places, element)) = typ.reference_element(&self.bindings) {
+            return (element, Some(MatchedReference { places }));
         }
         (typ.clone(), None)
     }
@@ -705,7 +952,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else {
             reference.places.clone()
         };
-        Type::Application(Shared::new(Type::reference(reference.kind)), Shared::new(vec![places, field]))
+        Type::reference(places, field)
     }
 
     /// The types `fields` of a `matched` constructor are bound at, reached through `reference` if any
@@ -746,7 +993,103 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// A places row containing just `atom` plus a fresh open tail
     pub(crate) fn open_place(&self, atom: Place) -> Type {
         let fresh = self.next_type_variable();
-        Type::places(&[Type::Place(atom), fresh], &self.bindings, &TypeBindings::default())
+        let access = PlaceAccess::Plain { mutable: self.place_root_is_mutable(&atom) };
+        Type::places(&[Type::Place(atom, access), fresh], &self.bindings, &TypeBindings::default())
+    }
+
+    /// True if `place` is rooted in a `var`
+    fn place_root_is_mutable(&self, place: &Place) -> bool {
+        match place.root {
+            PlaceRoot::Variable(name) => self.item.mutable_definitions.contains(&name),
+            PlaceRoot::Anonymous(..) => false,
+        }
+    }
+
+    /// `kind places element`, e.g. `ref (mut places) element` for `mut`
+    pub(super) fn reference_type(&self, kind: ReferenceKind, places: Type, element: Type) -> Type {
+        let places = match PlaceMode::of_reference(kind) {
+            Some(mode) => Type::apply_place_mode(&places, mode, &self.bindings, &TypeBindings::default()),
+            None => places,
+        };
+        Type::reference(places, element)
+    }
+
+    /// What a reference through `places` may do: mutate only if every entry is mutable.
+    /// Unbound places are ignored since they may still be constrained, see [Self::constrain_mutable].
+    pub(super) fn places_mutability(&self, places: &Type, new_bindings: &TypeBindings) -> Mutability {
+        let entries = self.collect_and_merge_places(places, new_bindings);
+        Mutability::join(entries.iter().filter(|entry| !is_unbound_place(entry)).map(entry_mutability))
+    }
+
+    /// The modifier every entry of `places` shares, if it has entries and they all have one
+    pub(super) fn uniform_mode(&self, places: &Type) -> Option<PlaceMode> {
+        uniform_mode(&self.collect_and_merge_places(places, &TypeBindings::default()))
+    }
+
+    /// Constrain each unbound place in `places` to be mutable since a reference through it was mutated
+    pub(super) fn constrain_mutable(&mut self, places: &Type) {
+        let mut new_bindings = TypeBindings::default();
+        for entry in self.collect_and_merge_places(places, &new_bindings) {
+            if is_unbound_place(&entry) {
+                // Can only fail if the variable is already bound, which `entry` isn't
+                let _ = self.constrain_place_variable(&entry, PlaceMode::Mut, &mut new_bindings);
+            }
+        }
+        self.bindings.extend(new_bindings);
+    }
+
+    /// Bind the unbound variable at the root of `entry` so every place it later grows to has `mode`
+    fn constrain_place_variable(
+        &self, entry: &Type, mode: PlaceMode, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let base = match entry {
+            Type::PlaceProjection(base, ..) => base.as_ref(),
+            other => other,
+        };
+        let Type::Variable(id) = base.follow_two(&self.bindings, new_bindings) else { return Err(()) };
+        let fresh = self.next_type_variable();
+        let constrained = Type::PlaceProjection(Shared::new(fresh), Shared::new(Vec::new()), Some(mode));
+        new_bindings.insert(id, Type::Places(Some(Shared::new(vec![constrained]))));
+        Ok(())
+    }
+
+    /// Bind the open end `end` of a places row to `entries`. If `end` has a mode, each entry must be
+    /// usable with it: for an `Expected` end the entries are actual places, otherwise they're expected.
+    pub(super) fn bind_places_end(
+        &self, end: &Type, entries: &[Type], side: RowEnd, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let (base, mode) = match end {
+            Type::PlaceProjection(base, segments, Some(mode)) if segments.is_empty() => (base.as_ref(), *mode),
+            _ => return self.bind_row_end(RowKind::Places, end, entries, new_bindings),
+        };
+
+        let mut flattened = Vec::new();
+        Type::flatten_places_into(entries, &mut flattened, &self.bindings, new_bindings);
+        for entry in &flattened {
+            if is_unbound_place(entry) {
+                // Anything may be used as read-only, and a mutable place may be used as anything
+                let unconstrained =
+                    matches!((side, mode), (RowEnd::Expected, PlaceMode::Read) | (RowEnd::Actual, PlaceMode::Mut));
+                if !unconstrained {
+                    self.constrain_place_variable(entry, mode, new_bindings)?;
+                }
+                continue;
+            }
+            let (actual, expected) = match side {
+                RowEnd::Expected => (entry_mutability(entry), mode.mutability()),
+                RowEnd::Actual => (mode.mutability(), entry_mutability(entry)),
+                RowEnd::Exact => {
+                    if entry_mutability(entry) != mode.mutability() {
+                        return Err(());
+                    }
+                    continue;
+                },
+            };
+            if !actual.subtype(expected, RowMode::Coercible) {
+                return Err(());
+            }
+        }
+        self.bind_row_end(RowKind::Places, base, &flattened, new_bindings)
     }
 
     /// Walk a field type and emit a `MissingExplicitPlace` diagnostic for
@@ -789,6 +1132,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::RigidHole
             | cst::TypeKind::Unit
             | cst::TypeKind::Place(_)
+            | cst::TypeKind::PlaceMode(..)
             | cst::TypeKind::Pure
             | cst::TypeKind::IntegerConstant(_) => (),
         }
@@ -797,23 +1141,38 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
 /// A reference a pattern matches through, which each field it binds is reached through
 pub(super) struct MatchedReference {
-    kind: ReferenceKind,
     places: Type,
 }
 
 /// True if `entry` is shown when printing places
 fn is_printed_place(entry: &Type) -> bool {
     match entry {
-        Type::Place(_) | Type::Generic(_) => true,
-        Type::PlaceProjection(base, _) => matches!(base.as_ref(), Type::Generic(_)),
+        Type::Place(..) | Type::Generic(_) => true,
+        Type::PlaceProjection(base, ..) => matches!(base.as_ref(), Type::Generic(_)),
         _ => false,
     }
 }
 
-/// If `entry` is an unbound variable followed by segments like `?t!`, return both
-fn open_projection(entry: &Type) -> Option<(&Type, &[PlaceSegment])> {
+/// True if `entry` is an unbound variable, possibly followed by segments, without a mode
+fn is_unbound_place(entry: &Type) -> bool {
     match entry {
-        Type::PlaceProjection(base, segments) if matches!(base.as_ref(), Type::Variable(_)) => Some((base, segments)),
+        Type::Variable(_) => true,
+        Type::PlaceProjection(base, _, None) => matches!(base.as_ref(), Type::Variable(_)),
+        _ => false,
+    }
+}
+
+/// If `entry` is an unbound variable followed by segments like `?t!`, return it as an end to bind:
+/// the variable itself, or a projection of it with no segments if it has a mode.
+fn open_projection(entry: &Type) -> Option<(Type, &[PlaceSegment])> {
+    match entry {
+        Type::PlaceProjection(base, segments, mode) if matches!(base.as_ref(), Type::Variable(_)) => {
+            let end = match mode {
+                Some(_) => Type::PlaceProjection(base.clone(), Shared::new(Vec::new()), *mode),
+                None => base.as_ref().clone(),
+            };
+            Some((end, segments))
+        },
         _ => None,
     }
 }
@@ -821,14 +1180,15 @@ fn open_projection(entry: &Type) -> Option<(&Type, &[PlaceSegment])> {
 /// `entry` without `suffix` at the end of its path, if it ends in `suffix`
 fn strip_segments(entry: &Type, suffix: &[PlaceSegment]) -> Option<Type> {
     match entry {
-        Type::Place(place) => {
+        Type::Place(place, access) => {
             let segments = place.segments.strip_suffix(suffix)?.to_vec();
-            Some(Type::Place(Place { root: place.root, segments }))
+            Some(Type::Place(Place { root: place.root, segments }, *access))
         },
-        Type::PlaceProjection(base, segments) => {
+        Type::PlaceProjection(base, segments, mode) => {
             let none = TypeBindings::default();
-            Some(Type::project_place(base, segments.strip_suffix(suffix)?, &none, &none))
+            Some(Type::project_place_with_mode(base, segments.strip_suffix(suffix)?, *mode, &none, &none))
         },
+        _ if suffix.is_empty() => Some(entry.clone()),
         _ => None,
     }
 }

@@ -3,17 +3,17 @@ effect MyFail =
     fail: fn Unit -> Unit
 
 effect Read a =
-    read: fn Unit -> a
+    get_input: fn Unit -> a
 
 read_or_none (f: fn Unit => U32 can MyFail, Read U32): Maybe U32 =
     handle
         handle Some (f ())
-        | read () -> resume 5u32
+        | get_input () -> resume 5u32
     | fail () -> None
 
 foo (): U32 can MyFail, Read U32 =
     if false then fail ()
-    read ()
+    get_input ()
 
 main () =
     print_to_stdout do

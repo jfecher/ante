@@ -16,7 +16,7 @@ use crate::{
         ImplState, Locateable, TypeChecker, Variance,
         errors::TypeErrorKind,
         get_type::{get_partial_type, implicit_result_omitted_type_args, try_get_generalized_type},
-        places::Place,
+        places::{Mutability, Place, PlaceMode},
         types::{self, FunctionType, ParameterType, Type, TypeBindings},
     },
 };
@@ -1034,9 +1034,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, mut object: ExprId, struct_type: &Type, first_param: &Type, location: &Location, call_expr: ExprId,
     ) -> Option<ExprId> {
         // If the first param expects a reference, unwrap both sides and auto-ref the object if needed.
-        let (param_type, struct_base, auto_ref) = if let Some((ref_kind, inner_type)) =
+        let (param_type, struct_base, auto_ref) = if let Some((places, inner_type)) =
             first_param.reference_element(&self.bindings)
         {
+            let ref_kind = match self.uniform_mode(&places) {
+                Some(PlaceMode::Mut) => ReferenceKind::Mut,
+                Some(PlaceMode::Read) => ReferenceKind::Read,
+                None => ReferenceKind::Ref,
+            };
             let (struct_base_type, should_wrap_object_in_ref) = match struct_type.reference_element(&self.bindings) {
                 Some((_, element)) => (element, false),
                 None => (struct_type.clone(), true),
@@ -1050,7 +1055,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.unify(&param_type, &struct_base, TypeErrorKind::MethodObject, call_expr);
 
         if let Some(ref_kind) = auto_ref {
-            let ref_expr = Expr::Reference(cst::Reference { kind: ref_kind, rhs: object });
+            let ref_expr = Expr::Reference(cst::Reference { kind: ref_kind, rhs: object, implicit: false });
             object = self.push_expr(ref_expr, first_param.clone(), location.clone());
         }
 
@@ -1058,7 +1063,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Ensure `expr` in `mut expr` is actually mutable
-    fn check_mutable_borrow_of_place(&mut self, object: ExprId) {
+    pub(super) fn check_mutable_borrow_of_place(&mut self, object: ExprId) {
         let Some(root) = self.owned_place_root(object) else { return };
         if self.item.mutable_definitions.contains(&root) {
             return;
@@ -1148,31 +1153,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn infer_reference(&mut self, reference: &cst::Reference, expected: &Type) -> Type {
-        let constructor = Type::reference(reference.kind);
-
-        // mut/uniq reborrow an existing mut/uniq ref instead of nesting into `mut (mut t)`, ref/imm still nest.
-        // TODO: We shouldn't special case reference kinds... much
-        if matches!(reference.kind, ReferenceKind::Mut | ReferenceKind::Uniq) {
-            let hint = self.next_type_variable();
-            let rhs_type = self.infer_expr(reference.rhs, &hint);
-
-            let rhs_type_followed = self.follow_type(&rhs_type).clone();
-            let (place, element) = match rhs_type_followed.reference_element(&self.bindings) {
-                Some((inner_kind, inner_element)) if matches!(inner_kind, ReferenceKind::Mut | ReferenceKind::Uniq) => {
-                    // Reborrow
-                    // TODO: Remove, `mut (mut e)` should be a nested reference not a reborrow
-                    let place = rhs_type_followed.reference_places(&self.bindings).unwrap_or(Type::Places(None));
-                    (place, inner_element)
-                },
-                _ => {
-                    self.check_mutable_borrow_of_place(reference.rhs);
-                    (self.infer_place(reference.rhs), rhs_type)
-                },
-            };
-
-            return Type::Application(Shared::new(constructor), Shared::new(vec![place, element]));
-        }
-
         // Use the expected element type as a hint when it is available
         let element_hint = match self.follow_type(expected) {
             Type::Application(_, args) if args.len() == 2 => args[1].clone(),
@@ -1180,9 +1160,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         let element = self.infer_expr(reference.rhs, &element_hint);
+        if reference.implicit && element.reference_element(&self.bindings).is_some() {
+            return element;
+        }
+        if reference.kind == ReferenceKind::Mut {
+            self.check_mutable_borrow_of_place(reference.rhs);
+        }
 
         let place = self.infer_place(reference.rhs);
-        Type::Application(Shared::new(constructor), Shared::new(vec![place, element]))
+        self.reference_type(reference.kind, place, element)
     }
 
     fn infer_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) -> Type {
@@ -1440,8 +1426,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let new_expr = self.auto_ref_coercion(assignment.lhs, ReferenceKind::Mut, lhs_type.clone());
             let Expr::Reference(reference) = &new_expr else { unreachable!() };
             let place = self.infer_place(reference.rhs);
-            let new_type =
-                Type::Application(Shared::new(Type::reference(ReferenceKind::Mut)), Shared::new(vec![place, lhs_type]));
+            let new_type = self.reference_type(ReferenceKind::Mut, place, lhs_type);
             self.current_extended_context_mut().insert_expr(assignment.lhs, new_expr);
             self.expr_types.insert(assignment.lhs, new_type.clone());
             lhs_type = new_type;
@@ -1451,7 +1436,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // the RHS should match the inner (pointee) type rather than the reference wrapper.
         let lhs_followed = self.follow_type(&lhs_type);
         let lhs_is_ref = matches!(&lhs_followed, Type::Application(c, _)
-            if matches!(self.follow_type(c), Type::Primitive(types::PrimitiveType::Reference(_))));
+            if matches!(self.follow_type(c), Type::Primitive(types::PrimitiveType::Reference)));
 
         let value_type = if lhs_is_ref {
             match self.follow_type(&lhs_type) {
@@ -1499,6 +1484,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);
 
         if let Some(places) = self.assignment_mutated_places(assignment.lhs) {
+            self.constrain_mutable(&places);
             self.propagate_effects(&self.mutate_effect(places), assignment.lhs);
         }
 
@@ -1508,7 +1494,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// The places an assignment to `lhs` mutates
     pub(super) fn assignment_mutated_places(&self, lhs: ExprId) -> Option<Type> {
         if let Some(typ) = self.expr_types.get(&lhs)
-            && self.is_mut_or_uniq_reference(typ)
+            && self.is_mutable_reference(typ)
         {
             return typ.reference_places(&self.bindings);
         }
@@ -1582,7 +1568,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A place is mutable if any of these hold:
     /// - it is declared with `var`
-    /// - the local's type is a `mut`/`uniq` reference
+    /// - the local's type is a mutable reference
     /// - it is a deref of a mutable place
     /// - it is a field access `l.r` where `l` is a mutable place
     fn check_lhs_mutable(&self, lhs: ExprId, lvalue: bool) -> Result<(), Diagnostic> {
@@ -1661,14 +1647,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Some(Err(Diagnostic::AssignThroughImmutableReference { typ, location }))
     }
 
-    /// A `mut`/`uniq` reference or a `shared mut` type
+    /// A mutable reference or a `shared mut` type
     fn is_mutable_indirection(&self, typ: &Type) -> bool {
-        self.is_mut_or_uniq_reference(typ) || self.is_shared_mut_user_defined(typ)
+        self.is_mutable_reference(typ) || self.is_shared_mut_user_defined(typ)
     }
 
-    fn is_mut_or_uniq_reference(&self, typ: &Type) -> bool {
+    fn is_mutable_reference(&self, typ: &Type) -> bool {
         match typ.reference_element(&self.bindings) {
-            Some((kind, _)) => matches!(kind, ReferenceKind::Mut | ReferenceKind::Uniq),
+            Some((places, _)) => self.places_mutability(&places, &TypeBindings::default()) == Mutability::Mutable,
             None => false,
         }
     }
