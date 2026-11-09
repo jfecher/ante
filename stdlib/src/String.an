@@ -12,7 +12,7 @@ import Std.Mem.transmute, null, offset, offset_bytes, offset_negative, deref_ptr
 import Std.Array.array_get_unchecked
 import Std.Bitwise.band, bitwise_u64
 
-export String, String.from_parts, append_string, clone_string, drop_string, is_valid_utf8, eq_string, String.reverse, String.split, String.substr, String.string_of,
+export String, String.from_parts, append_string, clone_string, drop_string, is_valid_utf8, is_valid_utf8_bytes, eq_string, cmp_string, String.reverse, String.split, String.split_str, String.lines, String.substr, String.string_of,
     join, String.bytes, String.chars, String.starts_with, String.ends_with, String.contains, String.trim_start, String.trim_end, String.trim,
     String.parse_i8, String.parse_i16, String.parse_i32, String.parse_i64, String.parse_isz, String.parse_u8, String.parse_u16, String.parse_u32, String.parse_u64, String.parse_usz,
     String.parse_signed_int, String.parse_unsigned_int,
@@ -390,6 +390,13 @@ String.to_ascii_uppercase (s: ref String): String =
     for i in 0 .. len do
         array_insert buf i (to_ascii_upper s.data.[i])
     String.from_parts buf s.length
+
+impl cmp_string: Cmp String with
+    (<) l r =
+        common = if l.length < r.length then l.length else r.length
+        order = memcmp l.data r.data (Usz common)
+        if order != 0 then order < 0
+        else l.length < r.length
 
 impl append_string: Append String with
     (++) s1 s2 =

@@ -1,8 +1,9 @@
 import Std.Fail.Fail, fail, panic_on_fail
 import Std.Mem.transmute, offset
+import Std.Stream.Stream, emit
 
-export Slice, MutSlice, slice, Slice.get, Slice.get_unchecked,
-    copy_slice, extract_slice, insert_slice
+export Slice, MutSlice, slice, Slice.len, Slice.get, Slice.get_unchecked,
+    copy_slice, extract_slice, extract_ref_slice, insert_slice, stream_slice, print_slice, cmp_slice
 
 /// A contiguous series of elements from 'a.
 // TODO: `('a = _)` but this fails to parse & we'd have to reorder it to the back
@@ -25,10 +26,39 @@ impl extract_slice: Extract (Slice 'a t) Usz (ref 'a t) Panic with
             panic "Slice index out of bounds"
         s.get_unchecked i
 
+impl extract_ref_slice: Extract (ref 'r Slice 'a t) Usz (ref 'a t) Panic with
+    (.[]) s i = s.*.[i]
+
 impl insert_slice: Insert (MutSlice 'a t) Usz t (Panic & Mutate 'a) with
     (.[]:=) s i e =
         slot = s.get i ~> panic_on_fail
         slot := e
+
+impl stream_slice: Stream (Slice 'a t) (ref 'a t) pure with
+    stream s =
+        for i in 0 .. s.len do
+            emit (s.get_unchecked i)
+
+impl print_slice {Display t e}: Display (Slice 'a t) e with
+    print s =
+        print "["
+        for i in 0 .. s.len do
+            if i != 0 then print ", "
+            elem: t = deref (Slice.get_unchecked s.* i)
+            print elem
+        print "]"
+
+impl cmp_slice {Cmp t}: Cmp (Slice 'a t) with
+    (<) l r =
+        n = if l.len < r.len then l.len else r.len
+        for i in 0 .. n do
+            a = Slice.get_unchecked l.* i
+            b = Slice.get_unchecked r.* i
+            if a < b then return true
+            if b < a then return false
+        l.len < r.len
+
+Slice.len (s: Slice 'a t): Usz = s.len
 
 /// A reference to the element at the given 0-based index.
 /// Fails if the index is out of bounds

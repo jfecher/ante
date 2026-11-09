@@ -145,6 +145,9 @@ impl cmp_f64: Cmp F64 with (<) x y = intrinsic "LessFloat" x.* y.*
 
 impl cmp_char: Cmp Char with (<) x y = intrinsic "LessUnsigned" x.* y.*
 
+impl cmp_pair {Cmp a} {Cmp b}: Cmp (a, b) with
+    (<) l r = l.first < r.first or (not (r.first < l.first) and l.second < r.second)
+
 max (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l > r then l else r
 min (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l < r then l else r
 

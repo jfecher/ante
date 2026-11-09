@@ -22,7 +22,7 @@ iterate_range (from: Usz) (to: Usz) (f: fn Usz => Unit): Unit =
     iterate (Range from to) f
 
 repeat (count: Usz) (f: fn Usz => Unit): Unit =
-    loop (i = 0) ->
-        if i < count then
-            f i
-            recur (i + 1)
+    var i = 0
+    while i < count do
+        f i
+        i += 1

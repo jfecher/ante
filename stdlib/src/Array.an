@@ -31,6 +31,15 @@ impl extract_array: Extract (ref 'a Array n t) Usz (ref 'a t) Panic with
 impl insert_array: Insert (mut 'a Array n t) Usz t Panic with
     (.[]:=) arr index value = array_set arr index value
 
+impl cmp_array {Cmp t}: Cmp (Array n t) with
+    (<) l r =
+        for i in 0 .. array_len l do
+            a = array_get_unchecked l i
+            b = array_get_unchecked r i
+            if a < b then return true
+            if b < a then return false
+        false
+
 impl print_array {Display t e}: Display (Array n t) (Panic & e) with
     print array =
         print "["

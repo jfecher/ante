@@ -1,12 +1,14 @@
-import Std.C.realloc, free
+import Std.C.malloc, realloc, memcpy, free, calloc
 import Std.Stream.Stream, iter, emit
 import Std.Fail.Fail, fail, panic_on_fail
 import Std.Mem.Type, MkType, size_of, transmute, null, offset, deref_ptr, ptr_to_ref, array_insert
+import Std.Slice.Slice
 
 export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
     Vec.remove_index, Vec.remove_first, Vec.remove_indices, Vec.remove_all, Vec.swap_last,
     Vec.reverse, Vec.swap, Vec.insert, Vec.dedup, Vec.truncate, Vec.clear, Vec.sort_by, Vec.sort,
-    print_vec, extract_vec, stream_vec, stream_ref_vec, eq_vec, drop_vec, insert_vec
+    Vec.windows, Vec.chunks, Vec.permutations,
+    print_vec, extract_vec, stream_vec, stream_ref_vec, eq_vec, cmp_vec, clone_vec, drop_vec, insert_vec
 
 type Vec t =
     data: Ptr t
@@ -253,6 +255,16 @@ impl stream_ref_vec: Stream (ref Vec a) (ref a) pure with
         for i in 0 .. vec.len do
             emit (vec.get_unchecked i)
 
+impl clone_vec {Clone t}: Clone (Vec t) with
+    clone v =
+        if v.len == 0 then
+            return Vec.empty ()
+
+        data: Ptr t = malloc (v.len * size_of (MkType: Type t))
+        for i in 0 .. v.len do
+            array_insert data i (clone (v.get_unchecked i))
+        Vec data v.len v.len
+
 impl drop_vec {Drop t e}: Drop (Vec t) e with
     drop (v: mut Vec t) =
         if v.cap != 0 then
@@ -272,3 +284,13 @@ impl eq_vec {Eq t e}: Eq (Vec t) e with
             if le != re then
                 return false
         true
+
+impl cmp_vec {Cmp t}: Cmp (Vec t) with
+    (<) l r =
+        n = if l.len < r.len then l.len else r.len
+        for i in 0 .. n do
+            a = l.get_unchecked i
+            b = r.get_unchecked i
+            if a < b then return true
+            if b < a then return false
+        l.len < r.len

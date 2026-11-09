@@ -2,7 +2,7 @@ import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl, emit
 import Std.Mem.Type, MkType, size_of, null, offset, ptr_store, ptr_to_ref, array_insert
 
-export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq, eq_seq
+export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq, eq_seq, cmp_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -285,3 +285,13 @@ impl eq_seq {Eq t e}: Eq (Seq t) e with
             if le != re then
                 return false
         true
+
+impl cmp_seq {Cmp t}: Cmp (Seq t) with
+    (<) l r =
+        n = if l.len < r.len then l.len else r.len
+        for i in 0 .. n do
+            a = ptr_to_ref (offset l.data.elements (Usz i))
+            b = ptr_to_ref (offset r.data.elements (Usz i))
+            if a < b then return true
+            if b < a then return false
+        l.len < r.len
