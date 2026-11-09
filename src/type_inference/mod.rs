@@ -270,6 +270,11 @@ struct ItemState {
     /// Failed implicit searches by destination
     failed_implicit_searches: FxHashMap<ExprId, implicits::ImplicitError>,
 
+    /// Delayed implicits resolved early, mapped by the destination expr.
+    /// These stay queued in their scope so that the position of other queued implicits is unchanged,
+    /// mapping to their target type from before they were resolved.
+    resolved_early_implicits: FxHashMap<ExprId, Type>,
+
     /// Set while checking the constructor of an impl of a trait. See [ImplState].
     impl_: Option<ImplState>,
 }

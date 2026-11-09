@@ -742,6 +742,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let hint = self.next_type_variable();
         let struct_type = self.infer_expr(object, &hint);
+        self.poke_type_with_implicits(&struct_type);
 
         // Resolve the method name to a top-level function
         let Some((method_name, func_type, bindings)) = self.resolve_method_for_type(&struct_type, &member_name) else {
@@ -909,6 +910,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ) -> Type {
         let hint = self.next_type_variable();
         let struct_type = self.infer_expr(member_access.object, &hint);
+        self.poke_type_with_implicits(&struct_type);
         let member = member_access.member;
         let member_name = self.member_name(member_access).clone();
 
