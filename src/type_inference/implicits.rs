@@ -298,12 +298,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let mut any_bubbled = false;
 
-        // The scope has local implicits. Partition delayed implicits so ones that can't possibly
-        // bind to a local name are deferred to the parent. Then transitively pull along any
-        // bubbled candidate that shares a type variable with a staying implicit's target type:
-        // resolving it at this scope is required to commit the bindings the staying implicit
-        // depends on (e.g. `print v.data.[i]` keeps `Print u` here, and `Extract (Ptr t) Usz u`
-        // shares `u` so it must also resolve here to bind `u` before the `Print` phase-2 retry).
+        // Partition delayed implicits so ones that can't possibly bind to a local name are deferred
+        // to the parent. Then transitively pull along any bubbled candidate that shares a type
+        // variable with a staying implicit's target type.
         if !self.implicits.is_empty() {
             let local_implicits = scope.implicits_in_scope.clone();
             let mut stays_here = Vec::new();
@@ -574,6 +571,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let delayed = self.new_optional_implicit(target_type, location);
         let in_scope = self.collect_implicits_in_scope();
         self.find_implicit_value(delayed, &in_scope).is_ok()
+    }
+
+    /// Whether any implicit in scope could match `target_type`. Does not recursively check
+    /// each impl's requirements.
+    pub(super) fn implicit_candidate_exists(&mut self, target_type: &Type) -> bool {
+        let no_bindings = TypeBindings::default();
+        for name in self.collect_implicits_in_scope() {
+            let typ = self.name_types[&name].clone();
+            if !matches!(self.implicit_type_matches(&typ, target_type, &no_bindings), ImplicitMatch::NoMatch) {
+                return true;
+            }
+        }
+
+        let Some(item) = self.current_item else { return false };
+        let mut found = false;
+        VisibleImplicits(item.source_file).get(self.compiler).iter_possibly_matching_impls(target_type, |_, name| {
+            let (typ, _) = self.type_and_bindings_of_top_level_name(name);
+            found = !matches!(self.implicit_type_matches(&typ, target_type, &no_bindings), ImplicitMatch::NoMatch);
+            found
+        });
+        found
     }
 
     /// Whether the implicit requested for `destination` has been found yet

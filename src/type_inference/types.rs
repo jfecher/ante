@@ -1502,6 +1502,62 @@ impl Type {
         }
     }
 
+    /// Collect each generic used as the place of a reference in a method of the trait constructor
+    /// type `self`, whose generics may still be type variables. Constants and the function types
+    /// within a method's own signature are only entered if `within_functions` is set.
+    pub(crate) fn collect_method_places(&self, within_functions: bool, out: &mut FxHashSet<Generic>) {
+        // The constructor takes each member as a parameter
+        let Type::Function(constructor) = self else { return };
+        for member in &constructor.parameters {
+            match &member.typ {
+                Type::Function(method) => {
+                    method.parameters.iter().for_each(|parameter| {
+                        Self::collect_method_places_helper(&parameter.typ, within_functions, out)
+                    });
+                    Self::collect_method_places_helper(&method.return_type, within_functions, out);
+                },
+                other if within_functions => Self::collect_method_places_helper(other, within_functions, out),
+                _ => (),
+            }
+        }
+    }
+
+    fn collect_method_places_helper(typ: &Type, within_functions: bool, out: &mut FxHashSet<Generic>) {
+        match typ {
+            Type::Application(constructor, args) => {
+                if constructor.is_reference_constructor(&TypeBindings::default()) {
+                    Self::collect_place_roots(&args[0], out);
+                }
+                args.iter().for_each(|arg| Self::collect_method_places_helper(arg, within_functions, out));
+            },
+            Type::Tuple(elements) => {
+                elements.iter().for_each(|element| Self::collect_method_places_helper(element, within_functions, out))
+            },
+            Type::Function(function) if within_functions => {
+                function
+                    .parameters
+                    .iter()
+                    .for_each(|parameter| Self::collect_method_places_helper(&parameter.typ, within_functions, out));
+                Self::collect_method_places_helper(&function.return_type, within_functions, out);
+            },
+            _ => (),
+        }
+    }
+
+    fn collect_place_roots(place: &Type, out: &mut FxHashSet<Generic>) {
+        match place {
+            Type::Variable(id) => {
+                out.insert(Generic::Inferred(*id));
+            },
+            Type::Generic(generic) => {
+                out.insert(*generic);
+            },
+            Type::PlaceProjection(base, ..) => Self::collect_place_roots(base, out),
+            Type::Places(Some(entries)) => entries.iter().for_each(|entry| Self::collect_place_roots(entry, out)),
+            _ => (),
+        }
+    }
+
     /// Collect all unbound effects in every effect row within this type.
     pub(crate) fn unbound_effect_entries(&self, bindings: &TypeBindings) -> Vec<TypeVariableId> {
         fn go(typ: &Type, bindings: &TypeBindings, ends: &mut Vec<TypeVariableId>) {

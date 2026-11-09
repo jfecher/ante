@@ -228,6 +228,12 @@ struct TypeChecker<'local, 'inner> {
     /// The Prelude's `Mutate` effect
     mutate_name: TopLevelName,
 
+    /// The Prelude's `Extract` trait
+    extract_name: TopLevelName,
+
+    /// The Prelude's `Insert` trait
+    insert_name: TopLevelName,
+
     /// True while inferring the left-hand side of an assignment
     inferring_assignment_lhs: bool,
 
@@ -345,6 +351,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             prelude_origins: Default::default(),
             copy_trait: None,
             mutate_name: prelude_type_name(compiler, "Mutate"),
+            extract_name: prelude_type_name(compiler, "Extract"),
+            insert_name: prelude_type_name(compiler, "Insert"),
             inferring_assignment_lhs: false,
             integer_literal_vars: Default::default(),
             float_literal_vars: Default::default(),
@@ -1624,7 +1632,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    let body = id.type_body(generic_args, self.compiler);
+                    let arguments = generic_args.and_then(|args| self.with_method_generics(*id, args, false));
+                    let body = id.type_body(arguments.as_deref().or(generic_args), self.compiler);
                     match body {
                         TypeBody::Product { fields, .. } => {
                             let fields = fields.into_iter().enumerate();
@@ -1649,6 +1658,48 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             _ => BTreeMap::default(),
         }
+    }
+
+    /// The types of the members of the trait dictionary `typ`, applied to any supplied generics.
+    fn impl_member_types(&mut self, typ: &Type) -> BTreeMap<Name, (Type, u32)> {
+        if let Type::Application(constructor, arguments) = self.follow_type(typ)
+            && let Type::UserDefined(Origin::TopLevelDefinition(name)) = self.follow_type(constructor)
+            && let Some(arguments) = self.with_method_generics(*name, arguments, true)
+        {
+            return self.get_field_types(&constructor.clone(), Some(&arguments));
+        }
+        self.get_field_types(typ, None)
+    }
+
+    /// `arguments` of the trait `name`, followed by an argument for each generic its constructor
+    /// promoted from its method signatures. A place in the signature itself is rigid if `rigid`
+    /// is set, but one within a function parameter never is. Returns None if `name` is not a
+    /// trait or it has no such generics.
+    /// TODO: Rework this when rank-2 types are better implemented. Places should generally be
+    /// rank-2 by default on a trait function.
+    fn with_method_generics(&self, name: TopLevelName, arguments: &[Type], rigid: bool) -> Option<Vec<Type>> {
+        let definition = TraitDefinition::get(name, self.compiler)?;
+        let result = TypeCheck(name.top_level_item).get(self.compiler);
+        let constructor = result.get_generalized(definition.definition().name);
+        let Type::Forall(generics, body) = &constructor else { return None };
+        let promoted = generics.get(arguments.len()..).filter(|promoted| !promoted.is_empty())?;
+
+        let mut signature_places = FxHashSet::default();
+        let mut all_places = FxHashSet::default();
+        body.collect_method_places(false, &mut signature_places);
+        body.collect_method_places(true, &mut all_places);
+
+        let promoted = promoted.iter().map(|generic| {
+            if rigid && signature_places.contains(generic) {
+                Type::Generic(Generic::Elided(self.next_type_variable_id()))
+            } else if all_places.contains(generic) {
+                let none = TypeBindings::default();
+                Type::places(&[self.next_type_variable()], &none, &none)
+            } else {
+                self.next_type_variable()
+            }
+        });
+        Some(arguments.iter().cloned().chain(promoted).collect())
     }
 
     /// Returns a set of substitutions for a user-defined type to replace instances of its generics

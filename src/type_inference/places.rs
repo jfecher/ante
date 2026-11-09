@@ -798,11 +798,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 (Some(places), _) => {
                     let mentioned = mentioned.get_or_insert_with(|| self.mentioned_places(function, lambda));
                     let mut places = self.collect_and_merge_places(&places, &none);
-                    // A closed row can't name an inferred place, as in a trait method's parameter
+
+                    // A closed row can't name an inferred place, nor can an impl name its method's places
+                    let is_impl_method = self.item.impl_.as_ref().is_some_and(|impl_| impl_.methods.contains(&lambda));
                     places.retain(|place| {
                         PlaceEntry::new(place).is_some_and(|place| {
-                            mentioned.iter().any(|m| place.overlaps(m))
-                                && !(closed && matches!(place.root, EntryRoot::Unbound(_)))
+                            let unnameable = match place.root {
+                                EntryRoot::Unbound(_) => true,
+                                EntryRoot::Generic(Generic::Elided(_)) => is_impl_method,
+                                _ => false,
+                            };
+                            mentioned.iter().any(|m| place.overlaps(m)) && !(closed && unnameable)
                         })
                     });
                     self.push_mutate(&mut kept, self.unmutated_places(places, &function.effects));

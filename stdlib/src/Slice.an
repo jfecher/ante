@@ -1,6 +1,7 @@
-import Std.Fail.Fail, fail
+import Std.Fail.Fail, fail, panic_on_fail
 
-export Slice, MutSlice, slice, Slice.get, Slice.get_unchecked
+export Slice, MutSlice, slice, Slice.get, Slice.get_unchecked,
+    copy_slice, extract_slice, insert_slice
 
 /// A contiguous series of elements from 'a.
 // TODO: `('a = _)` but this fails to parse & we'd have to reorder it to the back
@@ -13,6 +14,20 @@ type MutSlice 'a t = Slice (mut 'a) t
 
 slice (array: ref 'a Array n t): Slice 'a t =
     Slice (transmute array) (array_len array)
+
+impl copy_slice: Copy (Slice 'a t) with
+    (.*) = deref
+
+impl extract_slice: Extract (Slice 'a t) Usz (ref 'a t) Panic with
+    (.[]) s i =
+        if i >= s.len then
+            panic "Slice index out of bounds"
+        s.get_unchecked i
+
+impl insert_slice: Insert (MutSlice 'a t) Usz t (Panic & Mutate 'a) with
+    (.[]:=) s i e =
+        slot = s.get i ~> panic_on_fail
+        slot := e
 
 /// A reference to the element at the given 0-based index.
 /// Fails if the index is out of bounds

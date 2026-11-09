@@ -640,13 +640,12 @@ impl append_string: Append String with
 (<|) f x = f x
 
 trait Extract collection index elem (e: effect) =
-    (.[]): fn (ref collection) index -> ref! elem can e
+    (.[]): fn collection index -> elem can e
 
-// TODO: Remove. This breaks ownership
-impl extract_ptr_usz: Extract (Ptr t) Usz t pure with
+impl extract_ptr_usz: Extract (ref 'p Ptr t) Usz (ref 'p! t) pure with
     (.[]) ptr index = ptr_to_ref <| offset ptr.* index
 
-impl extract_string: Extract String Usz Char Panic with
+impl extract_string: Extract (ref 's String) Usz (ref 's! Char) Panic with
     (.[]) s index =
         if index >= Usz s.length then
             panic "extract_string: character index out of bounds"
@@ -677,7 +676,7 @@ array_set (array: mut Array n t) (index: Usz) elem =
         panic "array_set index out of bounds"
     array_set_unchecked array index elem
 
-impl extract_array: Extract (Array n t) Usz t Panic with
+impl extract_array: Extract (ref 'a Array n t) Usz (ref 'a t) Panic with
     (.[]) = array_get
 
 // Bitwise functions
@@ -835,14 +834,13 @@ transmute (x: a): b =
     intrinsic "Transmute" x
 
 /// Insert an element into a collection.
-/// `col.[i] := elem` resolves to `Insert` while `col.[i]` alone resolves to `Extract`
 trait Insert collection index elem (e: effect) =
-    (.[]:=): fn (mut collection) index elem -> Unit can e
+    (.[]:=): fn collection index elem -> Unit can e
 
-impl insert_ptr_usz: Insert (Ptr t) Usz t pure with
+impl insert_ptr_usz: Insert (mut 'p Ptr t) Usz t pure with
     (.[]:=) ptr index value = ptr_store (offset ptr.* index) value
 
-impl insert_array: Insert (Array n t) Usz t Panic with
+impl insert_array: Insert (mut 'a Array n t) Usz t Panic with
     (.[]:=) arr index value = array_set arr index value
 
 effect Print =

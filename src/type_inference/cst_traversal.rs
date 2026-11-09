@@ -647,9 +647,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Taken before rewriting a trait method callee so its dictionary counts as one of this call's implicits
         let implicit_count_before_call = self.delayed_implicits_count();
+        let index_method = self.index_method(call.function);
 
         let mut call = Cow::Borrowed(call);
         let method_type = self.rewrite_trait_method_callee(call.function, &call.arguments);
+
+        let index_method = index_method.filter(|_| matches!(method_type, Some((_, None))));
         if let Some((_, Some(dictionary_index))) = method_type {
             call.to_mut().arguments.remove(dictionary_index);
             self.current_extended_context_mut().insert_expr(call_expr, Expr::Call((*call).clone()));
@@ -701,7 +704,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut explicit_implicits = Vec::new();
         for (index, (arg, expected_arg_type)) in call.arguments.iter().zip(expected_parameter_types).enumerate() {
             let kind = TypeErrorKind::CallArgument { index };
-            let actual = self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands);
+            let actual = match index_method {
+                Some(method) if index == 0 => self.check_index_collection(arg.expr, method, &expected_arg_type.typ),
+                _ => self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands),
+            };
             if arg.is_implicit {
                 explicit_implicits.push((expected_arg_type.typ, actual));
             }
@@ -709,7 +715,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // FIXME: Another related hack. Try to bind the return type now, this time if it has no unbound
         // type variables. Doing so results in some better results when resolving implicits early below.
-        if expected.free_vars(&self.bindings).is_empty()
+        if index_method.is_none()
+            && expected.free_vars(&self.bindings).is_empty()
             && !self.needs_function_row_coercion(&actual_return_type, expected)
             && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
         {
@@ -724,6 +731,55 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // effect row since it is given the evidence for its own effects by the outer call.
         let widen_row = position == ExprPosition::Value;
         self.coerce_with(&actual_return_type, expected, call_expr, None, TypeErrorKind::CallReturn, widen_row)
+    }
+
+    /// If `function` names the method of `Extract` or `Insert`, return it
+    fn index_method(&self, function: ExprId) -> Option<TraitMember> {
+        let &Expr::Variable(path) = &self.current_extended_context()[function] else { return None };
+        let Some(Origin::TraitMember(member)) = self.path_origin(path) else { return None };
+        let name = member.trait_type_name();
+        (name == self.extract_name || name == self.insert_name).then_some(member)
+    }
+
+    /// Check the collection of an index call.
+    /// An unknown collection type is assumed to be borrowed since most impls are.
+    /// TODO: This hack is currently only needed because in other calls we only auto-ref
+    /// on trait methods that always need refs, regardless of impls.
+    fn check_index_collection(&mut self, collection: ExprId, method: TraitMember, expected: &Type) -> Type {
+        let kind = TypeErrorKind::CallArgument { index: 0 };
+        let hint = self.next_type_variable();
+        let actual = self.infer_expr(collection, &hint);
+
+        if let Some((_, element)) = actual.reference_element(&self.bindings) {
+            if !self.index_impl_exists(method, &actual) && self.index_impl_exists(method, &element) {
+                self.coerce(&actual, &element, collection, None, kind.clone());
+                self.unify(&element, expected, kind, collection);
+                return element;
+            }
+        } else {
+            let reference_kind = match method.trait_type_name() == self.insert_name {
+                true => ReferenceKind::Mut,
+                false => ReferenceKind::Ref,
+            };
+            let reference = self.reference_type(reference_kind, self.next_type_variable(), actual.clone());
+            let borrow = !self.is_concrete_type_or_numeric_typevar(&actual)
+                || (!self.index_impl_exists(method, &actual) && self.index_impl_exists(method, &reference));
+
+            if borrow {
+                let actual = self.coerce(&actual, &reference, collection, None, kind.clone());
+                self.unify(&reference, expected, kind, collection);
+                return actual;
+            }
+        }
+        self.coerce(&actual, expected, collection, None, kind)
+    }
+
+    /// Whether an impl of the trait of index method `method` could exist for `collection`
+    fn index_impl_exists(&mut self, method: TraitMember, collection: &Type) -> bool {
+        let trait_type = Type::UserDefined(Origin::TopLevelDefinition(method.trait_type_name()));
+        let rest = (1..method.generic_count).map(|_| self.next_type_variable());
+        let arguments = std::iter::once(collection.clone()).chain(rest).collect();
+        self.implicit_candidate_exists(&Type::Application(Shared::new(trait_type), Shared::new(arguments)))
     }
 
     /// If `call` is `v.push 3`, try to resolve `push` as a function in the module where `v`'s type
@@ -1190,7 +1246,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Map each field name to its index in the type's declaration order.
         // This is used when lowering to MIR when structs are converted into tuples.
         let mut field_order = BTreeMap::new();
-        let field_types = self.get_field_types(&typ, None);
+        let field_types = match impl_ {
+            Some(_) => self.impl_member_types(&typ),
+            None => self.get_field_types(&typ, None),
+        };
         let owner = self.field_owner(&typ);
         let methods = impl_.map_or_else(Default::default, |(_, trait_)| trait_.method_flags(self.compiler));
 

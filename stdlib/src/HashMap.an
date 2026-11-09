@@ -6,7 +6,7 @@ import Std.Fail.Fail, fail, panic_on_fail, or_panic, on_fail, try
 export HashMap, Entry, Hash, HashMap.empty, HashMap.of, HashMap.clear, HashMap.resize, HashMap.should_resize,
     HashMap.insert, HashMap.get_entry, HashMap.get, HashMap.contains, HashMap.remove, HashMap.len,
     HashMap.is_empty, HashMap.keys, HashMap.values, HashMap.get_or_insert, HashMap.get_or_insert_with, HashMap.retain,
-    HashMap.merge, HashMap.extend, print_hashmap, stream_map, eq_hashmap
+    HashMap.merge, HashMap.extend, print_hashmap, stream_map, eq_hashmap, extract_hashmap, insert_hashmap
 
 /// A linear-scan mutable HashMap using a resize factor of 2.0
 ///
@@ -238,10 +238,10 @@ HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Un
 HashMap.merge (dst: mut HashMap k v h) (src: HashMap k v h) {Eq k e}: Unit can Panic, Mutate 'dst, e =
     iter src (fn (k, v) -> ignore (HashMap.insert dst k v))
 
-impl extract_hashmap {Eq k e}: Extract (HashMap k v) (ref k) v (Panic & e) with
+impl extract_hashmap {Eq k e}: Extract (ref 'm HashMap k v) (ref k) (ref 'm! v) (Panic & e) with
     (.[]) map key = map.get key ~> panic_on_fail
 
-impl insert_hashmap {Eq k e}: Insert (HashMap k v) k v (Panic & e) with
+impl insert_hashmap {Eq k e}: Insert (mut 'm HashMap k v) k v (Panic & Mutate 'm & e) with
     (.[]:=) map key value =
         map.insert key value
         ()

@@ -227,7 +227,7 @@ impl print_vec {p: Display t e}: Display (Vec t) e with
 
         print "]"
 
-impl extract_vec: Extract (Vec t) Usz t Panic with
+impl extract_vec: Extract (ref 'v Vec t) Usz (ref 'v! t) Panic with
     (.[]) v i =
         if i >= v.len () then
             panic "Vec index out of bounds"
@@ -237,8 +237,8 @@ impl extract_vec: Extract (Vec t) Usz t Panic with
 /// Vec.insert will insert into a slot, moving the previous element and each
 /// element after to the right. This `Insert` implementation will instead
 /// directly mutate the element at the given index to the new element.
-impl insert_vec: Insert (Vec t) Usz t Panic with
-    (.[]:=) (v: mut Vec t) i e =
+impl insert_vec: Insert (mut 'v Vec t) Usz t (Panic & Mutate 'v!) with
+    (.[]:=) v i e =
         slot = v.get i ~> panic_on_fail
         slot := e
 
