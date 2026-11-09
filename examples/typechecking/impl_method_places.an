@@ -71,18 +71,18 @@ escape_method (): ref I32 =
 // 30 |     bump h = h.x := 9
 //    |               ^^
 // 
-// examples/typechecking/impl_method_places.an:41:6
-// 39 | escape_dictionary {d: Keep Holder _} (): ref I32 =
-// 40 |     local = Holder 1	// note: local! is only valid until the end of this scope
+// examples/typechecking/impl_method_places.an:39:6
+// 37 | escape_dictionary {d: Keep Holder _} (): ref I32 =
+// 38 |     local = Holder 1	// note: local! is only valid until the end of this scope
 //    |     -----
-// 41 |     d.keep (ref local)	// error: This reference to local! outlives its scope
+// 39 |     d.keep (ref local)	// error: This reference to local! outlives its scope
 //    |      ^^^^^^^^^^^^^^^^
 // 
-// examples/typechecking/impl_method_places.an:45:5
-// 43 | escape_method (): ref I32 =
-// 44 |     local = Holder 1	// note: local! is only valid until the end of this scope
+// examples/typechecking/impl_method_places.an:43:5
+// 41 | escape_method (): ref I32 =
+// 42 |     local = Holder 1	// note: local! is only valid until the end of this scope
 //    |     -----
-// 45 |     keep (ref local)	// error: This reference to local! outlives its scope
+// 43 |     keep (ref local)	// error: This reference to local! outlives its scope
 //    |     ^^^^^^^^^^^^^^^
 // 
 // Found 6 errors and 0 warnings

@@ -93,15 +93,15 @@ impl cast_i64_f64: Cast I64 F64 pure with cast x = intrinsic "SignedToFloat" x
 impl cast_isz_f64: Cast Isz F64 pure with cast x = intrinsic "SignedToFloat" x
 
 impl cast_u8_f32:  Cast U8  F32 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_u16_f64: Cast U16 F32 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_u32_f64: Cast U32 F32 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_u64_f64: Cast U64 F32 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_usz_f64: Cast Usz F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f32: Cast U16 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f32: Cast U32 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f32: Cast U64 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f32: Cast Usz F32 pure with cast x = intrinsic "UnsignedToFloat" x
 impl cast_u8_f64:  Cast U8  F64 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_u16_f32: Cast U16 F64 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_u32_f32: Cast U32 F64 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_u64_f32: Cast U64 F64 pure with cast x = intrinsic "UnsignedToFloat" x
-impl cast_usz_f32: Cast Usz F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f64: Cast U16 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f64: Cast U32 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f64: Cast U64 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f64: Cast Usz F64 pure with cast x = intrinsic "UnsignedToFloat" x
 
 impl cast_f32_i8:  Cast F32 I8  pure with cast x = intrinsic "FloatToSigned" x
 impl cast_f32_i16: Cast F32 I16 pure with cast x = intrinsic "FloatToSigned" x

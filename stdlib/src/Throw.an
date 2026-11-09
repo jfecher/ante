@@ -3,13 +3,9 @@ import Std.Fail.Fail, fail
 effect Throw t =
     throw: fn t -> Never
 
-type Result t e =
-   | Ok t
-   | Err e
-
 catch (f: a can Throw e): Result a e =
     handle Ok (f ())
-    | throw e -> Err e
+    | throw e -> Error e
 
 catch_or (f: a can Throw e) (default: a): a =
     handle f ()

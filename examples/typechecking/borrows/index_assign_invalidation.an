@@ -29,18 +29,18 @@ assign_sibling () =
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/index_assign_invalidation.an:14:13
-// 12 |     x = v.[0].[0]
-// 13 |     v.[0] := other	// note: x may be invalidated by this mutation
+// examples/typechecking/borrows/index_assign_invalidation.an:13:13
+// 11 |     x = v.[0].[0]
+// 12 |     v.[0] := other	// note: x may be invalidated by this mutation
 //    |      -------------
-// 14 |     println x	// error: x may have been invalidated by an earlier mutation
+// 13 |     println x	// error: x may have been invalidated by an earlier mutation
 //    |             ^
 // 
-// examples/typechecking/borrows/index_assign_invalidation.an:19:13
-// 17 |     x = s.[0].[0]
-// 18 |     s.[0] := other	// note: x may be invalidated by this mutation
+// examples/typechecking/borrows/index_assign_invalidation.an:18:13
+// 16 |     x = s.[0].[0]
+// 17 |     s.[0] := other	// note: x may be invalidated by this mutation
 //    |      -------------
-// 19 |     println x	// error: x may have been invalidated by an earlier mutation
+// 18 |     println x	// error: x may have been invalidated by an earlier mutation
 //    |             ^
 // 
 // Found 2 errors and 0 warnings
