@@ -1,3 +1,4 @@
+import Std.Array.array_get_unchecked
 effect Take =
     // There used to be a 1024 byte limit for effect arguments.
     // This is 2048 bytes and should ensure we can pass larger arguments if needed.

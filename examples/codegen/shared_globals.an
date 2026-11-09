@@ -1,3 +1,4 @@
+import Std.Mem.transmute
 shared type Unit0 = | U0
 shared type Cell = value: U32
 type Pair = cell: Cell, n: U8

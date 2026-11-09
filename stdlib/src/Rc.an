@@ -1,4 +1,5 @@
 import Std.C.malloc, free
+import Std.Mem.Type, MkType, size_of, transmute, null, deref_ptr, ptr_store, ptr_to_ref
 
 export Rc, Rc.of, Rc.as_ref, ref_count, inc_ref_count, dec_ref_count,
     Rc.try_unwrap, Rc.unwrap_or_clone, clone_rc, drop_rc

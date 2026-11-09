@@ -1,5 +1,6 @@
 import Std.Vec.Vec, stream_ref_vec
 import Std.Stream.iter, stream_array
+import Std.Mem.Type, MkType, size_of
 
 type MyType =
     key: U8

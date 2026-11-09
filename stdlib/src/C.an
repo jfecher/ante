@@ -1,3 +1,4 @@
+import Std.Mem.transmute, deref_ptr
 export String, copy_cstring, String.new, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,

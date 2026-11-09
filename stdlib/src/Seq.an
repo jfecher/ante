@@ -1,5 +1,6 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl, emit
+import Std.Mem.Type, MkType, size_of, null, offset, ptr_store, ptr_to_ref, array_insert
 
 export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq, eq_seq
 

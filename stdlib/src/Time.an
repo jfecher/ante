@@ -1,4 +1,5 @@
 import Std.C.Clock, clock_gettime, nanosleep
+import Std.Mem.transmute, null
 
 /// A duration in nanoseconds
 type Duration = nanos: I64

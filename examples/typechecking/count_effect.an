@@ -1,3 +1,4 @@
+import Std.Iterator.repeat
 effect Count =
     count: fn Unit -> Unit
 
@@ -17,6 +18,8 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
+// import Std.Iterator.repeat
+// 
 // effect Count =
 //     count: fn Unit -> Unit
 // 

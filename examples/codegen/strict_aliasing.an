@@ -1,3 +1,4 @@
+import Std.Mem.transmute
 // Caveat: This would cease to be a good test if the compiler were to inline the helper function
 // and constant-fold it.  4602678819172646912 = 0x3FE0000000000000
 

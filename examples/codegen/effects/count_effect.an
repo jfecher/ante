@@ -1,3 +1,4 @@
+import Std.Iterator.repeat
 effect Count =
     count: fn Unit -> Unit
 

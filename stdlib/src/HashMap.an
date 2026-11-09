@@ -2,6 +2,8 @@ import Std.C.calloc
 import Std.Stream.Stream, iter, stream_fn, Emit, emit
 import Std.Hash.Hash
 import Std.Fail.Fail, fail, panic_on_fail, or_panic, on_fail, try
+import Std.Mem.Type, MkType, size_of, null, offset, deref_ptr, ptr_to_ref, array_insert
+import Std.Iterator.repeat
 
 export HashMap, Entry, Hash, HashMap.empty, HashMap.of, HashMap.clear, HashMap.resize, HashMap.should_resize,
     HashMap.insert, HashMap.get_entry, HashMap.get, HashMap.contains, HashMap.remove, HashMap.len,

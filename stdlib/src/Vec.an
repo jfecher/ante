@@ -1,6 +1,7 @@
 import Std.C.realloc, free
 import Std.Stream.Stream, iter, emit
 import Std.Fail.Fail, fail, panic_on_fail
+import Std.Mem.Type, MkType, size_of, transmute, null, offset, deref_ptr, ptr_to_ref, array_insert
 
 export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
     Vec.remove_index, Vec.remove_first, Vec.remove_indices, Vec.remove_all, Vec.swap_last,

@@ -1,3 +1,4 @@
+import Std.Mem.transmute, offset
 type MyVec t =
     data: Ptr t
     len: Usz
@@ -57,6 +58,8 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
+// import Std.Mem.transmute, offset
+// 
 // type MyVec t =
 //     data: Ptr t
 //     len: Usz

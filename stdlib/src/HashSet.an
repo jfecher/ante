@@ -1,6 +1,8 @@
 import Std.Hash.Hash
 import Std.HashMap.HashMap
 import Std.Stream.Stream, iter, stream_fn, Emit, emit, map
+import Std.Mem.offset, deref_ptr, ptr_to_ref
+import Std.Iterator.repeat
 
 export HashSet, Hash, HashSet.len, HashSet.is_empty, HashSet.empty, HashSet.of,
     HashSet.clear, HashSet.contains, HashSet.insert, HashSet.remove, HashSet.extend,

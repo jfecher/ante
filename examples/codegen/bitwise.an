@@ -1,3 +1,4 @@
+import Std.Bitwise.Bitwise, bitwise_i32, bitwise_u64
 main () =
     print_to_stdout do
     x = 3

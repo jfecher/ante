@@ -1,0 +1,28 @@
+trait Iterator it elem (effects: effect) =
+    next: fn it -> Maybe (it, elem) can effects
+
+iterate (iterable: it) f {i: Iterator it elem effects} =
+    match i.next iterable
+    | None -> ()
+    | Some (rest, elem) ->
+        f elem
+        iterate rest f
+
+type Range t = start: t, end: t
+
+impl iterator_range: Iterator (Range Usz) Usz pure with
+    next range =
+        if range.start >= range.end
+        then None
+        else
+            next = Range (range.start + 1) range.end
+            Some (next, range.start)
+
+iterate_range (from: Usz) (to: Usz) (f: fn Usz => Unit): Unit =
+    iterate (Range from to) f
+
+repeat (count: Usz) (f: fn Usz => Unit): Unit =
+    loop (i = 0) ->
+        if i < count then
+            f i
+            recur (i + 1)

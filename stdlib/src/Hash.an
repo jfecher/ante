@@ -1,5 +1,6 @@
 import Std.Stream.foldl, stream_fn
-import Std.String.bytes
+import Std.Mem.transmute
+import Std.Bitwise.bxor, bitwise_u64
 
 trait Hash t =
     hash: fn t -> U64
@@ -8,7 +9,7 @@ trait Hash t =
 /// and prime of 1099511628211 (0x100000001b3).
 impl hash_string: Hash String with
     hash s =
-        foldl (bytes s) 14695981039346656037 fn acc c ->
+        foldl (s.bytes ()) 14695981039346656037 fn acc c ->
             bxor acc (U64 c) * 1099511628211
 
 impl hash_u64: Hash U64 with

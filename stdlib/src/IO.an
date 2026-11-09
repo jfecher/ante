@@ -1,8 +1,9 @@
 import Std.C.fclose, fopen, fwrite, fgetc, ungetc, feof, malloc, realloc, getchar, copy_file
 import Std.C
 import Std.Fail.Fail, fail, fail_if
-import Std.String.split
 import Std.Stream.iter, stream_fn, foldl
+import Std.Mem.transmute, null, array_insert
+import Std.Iterator.Iterator
 
 export File, File.open, File.close, drop_file, File.eof, File.write, File.next_char, File.next_line,
     iterator_file, read_line, print_to_file, create_dir, create_dir_all
@@ -104,7 +105,7 @@ create_dir (path: String): Unit can Fs, Fail =
 /// Create each directory in `path` along with any missing parent directories.
 /// Fails if any of them cannot be created.
 create_dir_all (path: String): Unit can Fs, Fail =
-    split path '/' |> foldl "" fn prefix component ->
+    path.split '/' |> foldl "" fn prefix component ->
         if component.length == 0 then
             // An empty first component means the path is absolute.
             if prefix.length == 0 then "/" else prefix

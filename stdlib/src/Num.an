@@ -1,0 +1,279 @@
+import Std.Mem.transmute
+
+// // Huge block of intrinsic numeric operators incoming
+trait Add n = (+): fn n n -> n
+impl add_i8: Add I8 with (+) x y = intrinsic "AddInt" x y
+impl add_i16: Add I16 with (+) x y = intrinsic "AddInt" x y
+impl add_i32: Add I32 with (+) x y = intrinsic "AddInt" x y
+impl add_i64: Add I64 with (+) x y = intrinsic "AddInt" x y
+impl add_isz: Add Isz with (+) x y = intrinsic "AddInt" x y
+impl add_u8: Add U8 with (+) x y = intrinsic "AddInt" x y
+impl add_u16: Add U16 with (+) x y = intrinsic "AddInt" x y
+impl add_u32: Add U32 with (+) x y = intrinsic "AddInt" x y
+impl add_u64: Add U64 with (+) x y = intrinsic "AddInt" x y
+impl add_usz: Add Usz with (+) x y = intrinsic "AddInt" x y
+impl add_f32: Add F32 with (+) x y = intrinsic "AddFloat" x y
+impl add_f64: Add F64 with (+) x y = intrinsic "AddFloat" x y
+
+trait Sub n = (-): fn n n -> n
+impl sub_i8: Sub I8 with (-) x y = intrinsic "SubInt" x y
+impl sub_i16: Sub I16 with (-) x y = intrinsic "SubInt" x y
+impl sub_i32: Sub I32 with (-) x y = intrinsic "SubInt" x y
+impl sub_i64: Sub I64 with (-) x y = intrinsic "SubInt" x y
+impl sub_isz: Sub Isz with (-) x y = intrinsic "SubInt" x y
+impl sub_u8: Sub U8 with (-) x y = intrinsic "SubInt" x y
+impl sub_u16: Sub U16 with (-) x y = intrinsic "SubInt" x y
+impl sub_u32: Sub U32 with (-) x y = intrinsic "SubInt" x y
+impl sub_u64: Sub U64 with (-) x y = intrinsic "SubInt" x y
+impl sub_usz: Sub Usz with (-) x y = intrinsic "SubInt" x y
+impl sub_f32: Sub F32 with (-) x y = intrinsic "SubFloat" x y
+impl sub_f64: Sub F64 with (-) x y = intrinsic "SubFloat" x y
+
+trait Mul n = (*): fn n n -> n
+impl mul_i8: Mul I8 with (*) x y = intrinsic "MulInt" x y
+impl mul_i16: Mul I16 with (*) x y = intrinsic "MulInt" x y
+impl mul_i32: Mul I32 with (*) x y = intrinsic "MulInt" x y
+impl mul_i64: Mul I64 with (*) x y = intrinsic "MulInt" x y
+impl mul_isz: Mul Isz with (*) x y = intrinsic "MulInt" x y
+impl mul_u8: Mul U8 with (*) x y = intrinsic "MulInt" x y
+impl mul_u16: Mul U16 with (*) x y = intrinsic "MulInt" x y
+impl mul_u32: Mul U32 with (*) x y = intrinsic "MulInt" x y
+impl mul_u64: Mul U64 with (*) x y = intrinsic "MulInt" x y
+impl mul_usz: Mul Usz with (*) x y = intrinsic "MulInt" x y
+impl mul_f32: Mul F32 with (*) x y = intrinsic "MulFloat" x y
+impl mul_f64: Mul F64 with (*) x y = intrinsic "MulFloat" x y
+
+trait Div n = (/): fn n n -> n
+impl div_i8: Div I8 with (/) x y = intrinsic "DivSigned" x y
+impl div_i16: Div I16 with (/) x y = intrinsic "DivSigned" x y
+impl div_i32: Div I32 with (/) x y = intrinsic "DivSigned" x y
+impl div_i64: Div I64 with (/) x y = intrinsic "DivSigned" x y
+impl div_isz: Div Isz with (/) x y = intrinsic "DivSigned" x y
+impl div_u8: Div U8 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_u16: Div U16 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_u32: Div U32 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_u64: Div U64 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_usz: Div Usz with (/) x y = intrinsic "DivUnsigned" x y
+impl div_f32: Div F32 with (/) x y = intrinsic "DivFloat" x y
+impl div_f64: Div F64 with (/) x y = intrinsic "DivFloat" x y
+
+trait Mod n = (%): fn n n -> n
+impl mod_i8: Mod I8 with (%) x y = intrinsic "ModSigned" x y
+impl mod_i16: Mod I16 with (%) x y = intrinsic "ModSigned" x y
+impl mod_i32: Mod I32 with (%) x y = intrinsic "ModSigned" x y
+impl mod_i64: Mod I64 with (%) x y = intrinsic "ModSigned" x y
+impl mod_isz: Mod Isz with (%) x y = intrinsic "ModSigned" x y
+impl mod_u8: Mod U8 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u16: Mod U16 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u32: Mod U32 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u64: Mod U64 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_usz: Mod Usz with (%) x y = intrinsic "ModUnsigned" x y
+// Cranelift backend does not support floating-point remainder or modulus
+
+// TODO: We do not have an integer-generic 0 value to use here
+(%%) (a: t) (b: t) {Mod t} {Eq t e} {Cast U8 t e}: Bool can e =
+    a % b == cast 0u8 : t
+
+trait Eq t (e: effect) = (==): fn (ref t) (ref t) -> Bool can e
+impl eq_i8: Eq I8 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_i16: Eq I16 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_i32: Eq I32 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_i64: Eq I64 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_isz: Eq Isz pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u8: Eq U8 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u16: Eq U16 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u32: Eq U32 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u64: Eq U64 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_usz: Eq Usz pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_f32: Eq F32 pure with (==) x y = intrinsic "EqFloat" x.* y.*
+impl eq_f64: Eq F64 pure with (==) x y = intrinsic "EqFloat" x.* y.*
+
+impl eq_char: Eq Char pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_bool: Eq Bool pure with (==) x y = intrinsic "EqInt" x.* y.*
+
+/// References are equal if their elements are equal
+impl eq_ref {Eq t e}: Eq (ref t) e with
+    (==) l r = deref l == deref r
+
+/// Pointers are equal if their addresses are equal
+impl eq_ptr: Eq (Ptr t) pure with
+    (==) l r = (transmute l.* : Usz) == (transmute r.* : Usz)
+
+impl eq_maybe {Eq e2 e}: Eq (Maybe e2) e with
+    (==) l r =
+        match deref l, deref r
+        | Some lv, Some rv -> lv == rv
+        | None, None -> true
+        | _ -> false
+
+impl eq_pair {Eq a e} {Eq b e}: Eq (a, b) e with
+    (==) l r = l.first == r.first and l.second == r.second
+
+(!=) (l: ref t) (r: ref t) {Eq t e} = not (l == r)
+
+trait Not t =
+    (not): fn t -> t
+
+impl not_bool: Not Bool with
+    (not) b = if b then false else true
+
+impl not_i32: Not I32 with
+    (not) x = intrinsic "BitwiseNot" x
+
+trait Cmp a =
+    (<): fn (ref a) (ref a) -> Bool
+
+// TODO: Partial ordering screws everything up
+(>) (a: ref t) (b: ref t) {Cmp t} = b < a
+(<=) (a: ref t) (b: ref t) {Cmp t} = not (b < a)
+(>=) (a: ref t) (b: ref t) {Cmp t} = not (a < b)
+
+impl cmp_i8: Cmp I8 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_i16: Cmp I16 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_i32: Cmp I32 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_i64: Cmp I64 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_isz: Cmp Isz with (<) x y = intrinsic "LessSigned" x.* y.*
+
+impl cmp_u8: Cmp U8 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_u16: Cmp U16 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_u32: Cmp U32 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_u64: Cmp U64 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_usz: Cmp Usz with (<) x y = intrinsic "LessUnsigned" x.* y.*
+
+impl cmp_f32: Cmp F32 with (<) x y = intrinsic "LessFloat" x.* y.*
+impl cmp_f64: Cmp F64 with (<) x y = intrinsic "LessFloat" x.* y.*
+
+impl cmp_char: Cmp Char with (<) x y = intrinsic "LessUnsigned" x.* y.*
+
+max (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l > r then l else r
+min (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l < r then l else r
+
+trait Num a (ai = _) (si = _) (mi = _) (di = _) (ei = _) (ci = _) =
+    add: Add a ai
+    sub: Sub a si
+    mul: Mul a mi
+    div: Div a di
+    eq: Eq a pure ei
+    cmp: Cmp a ci
+    zero: a
+    one: a
+
+impl num_i8: Num I8 add_i8 sub_i8 mul_i8 div_i8 eq_i8 cmp_i8 with
+    add = add_i8
+    sub = sub_i8
+    mul = mul_i8
+    div = div_i8
+    eq = eq_i8
+    cmp = cmp_i8
+    zero = 0
+    one = 1
+
+impl num_i16: Num I16 add_i16 sub_i16 mul_i16 div_i16 eq_i16 cmp_i16 with
+    add = add_i16
+    sub = sub_i16
+    mul = mul_i16
+    div = div_i16
+    eq = eq_i16
+    cmp = cmp_i16
+    zero = 0
+    one = 1
+
+impl num_i32: Num I32 add_i32 sub_i32 mul_i32 div_i32 eq_i32 cmp_i32 with
+    add = add_i32
+    sub = sub_i32
+    mul = mul_i32
+    div = div_i32
+    eq = eq_i32
+    cmp = cmp_i32
+    zero = 0
+    one = 1
+
+impl num_i64: Num I64 add_i64 sub_i64 mul_i64 div_i64 eq_i64 cmp_i64 with
+    add = add_i64
+    sub = sub_i64
+    mul = mul_i64
+    div = div_i64
+    eq = eq_i64
+    cmp = cmp_i64
+    zero = 0
+    one = 1
+
+impl num_isz: Num Isz add_isz sub_isz mul_isz div_isz eq_isz cmp_isz with
+    add = add_isz
+    sub = sub_isz
+    mul = mul_isz
+    div = div_isz
+    eq = eq_isz
+    cmp = cmp_isz
+    zero = 0
+    one = 1
+
+impl num_u8: Num U8 add_u8 sub_u8 mul_u8 div_u8 eq_u8 cmp_u8 with
+    add = add_u8
+    sub = sub_u8
+    mul = mul_u8
+    div = div_u8
+    eq = eq_u8
+    cmp = cmp_u8
+    zero = 0
+    one = 1
+
+impl num_u16: Num U16 add_u16 sub_u16 mul_u16 div_u16 eq_u16 cmp_u16 with
+    add = add_u16
+    sub = sub_u16
+    mul = mul_u16
+    div = div_u16
+    eq = eq_u16
+    cmp = cmp_u16
+    zero = 0
+    one = 1
+
+impl num_u32: Num U32 add_u32 sub_u32 mul_u32 div_u32 eq_u32 cmp_u32 with
+    add = add_u32
+    sub = sub_u32
+    mul = mul_u32
+    div = div_u32
+    eq = eq_u32
+    cmp = cmp_u32
+    zero = 0
+    one = 1
+
+impl num_u64: Num U64 add_u64 sub_u64 mul_u64 div_u64 eq_u64 cmp_u64 with
+    add = add_u64
+    sub = sub_u64
+    mul = mul_u64
+    div = div_u64
+    eq = eq_u64
+    cmp = cmp_u64
+    zero = 0
+    one = 1
+
+impl num_usz: Num Usz add_usz sub_usz mul_usz div_usz eq_usz cmp_usz with
+    add = add_usz
+    sub = sub_usz
+    mul = mul_usz
+    div = div_usz
+    eq = eq_usz
+    cmp = cmp_usz
+    zero = 0
+    one = 1
+
+impl num_f32: Num F32 add_f32 sub_f32 mul_f32 div_f32 eq_f32 cmp_f32 with
+    add = add_f32
+    sub = sub_f32
+    mul = mul_f32
+    div = div_f32
+    eq = eq_f32
+    cmp = cmp_f32
+    zero = 0.0
+    one = 1.0
+
+impl num_f64: Num F64 add_f64 sub_f64 mul_f64 div_f64 eq_f64 cmp_f64 with
+    add = add_f64
+    sub = sub_f64
+    mul = mul_f64
+    div = div_f64
+    eq = eq_f64
+    cmp = cmp_f64
+    zero = 0.0
+    one = 1.0

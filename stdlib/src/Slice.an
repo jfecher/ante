@@ -1,4 +1,5 @@
 import Std.Fail.Fail, fail, panic_on_fail
+import Std.Mem.transmute, offset
 
 export Slice, MutSlice, slice, Slice.get, Slice.get_unchecked,
     copy_slice, extract_slice, insert_slice

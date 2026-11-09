@@ -1,4 +1,5 @@
 import Std.Slice.Slice, slice
+import Std.Array.array_get_unchecked
 
 first_of (array: ref Array n t): ref t =
     array_get_unchecked array 0
@@ -20,6 +21,7 @@ main () =
 // args: -e ast-t --no-color
 // expected stdout:
 // import Std.Slice.Slice, slice
+// import Std.Array.array_get_unchecked
 // 
 // (first_of: fn (ref 'array (Array n t)) -> ref 'array t is pure) (array: ref 'array (Array n t)): ref t =
 //     (array_get_unchecked: fn (ref 'array (Array n t)) Usz -> ref 'array t is pure) (array: ref 'array (Array n t)) 0

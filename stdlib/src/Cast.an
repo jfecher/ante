@@ -1,0 +1,240 @@
+import Std.C.malloc
+import Std.Mem.transmute, ptr_store, array_insert
+
+export Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
+    cast_u8_u16, cast_u8_u32, cast_u8_u64, cast_u8_usz, cast_u16_u8, cast_u16_u32, cast_u16_u64, cast_u16_usz, cast_u32_u8, cast_u32_u16, cast_u32_u64, cast_u32_usz, cast_u64_u8, cast_u64_u16, cast_u64_u32, cast_u64_usz,
+    cast_usz_u8, cast_usz_u16, cast_usz_u32, cast_usz_u64, cast_i8_i16, cast_i8_i32, cast_i8_i64, cast_i8_isz, cast_i16_i8, cast_i16_i32, cast_i16_i64, cast_i16_isz, cast_i32_i8, cast_i32_i16, cast_i32_i64, cast_i32_isz,
+    cast_i64_i8, cast_i64_i16, cast_i64_i32, cast_i64_isz, cast_isz_i8, cast_isz_i16, cast_isz_i32, cast_isz_i64, cast_i8_f32, cast_i16_f32, cast_i32_f32, cast_i64_f32, cast_isz_f32, cast_i8_f64, cast_i16_f64, cast_i32_f64,
+    cast_u8_f32, cast_u16_f64, cast_u32_f64, cast_u64_f64, cast_usz_f64, cast_u8_f64, cast_u16_f32, cast_u32_f32, cast_u64_f32, cast_usz_f32, cast_f32_i8, cast_f32_i16, cast_f32_i32, cast_f32_i64, cast_f32_isz, cast_f64_i8,
+    cast_f32_u8, cast_f32_u16, cast_f32_u32, cast_f32_u64, cast_f32_usz, cast_f64_u8, cast_f64_u16, cast_f64_u32, cast_f64_u64, cast_f64_usz, cast_i8_char, cast_i16_char, cast_i32_char, cast_i64_char, cast_isz_char, cast_u8_i32,
+    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_usz_i64, cast_i64_usz, cast_char_u8, cast_char_i32, cast_char_u64, cast_u8_string, cast_u16_string, cast_u32_string, cast_u64_string, cast_usz_string,
+    cast_i8_string, cast_i16_string, cast_i32_string, cast_i64_string, cast_isz_string, cast_char_string, cast_bool_string,
+    cast_f32_string, cast_f64_string, cast_bool_i32,
+    TryCast, try_cast, try_cast_from_cast, try_cast_i64_u64, try_cast_u64
+
+/// A type conversion from a to b
+trait Cast a b (e: effect) =
+    cast: fn a -> b can e
+
+impl cast_same: Cast a a pure with
+    cast a = a
+
+impl cast_ptr_usz: Cast (Ptr a) Usz pure with
+    cast ptr = transmute ptr
+
+impl cast_usz_ptr: Cast Usz (Ptr a) pure with
+    cast address = transmute address
+
+// Begin wall of casts
+// TODO: Perhaps we should only expose infallible casts, forcing users to explicitly truncate otherwise
+impl cast_u8_u16: Cast U8 U16 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u8_u32: Cast U8 U32 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u8_u64: Cast U8 U64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u8_usz: Cast U8 Usz pure with cast x = intrinsic "ZeroExtend" x
+
+impl cast_u16_u8: Cast U16 U8 pure   with cast x = intrinsic "Truncate" x
+impl cast_u16_u32: Cast U16 U32 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u16_u64: Cast U16 U64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u16_usz: Cast U16 Usz pure with cast x = intrinsic "ZeroExtend" x
+
+impl cast_u32_u8: Cast U32 U8 pure with cast x = intrinsic "Truncate" x
+impl cast_u32_u16: Cast U32 U16 pure with cast x = intrinsic "Truncate" x
+impl cast_u32_u64: Cast U32 U64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u32_usz: Cast U32 Usz pure with cast x = intrinsic "ZeroExtend" x
+
+impl cast_u64_u8: Cast U64 U8 pure with cast x = intrinsic "Truncate" x
+impl cast_u64_u16: Cast U64 U16 pure with cast x = intrinsic "Truncate" x
+impl cast_u64_u32: Cast U64 U32 pure with cast x = intrinsic "Truncate" x
+impl cast_u64_usz: Cast U64 Usz pure with cast x = intrinsic "Truncate" x
+
+impl cast_usz_u8: Cast Usz U8 pure with cast x = intrinsic "Truncate" x
+impl cast_usz_u16: Cast Usz U16 pure with cast x = intrinsic "Truncate" x
+impl cast_usz_u32: Cast Usz U32 pure with cast x = intrinsic "Truncate" x
+impl cast_usz_u64: Cast Usz U64 pure with cast x = intrinsic "ZeroExtend" x
+
+impl cast_u8_i32: Cast U8 I32 pure with cast x = intrinsic "ZeroExtend" x
+
+// Signed types
+impl cast_i8_i16: Cast I8 I16 pure with cast x = intrinsic "SignExtend" x
+impl cast_i8_i32: Cast I8 I32 pure with cast x = intrinsic "SignExtend" x
+impl cast_i8_i64: Cast I8 I64 pure with cast x = intrinsic "SignExtend" x
+impl cast_i8_isz: Cast I8 Isz pure with cast x = intrinsic "SignExtend" x
+
+impl cast_i16_i8: Cast I16 I8 pure with cast x = intrinsic "Truncate" x
+impl cast_i16_i32: Cast I16 I32 pure with cast x = intrinsic "SignExtend" x
+impl cast_i16_i64: Cast I16 I64 pure with cast x = intrinsic "SignExtend" x
+impl cast_i16_isz: Cast I16 Isz pure with cast x = intrinsic "SignExtend" x
+
+impl cast_i32_i8: Cast I32 I8 pure with cast x = intrinsic "Truncate" x
+impl cast_i32_i16: Cast I32 I16 pure with cast x = intrinsic "Truncate" x
+impl cast_i32_i64: Cast I32 I64 pure with cast x = intrinsic "SignExtend" x
+impl cast_i32_isz: Cast I32 Isz pure with cast x = intrinsic "SignExtend" x
+
+impl cast_i64_i8: Cast I64 I8 pure with cast x = intrinsic "Truncate" x
+impl cast_i64_i16: Cast I64 I16 pure with cast x = intrinsic "Truncate" x
+impl cast_i64_i32: Cast I64 I32 pure with cast x = intrinsic "Truncate" x
+impl cast_i64_isz: Cast I64 Isz pure with cast x = intrinsic "Truncate" x
+
+impl cast_isz_i8: Cast Isz I8 pure with cast x = intrinsic "Truncate" x
+impl cast_isz_i16: Cast Isz I16 pure with cast x = intrinsic "Truncate" x
+impl cast_isz_i32: Cast Isz I32 pure with cast x = intrinsic "Truncate" x
+impl cast_isz_i64: Cast Isz I64 pure with cast x = intrinsic "SignExtend" x
+
+// Float casts
+impl cast_i8_f32:  Cast I8  F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i16_f32: Cast I16 F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i32_f32: Cast I32 F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i64_f32: Cast I64 F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_isz_f32: Cast Isz F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i8_f64:  Cast I8  F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i16_f64: Cast I16 F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i32_f64: Cast I32 F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i64_f64: Cast I64 F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_isz_f64: Cast Isz F64 pure with cast x = intrinsic "SignedToFloat" x
+
+impl cast_u8_f32:  Cast U8  F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f64: Cast U16 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f64: Cast U32 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f64: Cast U64 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f64: Cast Usz F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u8_f64:  Cast U8  F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f32: Cast U16 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f32: Cast U32 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f32: Cast U64 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f32: Cast Usz F64 pure with cast x = intrinsic "UnsignedToFloat" x
+
+impl cast_f32_i8:  Cast F32 I8  pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i16: Cast F32 I16 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i32: Cast F32 I32 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i64: Cast F32 I64 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_isz: Cast F32 Isz pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i8:  Cast F64 I8  pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i16: Cast F64 I16 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i32: Cast F64 I32 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i64: Cast F64 I64 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_isz: Cast F64 Isz pure with cast x = intrinsic "FloatToSigned" x
+
+impl cast_f32_u8:  Cast F32 U8  pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u16: Cast F32 U16 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u32: Cast F32 U32 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u64: Cast F32 U64 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_usz: Cast F32 Usz pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u8:  Cast F64 U8  pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u16: Cast F64 U16 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u32: Cast F64 U32 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u64: Cast F64 U64 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_usz: Cast F64 Usz pure with cast x = intrinsic "FloatToUnsigned" x
+
+impl cast_f64_f32: Cast F64 F32 pure with cast x = intrinsic "FloatDemote" x
+impl cast_f32_f64: Cast F32 F64 pure with cast x = intrinsic "FloatPromote" x
+
+// x -> Char casts
+impl cast_i8_char:  Cast I8  Char pure with cast = transmute
+impl cast_i16_char: Cast I16 Char pure with cast x = intrinsic "Truncate" x
+impl cast_i32_char: Cast I32 Char pure with cast x = intrinsic "Truncate" x
+impl cast_i64_char: Cast I64 Char pure with cast x = intrinsic "Truncate" x
+impl cast_isz_char: Cast Isz Char pure with cast x = intrinsic "Truncate" x
+
+impl cast_u8_char:  Cast U8  Char pure with cast = transmute
+impl cast_u16_char: Cast U16 Char pure with cast x = intrinsic "Truncate" x
+impl cast_u32_char: Cast U32 Char pure with cast x = intrinsic "Truncate" x
+impl cast_u64_char: Cast U64 Char pure with cast x = intrinsic "Truncate" x
+impl cast_usz_char: Cast Usz Char pure with cast x = intrinsic "Truncate" x
+
+// Other casts: TODO fill in
+impl cast_i32_usz: Cast I32 Usz pure with
+    cast x =
+        // TODO: Review. Does this match C?
+        transmute (cast x : Isz)
+
+impl cast_usz_i64: Cast Usz I64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_i64_usz: Cast I64 Usz pure with cast x = intrinsic "Truncate" x
+
+// This impl needs to be removed if chars become 32-bit
+impl cast_char_u8:  Cast Char U8  pure with cast x = intrinsic "ZeroExtend" x
+impl cast_char_i32: Cast Char I32 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_char_u64: Cast Char U64 pure with cast x = intrinsic "ZeroExtend" x
+
+impl cast_bool_i32: Cast Bool I32 pure with cast b = if b then 1 else 0
+
+// TODO: String interpolation desugars to `Cast x String`, it should use `Display` instead.
+count_digits (x: U64): U32 =
+    loop x (sum = 1) ->
+        if x < 10 then sum
+        else recur (x / 10) (sum + 1)
+
+/// Format `magnitude` in decimal, prefixed with `-` when `negative`
+decimal_string (var magnitude: U64) (negative: Bool): String =
+    sign_length: U32 = if negative then 1 else 0
+    len = count_digits magnitude + sign_length
+    buf: Ptr Char = malloc (Usz len)
+    if negative then
+        ptr_store buf '-'
+
+    var pos = Usz (len - 1)
+    while
+        digit = magnitude % 10 + U64 '0'
+        array_insert buf pos (Char digit)
+        magnitude /= 10
+        pos -= 1
+        magnitude > 0
+    do ()
+    String.from_parts buf len
+
+unsigned_to_string (x: U64): String = decimal_string x false
+
+signed_to_string (x: I64): String =
+    // Negating the minimum I64 overflows, so offset by one before negating
+    if x < 0 then decimal_string (transmute (0 - (x + 1)) + 1) true
+    else decimal_string (transmute x) false
+
+impl cast_u8_string:  Cast U8  String pure with cast x = unsigned_to_string (U64 x)
+impl cast_u16_string: Cast U16 String pure with cast x = unsigned_to_string (U64 x)
+impl cast_u32_string: Cast U32 String pure with cast x = unsigned_to_string (U64 x)
+impl cast_u64_string: Cast U64 String pure with cast x = unsigned_to_string x
+impl cast_usz_string: Cast Usz String pure with cast x = unsigned_to_string (U64 x)
+impl cast_i8_string:  Cast I8  String pure with cast x = signed_to_string (I64 x)
+impl cast_i16_string: Cast I16 String pure with cast x = signed_to_string (I64 x)
+impl cast_i32_string: Cast I32 String pure with cast x = signed_to_string (I64 x)
+impl cast_i64_string: Cast I64 String pure with cast x = signed_to_string x
+impl cast_isz_string: Cast Isz String pure with cast x = signed_to_string (I64 x)
+
+impl cast_char_string: Cast Char String pure with
+    cast c =
+        buf: Ptr Char = malloc 1
+        ptr_store buf c
+        String.from_parts buf 1
+
+impl cast_bool_string: Cast Bool String pure with
+    cast b = if b then "true" else "false"
+
+float_to_string (f: F64): String =
+    is_neg = f < 0.0
+    abs = if is_neg then 0.0 - f else f
+    uint = U64 abs
+    fraction = U64 ((abs - F64 uint) * 10_000.0)
+    prefix = if is_neg then "-" else ""
+    prefix ++ unsigned_to_string uint ++ "." ++ unsigned_to_string fraction
+
+impl cast_f32_string: Cast F32 String pure with
+    cast f = float_to_string (F64 f)
+
+impl cast_f64_string: Cast F64 String pure with
+    cast = float_to_string
+
+/// Represents a failable type cast from a to b
+trait TryCast a b (e: effect) =
+    try_cast: fn a -> b can Fail, e
+
+impl try_cast_from_cast {Cast a b e}: TryCast a b e with
+    try_cast a = cast a
+
+impl try_cast_i64_u64: TryCast I64 U64 pure with
+    try_cast (x: I64) =
+        fail_if (x < 0)
+        transmute x
+
+impl try_cast_u64: TryCast U64 I64 pure with
+    try_cast (x: U64) =
+        fail_if (x > 9_223_372_036_854_775_807)
+        transmute x

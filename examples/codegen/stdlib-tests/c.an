@@ -4,6 +4,7 @@ import Std.C.puts, putchar, strlen, system, memcmp, memcpy, malloc, free,
     copy_file
 import Std.String.from_c_string
 import Std.Fail.Fail, panic_on_fail, assert, abort_on_fail
+import Std.Mem.null, deref_ptr, array_insert
 
 mkdtemp = extern "mkdtemp": fn C.String -> C.String can Fs
 
