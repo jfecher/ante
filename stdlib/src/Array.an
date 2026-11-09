@@ -11,7 +11,7 @@ array_get_unchecked (array: ref Array n t) (i: Usz): ref t =
     ptr_to_ref (offset ptr i)
 
 /// Unsafe set without bounds-checking
-array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit =
+array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit can Mutate 'array =
     ptr: Ptr t = transmute array
     ptr_store (offset ptr i) v
 
@@ -20,7 +20,7 @@ array_get (array: ref Array n t) (index: Usz): ref t can Panic =
         panic "array_get index out of bounds"
     array_get_unchecked array index
 
-array_set (array: mut Array n t) (index: Usz) elem =
+array_set (array: mut Array n t) (index: Usz) elem: Unit can Panic, Mutate 'array =
     if index >= array_len array then
         panic "array_set index out of bounds"
     array_set_unchecked array index elem
@@ -28,7 +28,7 @@ array_set (array: mut Array n t) (index: Usz) elem =
 impl extract_array: Extract (ref 'a Array n t) Usz (ref 'a t) Panic with
     (.[]) = array_get
 
-impl insert_array: Insert (mut 'a Array n t) Usz t Panic with
+impl insert_array: Insert (mut 'a Array n t) Usz t (Panic & Mutate 'a) with
     (.[]:=) arr index value = array_set arr index value
 
 impl cmp_array {Cmp t}: Cmp (Array n t) with

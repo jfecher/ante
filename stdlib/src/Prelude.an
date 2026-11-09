@@ -229,7 +229,7 @@ impl drop_ptr: Drop (Ptr t) pure with drop _ = ()
 trait Insert collection index elem (e: effect) =
     (.[]:=): fn collection index elem -> Unit can e
 
-impl insert_ptr_usz: Insert (mut 'p Ptr t) Usz t pure with
+impl insert_ptr_usz: Insert (mut 'p Ptr t) Usz t (Mutate 'p!) with
     (.[]:=) ptr index value = ptr_store (offset ptr.* index) value
 
 effect Panic =

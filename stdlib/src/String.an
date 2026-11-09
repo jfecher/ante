@@ -105,7 +105,7 @@ impl eq_string: Eq String pure with
         l.length == r.length and
             memcmp l.data r.data (Usz l.length) == 0
 
-String.reverse (var s: String): String can Fs =
+String.reverse (var s: String): String =
     // String literals have a null refcount and read-only data, so we must
     // copy them. Only attempt the in-place reverse when the buffer is heap
     // owned and uniquely referenced.
@@ -131,7 +131,7 @@ String.reverse (var s: String): String can Fs =
 ///
 /// For example `split "foo bar  baz "` will emit all of:
 /// ["foo", "bar", "", "baz", ""]
-String.split (s: String) (c: Char) = fn () can Emit String, Fs ->
+String.split (s: String) (c: Char) = fn () can Emit String ->
     var subend = 0usz
     var substart = 0usz
     while U32 subend < s.length do
@@ -213,7 +213,7 @@ String.contains (s: ref String) (needle: ref String): Bool =
     false
 
 /// Return a substring with leading ASCII whitespace removed.
-String.trim_start (s: String): String can Fs =
+String.trim_start (s: String): String =
     len = Usz s.length
     for i in 0 .. len do
         c: Char = s.data.[i]
@@ -222,7 +222,7 @@ String.trim_start (s: String): String can Fs =
     ""
 
 /// Return a substring with trailing ASCII whitespace removed.
-String.trim_end (s: String): String can Fs =
+String.trim_end (s: String): String =
     len = Usz s.length
     var i = len
     while i > 0 do
@@ -233,43 +233,43 @@ String.trim_end (s: String): String can Fs =
     ""
 
 /// Return a substring with both leading and trailing ASCII whitespace removed.
-String.trim (s: String): String can Fs =
+String.trim (s: String): String =
     s.trim_start () |> String.trim_end
 
-String.parse_i8 (s: String): I8 can Fail, Fs =
+String.parse_i8 (s: String): I8 can Fail =
     s.parse_signed_int ()
 
-String.parse_i16 (s: String): I16 can Fail, Fs =
+String.parse_i16 (s: String): I16 can Fail =
     s.parse_signed_int ()
 
 /// Parse a base-10 I32 from a string.
 ///
 /// Fails for empty strings, sign-only strings, non-digits, or overflow.
-String.parse_i32 (s: String): I32 can Fail, Fs =
+String.parse_i32 (s: String): I32 can Fail =
     s.parse_signed_int ()
 
-String.parse_i64 (s: String): I64 can Fail, Fs =
+String.parse_i64 (s: String): I64 can Fail =
     s.parse_signed_int ()
 
-String.parse_isz (s: String): Isz can Fail, Fs =
+String.parse_isz (s: String): Isz can Fail =
     s.parse_signed_int ()
 
-String.parse_u8 (s: String): U8 can Fail, Fs =
+String.parse_u8 (s: String): U8 can Fail =
     s.parse_unsigned_int ()
 
-String.parse_u16 (s: String): U16 can Fail, Fs =
+String.parse_u16 (s: String): U16 can Fail =
     s.parse_unsigned_int ()
 
-String.parse_u32 (s: String): U32 can Fail, Fs =
+String.parse_u32 (s: String): U32 can Fail =
     s.parse_unsigned_int ()
 
-String.parse_u64 (s: String): U64 can Fail, Fs =
+String.parse_u64 (s: String): U64 can Fail =
     s.parse_unsigned_int ()
 
-String.parse_usz (s: String): Usz can Fail, Fs =
+String.parse_usz (s: String): Usz can Fail =
     s.parse_unsigned_int ()
 
-String.parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Copy t}: t can Fail, Fs, e =
+String.parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Copy t}: t can Fail, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -304,7 +304,7 @@ String.parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Co
 
     result
 
-String.parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {Copy t}: t can Fail, Fs, e =
+String.parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {Copy t}: t can Fail, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -330,34 +330,34 @@ String.parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {C
 
     result
 
-impl try_cast_string_i8: TryCast String I8 Fs with
+impl try_cast_string_i8: TryCast String I8 pure with
     try_cast s = s.parse_i8 ()
 
-impl try_cast_string_i16: TryCast String I16 Fs with
+impl try_cast_string_i16: TryCast String I16 pure with
     try_cast s = s.parse_i16 ()
 
-impl try_cast_string_i32: TryCast String I32 Fs with
+impl try_cast_string_i32: TryCast String I32 pure with
     try_cast s = s.parse_i32 ()
 
-impl try_cast_string_i64: TryCast String I64 Fs with
+impl try_cast_string_i64: TryCast String I64 pure with
     try_cast s = s.parse_i64 ()
 
-impl try_cast_string_isz: TryCast String Isz Fs with
+impl try_cast_string_isz: TryCast String Isz pure with
     try_cast s = s.parse_isz ()
 
-impl try_cast_string_u8: TryCast String U8 Fs with
+impl try_cast_string_u8: TryCast String U8 pure with
     try_cast s = s.parse_u8 ()
 
-impl try_cast_string_u16: TryCast String U16 Fs with
+impl try_cast_string_u16: TryCast String U16 pure with
     try_cast s = s.parse_u16 ()
 
-impl try_cast_string_u32: TryCast String U32 Fs with
+impl try_cast_string_u32: TryCast String U32 pure with
     try_cast s = s.parse_u32 ()
 
-impl try_cast_string_u64: TryCast String U64 Fs with
+impl try_cast_string_u64: TryCast String U64 pure with
     try_cast s = s.parse_u64 ()
 
-impl try_cast_string_usz: TryCast String Usz Fs with
+impl try_cast_string_usz: TryCast String Usz pure with
     try_cast s = s.parse_usz ()
 
 /// Copy a null-terminated C string into a new string.

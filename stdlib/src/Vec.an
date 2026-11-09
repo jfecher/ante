@@ -55,7 +55,7 @@ Vec.push (v: mut Vec t) (elem: t): Unit can Panic, Mutate 'v =
 
 /// Removes the last element of this vector and returns it.
 /// Returns None if the vector is empty.
-Vec.pop (v: mut Vec t): Maybe t can Fs, Mutate 'v =
+Vec.pop (v: mut Vec t): Maybe t can Mutate 'v =
     if v.is_empty () then None
     else
         v.len -= 1
@@ -137,7 +137,7 @@ Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e, Mut
 /// Remove an element by swapping it with the last element in O(1) time.
 /// Returns true if a swap was performed or false otherwise.
 /// Will not swap if the given index is the index of the last element.
-Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Fs, Mutate 'v =
+Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Mutate 'v =
     if idx >= v.len or idx + 1 == v.len then false
     else
         v.len := v.len - 1
@@ -145,7 +145,7 @@ Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Fs, Mutate 'v =
         true
 
 /// Reverse the elements of this vector in place.
-Vec.reverse (v: mut Vec t): Unit can Fs =
+Vec.reverse (v: mut Vec t): Unit can Mutate 'v! =
     if v.len < 2 then return ()
     half = v.len / 2
     for i in 0 .. half do
@@ -155,7 +155,7 @@ Vec.reverse (v: mut Vec t): Unit can Fs =
         array_insert v.data opposite tmp
 
 /// Swap the elements at indices `i` and `j`. Fails if either index is out of bounds.
-Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Fs =
+Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Mutate 'v! =
     if i >= v.len or j >= v.len then fail ()
     if i == j then return ()
     tmp = deref_ptr (offset v.data i)
@@ -176,7 +176,7 @@ Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic, Mutate 'v 
     v.len += 1
 
 /// Remove consecutive runs of equal elements, keeping only the first of each run.
-Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can Fs, e, Mutate 'v =
+Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can e, Mutate 'v =
     if v.len < 2 then return ()
     var write = 1
     for i in 1 .. v.len do
