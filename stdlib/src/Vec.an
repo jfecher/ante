@@ -200,24 +200,109 @@ Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
 Vec.clear (v: mut Vec t) {Drop t e}: Unit can e, Mutate 'v =
     v.truncate 0
 
-/// Sort the vector in place using `cmp` to compare elements.
-/// Insertion sort: stable, O(n^2) worst case. Good enough for small vectors.
-Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit =
-    if v.len < 2 then return ()
-    for i in 1 .. v.len do
+insertion_sort (data: Ptr t) (start: Usz) (end: Usz) (cmp: fn (ref t) (ref t) => Bool): Unit =
+    for i in (start + 1) .. end do
+        elem = deref_ptr (offset data i)
         var j = i
-        while j > 0 do
-            a = deref_ptr (offset v.data j)
-            b = deref_ptr (offset v.data (j - 1))
-            if not (cmp a b) then break
-            array_insert v.data (j - 1) a
-            array_insert v.data j b
+        while j > start and cmp (ref elem) (ptr_to_ref (offset data (j - 1))) do
+            array_insert data j (deref_ptr (offset data (j - 1)))
             j -= 1
+        array_insert data j elem
+
+merge_runs (src: Ptr t) (dst: Ptr t) (lo: Usz) (mid: Usz) (hi: Usz) (cmp: fn (ref t) (ref t) => Bool): Unit =
+    elem_size = size_of (MkType: Type t)
+    var left = lo
+    var right = mid
+    var out = lo
+    while left < mid and right < hi do
+        if cmp (ptr_to_ref (offset src right)) (ptr_to_ref (offset src left)) then
+            array_insert dst out (deref_ptr (offset src right))
+            right += 1
+        else
+            array_insert dst out (deref_ptr (offset src left))
+            left += 1
+        out += 1
+    memcpy (offset dst out) (offset src left) ((mid - left) * elem_size)
+    memcpy (offset dst (out + mid - left)) (offset src right) ((hi - right) * elem_size)
+    ()
+
+merge_sort (data: Ptr t) (n: Usz) (cmp: fn (ref t) (ref t) => Bool): Unit =
+    run_len = 16usz
+    var run_start = 0usz
+    while run_start < n do
+        run_end = if n - run_start < run_len then n else run_start + run_len
+        insertion_sort data run_start run_end cmp
+        run_start := run_end
+
+    if n <= run_len then return ()
+
+    elem_size = size_of (MkType: Type t)
+    buffer: Ptr t = malloc (n * elem_size)
+    var src = data
+    var dst = buffer
+    var width = run_len
+    while width < n do
+        var lo = 0usz
+        while lo < n do
+            mid = if n - lo < width then n else lo + width
+            hi = if n - mid < width then n else mid + width
+            merge_runs src dst lo mid hi cmp
+            lo := hi
+        tmp = src
+        src := dst
+        dst := tmp
+        width *= 2
+
+    if src != data then
+        memcpy data src (n * elem_size)
+    free buffer
+
+/// Sort the vector in place using `cmp` to compare elements.
+Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit can Mutate 'v! =
+    merge_sort v.data v.len cmp
 
 /// Sort the vector in place using the `Cmp` ordering.
-Vec.sort (v: mut Vec t) {Cmp t}: Unit can Fs =
+Vec.sort (v: mut Vec t) {Cmp t}: Unit can Mutate 'v! =
     v.sort_by (<)
 
+Vec.windows (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v t) ->
+    if n != 0 and n <= v.len then
+        for i in 0 .. v.len - n + 1 do
+            emit (Slice (transmute (offset v.data i)) n)
+
+Vec.chunks (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v t) ->
+    if n != 0 then
+        var start = 0usz
+        while start < v.len do
+            len = if v.len - start < n then v.len - start else n
+            emit (Slice (transmute (offset v.data start)) len)
+            start += len
+
+Vec.permutations (v: ref 'v Vec t) = fn () can Emit (Slice 'v t) ->
+    n = v.len
+    elem_size = size_of (MkType: Type t)
+    buffer: Ptr t = malloc (n * elem_size)
+    memcpy buffer v.data (n * elem_size)
+    counters: Ptr Usz = calloc n (size_of (MkType: Type Usz))
+
+    emit (Slice (transmute buffer) n)
+    var i = 1usz
+    while i < n do
+        count = deref_ptr (offset counters i)
+        if count < i then
+            other = if i % 2 == 0 then 0 else count
+            tmp = deref_ptr (offset buffer other)
+            array_insert buffer other (deref_ptr (offset buffer i))
+            array_insert buffer i tmp
+            emit (Slice (transmute buffer) n)
+            array_insert counters i (count + 1)
+            i := 1
+        else
+            array_insert counters i 0
+            i += 1
+
+    free buffer
+    free counters
 
 impl print_vec {p: Display t e}: Display (Vec t) e with
     print v =

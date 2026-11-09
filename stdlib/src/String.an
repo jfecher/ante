@@ -143,6 +143,29 @@ String.split (s: String) (c: Char) = fn () can Emit String ->
 
     emit (s.substr substart subend)
 
+String.split_str (s: String) (separator: String) = fn () can Emit String ->
+    separator_len = Usz separator.length
+    len = Usz s.length
+    var start = 0usz
+    var i = 0usz
+
+    while separator_len != 0 and i + separator_len <= len do
+        if memcmp (offset_bytes s.data i) separator.data separator_len == 0 then
+            emit ((clone s).substr start i)
+            i += separator_len
+            start := i
+        else
+            i += 1
+
+    emit (s.substr start len)
+
+/// Emit each line of a string. Excludes the newline character.
+/// Empty lines are emitted as empty strings.
+///
+/// Shorthand for `s.split '\n'`
+String.lines (s: String) =
+    s.split '\n'
+
 /// Returns a substring into the given string. The given
 /// `begin..end` range represents an end-exclusive byte range
 /// of the substring to create.
