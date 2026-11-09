@@ -324,11 +324,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let bubbles_up = self.pull_transitive_implicits(&mut stays_here, candidates_to_bubble, &mut kept_vars);
 
             if stays_here.is_empty() {
+                let resolved_early = &self.item.resolved_early_implicits;
+                let has_delayed_implicits = (bubbles_up.iter())
+                    .any(|implicit| !implicit.optional && !resolved_early.contains_key(&implicit.destination));
                 let parent = self.implicits.last_mut().unwrap();
                 scope.delayed_implicits = bubbles_up;
                 scope.implicits_in_scope.clear(); // local names die with this scope, must not leak up
                 parent.extend(scope);
-                return true;
+                return has_delayed_implicits;
             }
 
             // Keep here only int/float vars whose id appears in a kept implicit's target. The
