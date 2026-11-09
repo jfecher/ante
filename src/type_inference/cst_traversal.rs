@@ -16,7 +16,7 @@ use crate::{
         ImplState, Locateable, TypeChecker, Variance,
         errors::TypeErrorKind,
         get_type::{get_partial_type, implicit_result_omitted_type_args, try_get_generalized_type},
-        places::Place,
+        places::{Mutability, Place, PlaceMode},
         types::{self, FunctionType, ParameterType, Type, TypeBindings},
     },
 };
@@ -647,9 +647,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Taken before rewriting a trait method callee so its dictionary counts as one of this call's implicits
         let implicit_count_before_call = self.delayed_implicits_count();
+        let index_method = self.index_method(call.function);
 
         let mut call = Cow::Borrowed(call);
         let method_type = self.rewrite_trait_method_callee(call.function, &call.arguments);
+
+        let index_method = index_method.filter(|_| matches!(method_type, Some((_, None))));
         if let Some((_, Some(dictionary_index))) = method_type {
             call.to_mut().arguments.remove(dictionary_index);
             self.current_extended_context_mut().insert_expr(call_expr, Expr::Call((*call).clone()));
@@ -701,7 +704,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut explicit_implicits = Vec::new();
         for (index, (arg, expected_arg_type)) in call.arguments.iter().zip(expected_parameter_types).enumerate() {
             let kind = TypeErrorKind::CallArgument { index };
-            let actual = self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands);
+            let actual = match index_method {
+                Some(method) if index == 0 => self.check_index_collection(arg.expr, method, &expected_arg_type.typ),
+                _ => self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands),
+            };
             if arg.is_implicit {
                 explicit_implicits.push((expected_arg_type.typ, actual));
             }
@@ -709,7 +715,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // FIXME: Another related hack. Try to bind the return type now, this time if it has no unbound
         // type variables. Doing so results in some better results when resolving implicits early below.
-        if expected.free_vars(&self.bindings).is_empty()
+        if index_method.is_none()
+            && expected.free_vars(&self.bindings).is_empty()
             && !self.needs_function_row_coercion(&actual_return_type, expected)
             && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
         {
@@ -724,6 +731,55 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // effect row since it is given the evidence for its own effects by the outer call.
         let widen_row = position == ExprPosition::Value;
         self.coerce_with(&actual_return_type, expected, call_expr, None, TypeErrorKind::CallReturn, widen_row)
+    }
+
+    /// If `function` names the method of `Extract` or `Insert`, return it
+    fn index_method(&self, function: ExprId) -> Option<TraitMember> {
+        let &Expr::Variable(path) = &self.current_extended_context()[function] else { return None };
+        let Some(Origin::TraitMember(member)) = self.path_origin(path) else { return None };
+        let name = member.trait_type_name();
+        (name == self.extract_name || name == self.insert_name).then_some(member)
+    }
+
+    /// Check the collection of an index call.
+    /// An unknown collection type is assumed to be borrowed since most impls are.
+    /// TODO: This hack is currently only needed because in other calls we only auto-ref
+    /// on trait methods that always need refs, regardless of impls.
+    fn check_index_collection(&mut self, collection: ExprId, method: TraitMember, expected: &Type) -> Type {
+        let kind = TypeErrorKind::CallArgument { index: 0 };
+        let hint = self.next_type_variable();
+        let actual = self.infer_expr(collection, &hint);
+
+        if let Some((_, element)) = actual.reference_element(&self.bindings) {
+            if !self.index_impl_exists(method, &actual) && self.index_impl_exists(method, &element) {
+                self.coerce(&actual, &element, collection, None, kind.clone());
+                self.unify(&element, expected, kind, collection);
+                return element;
+            }
+        } else {
+            let reference_kind = match method.trait_type_name() == self.insert_name {
+                true => ReferenceKind::Mut,
+                false => ReferenceKind::Ref,
+            };
+            let reference = self.reference_type(reference_kind, self.next_type_variable(), actual.clone());
+            let borrow = !self.is_concrete_type_or_numeric_typevar(&actual)
+                || (!self.index_impl_exists(method, &actual) && self.index_impl_exists(method, &reference));
+
+            if borrow {
+                let actual = self.coerce(&actual, &reference, collection, None, kind.clone());
+                self.unify(&reference, expected, kind, collection);
+                return actual;
+            }
+        }
+        self.coerce(&actual, expected, collection, None, kind)
+    }
+
+    /// Whether an impl of the trait of index method `method` could exist for `collection`
+    fn index_impl_exists(&mut self, method: TraitMember, collection: &Type) -> bool {
+        let trait_type = Type::UserDefined(Origin::TopLevelDefinition(method.trait_type_name()));
+        let rest = (1..method.generic_count).map(|_| self.next_type_variable());
+        let arguments = std::iter::once(collection.clone()).chain(rest).collect();
+        self.implicit_candidate_exists(&Type::Application(Shared::new(trait_type), Shared::new(arguments)))
     }
 
     /// If `call` is `v.push 3`, try to resolve `push` as a function in the module where `v`'s type
@@ -1036,9 +1092,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, mut object: ExprId, struct_type: &Type, first_param: &Type, location: &Location, call_expr: ExprId,
     ) -> Option<ExprId> {
         // If the first param expects a reference, unwrap both sides and auto-ref the object if needed.
-        let (param_type, struct_base, auto_ref) = if let Some((ref_kind, inner_type)) =
+        let (param_type, struct_base, auto_ref) = if let Some((places, inner_type)) =
             first_param.reference_element(&self.bindings)
         {
+            let ref_kind = match self.uniform_mode(&places) {
+                Some(PlaceMode::Mut) => ReferenceKind::Mut,
+                Some(PlaceMode::Read) => ReferenceKind::Read,
+                None => ReferenceKind::Ref,
+            };
             let (struct_base_type, should_wrap_object_in_ref) = match struct_type.reference_element(&self.bindings) {
                 Some((_, element)) => (element, false),
                 None => (struct_type.clone(), true),
@@ -1052,7 +1113,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.unify(&param_type, &struct_base, TypeErrorKind::MethodObject, call_expr);
 
         if let Some(ref_kind) = auto_ref {
-            let ref_expr = Expr::Reference(cst::Reference { kind: ref_kind, rhs: object });
+            let ref_expr = Expr::Reference(cst::Reference { kind: ref_kind, rhs: object, implicit: false });
             object = self.push_expr(ref_expr, first_param.clone(), location.clone());
         }
 
@@ -1060,7 +1121,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Ensure `expr` in `mut expr` is actually mutable
-    fn check_mutable_borrow_of_place(&mut self, object: ExprId) {
+    pub(super) fn check_mutable_borrow_of_place(&mut self, object: ExprId) {
         let Some(root) = self.owned_place_root(object) else { return };
         if self.item.mutable_definitions.contains(&root) {
             return;
@@ -1150,31 +1211,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn infer_reference(&mut self, reference: &cst::Reference, expected: &Type) -> Type {
-        let constructor = Type::reference(reference.kind);
-
-        // mut/uniq reborrow an existing mut/uniq ref instead of nesting into `mut (mut t)`, ref/imm still nest.
-        // TODO: We shouldn't special case reference kinds... much
-        if matches!(reference.kind, ReferenceKind::Mut | ReferenceKind::Uniq) {
-            let hint = self.next_type_variable();
-            let rhs_type = self.infer_expr(reference.rhs, &hint);
-
-            let rhs_type_followed = self.follow_type(&rhs_type).clone();
-            let (place, element) = match rhs_type_followed.reference_element(&self.bindings) {
-                Some((inner_kind, inner_element)) if matches!(inner_kind, ReferenceKind::Mut | ReferenceKind::Uniq) => {
-                    // Reborrow
-                    // TODO: Remove, `mut (mut e)` should be a nested reference not a reborrow
-                    let place = rhs_type_followed.reference_places(&self.bindings).unwrap_or(Type::Places(None));
-                    (place, inner_element)
-                },
-                _ => {
-                    self.check_mutable_borrow_of_place(reference.rhs);
-                    (self.infer_place(reference.rhs), rhs_type)
-                },
-            };
-
-            return Type::Application(Shared::new(constructor), Shared::new(vec![place, element]));
-        }
-
         // Use the expected element type as a hint when it is available
         let element_hint = match self.follow_type(expected) {
             Type::Application(_, args) if args.len() == 2 => args[1].clone(),
@@ -1182,9 +1218,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         let element = self.infer_expr(reference.rhs, &element_hint);
+        if reference.implicit && element.reference_element(&self.bindings).is_some() {
+            return element;
+        }
+        if reference.kind == ReferenceKind::Mut {
+            self.check_mutable_borrow_of_place(reference.rhs);
+        }
 
         let place = self.infer_place(reference.rhs);
-        Type::Application(Shared::new(constructor), Shared::new(vec![place, element]))
+        self.reference_type(reference.kind, place, element)
     }
 
     fn infer_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) -> Type {
@@ -1206,7 +1248,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Map each field name to its index in the type's declaration order.
         // This is used when lowering to MIR when structs are converted into tuples.
         let mut field_order = BTreeMap::new();
-        let field_types = self.get_field_types(&typ, None);
+        let field_types = match impl_ {
+            Some(_) => self.impl_member_types(&typ),
+            None => self.get_field_types(&typ, None),
+        };
         let owner = self.field_owner(&typ);
         let methods = impl_.map_or_else(Default::default, |(_, trait_)| trait_.method_flags(self.compiler));
 
@@ -1442,8 +1487,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let new_expr = self.auto_ref_coercion(assignment.lhs, ReferenceKind::Mut, lhs_type.clone());
             let Expr::Reference(reference) = &new_expr else { unreachable!() };
             let place = self.infer_place(reference.rhs);
-            let new_type =
-                Type::Application(Shared::new(Type::reference(ReferenceKind::Mut)), Shared::new(vec![place, lhs_type]));
+            let new_type = self.reference_type(ReferenceKind::Mut, place, lhs_type);
             self.current_extended_context_mut().insert_expr(assignment.lhs, new_expr);
             self.expr_types.insert(assignment.lhs, new_type.clone());
             lhs_type = new_type;
@@ -1453,7 +1497,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // the RHS should match the inner (pointee) type rather than the reference wrapper.
         let lhs_followed = self.follow_type(&lhs_type);
         let lhs_is_ref = matches!(&lhs_followed, Type::Application(c, _)
-            if matches!(self.follow_type(c), Type::Primitive(types::PrimitiveType::Reference(_))));
+            if matches!(self.follow_type(c), Type::Primitive(types::PrimitiveType::Reference)));
 
         let value_type = if lhs_is_ref {
             match self.follow_type(&lhs_type) {
@@ -1501,6 +1545,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);
 
         if let Some(places) = self.assignment_mutated_places(assignment.lhs) {
+            self.constrain_mutable(&places);
             self.propagate_effects(&self.mutate_effect(places), assignment.lhs);
         }
 
@@ -1510,7 +1555,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// The places an assignment to `lhs` mutates
     pub(super) fn assignment_mutated_places(&self, lhs: ExprId) -> Option<Type> {
         if let Some(typ) = self.expr_types.get(&lhs)
-            && self.is_mut_or_uniq_reference(typ)
+            && self.is_mutable_reference(typ)
         {
             return typ.reference_places(&self.bindings);
         }
@@ -1584,7 +1629,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A place is mutable if any of these hold:
     /// - it is declared with `var`
-    /// - the local's type is a `mut`/`uniq` reference
+    /// - the local's type is a mutable reference
     /// - it is a deref of a mutable place
     /// - it is a field access `l.r` where `l` is a mutable place
     fn check_lhs_mutable(&self, lhs: ExprId, lvalue: bool) -> Result<(), Diagnostic> {
@@ -1663,14 +1708,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Some(Err(Diagnostic::AssignThroughImmutableReference { typ, location }))
     }
 
-    /// A `mut`/`uniq` reference or a `shared mut` type
+    /// A mutable reference or a `shared mut` type
     fn is_mutable_indirection(&self, typ: &Type) -> bool {
-        self.is_mut_or_uniq_reference(typ) || self.is_shared_mut_user_defined(typ)
+        self.is_mutable_reference(typ) || self.is_shared_mut_user_defined(typ)
     }
 
-    fn is_mut_or_uniq_reference(&self, typ: &Type) -> bool {
+    fn is_mutable_reference(&self, typ: &Type) -> bool {
         match typ.reference_element(&self.bindings) {
-            Some((kind, _)) => matches!(kind, ReferenceKind::Mut | ReferenceKind::Uniq),
+            Some((places, _)) => self.places_mutability(&places, &TypeBindings::default()) == Mutability::Mutable,
             None => false,
         }
     }

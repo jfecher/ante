@@ -1,0 +1,70 @@
+import Std.Vec.Vec, of, get
+import Std.Stream.stream_array
+import Std.Fail.Fail
+
+// A polymorphic reference may be read-only so it can't be mutated
+set_poly (r: ref 'p I32): Unit =
+    r.* := 1
+
+// Nor can it be made mutable
+to_mut (r: ref 'p I32): mut 'p I32 = r
+
+use_mut (_: mut I32): Unit = ()
+
+// Anything reached through a reference to a non-var is read-only
+set_first (): Unit can Fail, Panic =
+    v = Vec.of [1, 2]
+    v.get 0 := 5
+
+main () =
+    x = 1
+    var y = 2
+
+    // `x` is not a var so references to it are read-only
+    rx = ref x
+    rx.* := 3
+
+    // A union is only mutable if each of its places is
+    either = if true then ref x else ref y
+    either.* := 4
+
+    // `read` is never mutable
+    use_mut (read y)
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/polymorphic_ref_errors.an:7:5
+// 6 | set_poly (r: ref 'p I32): Unit =
+// 7 |     r.* := 1	// error: Cannot assign to r, declare it with var to make it mutable
+//   |     ^
+// 
+// examples/typechecking/polymorphic_ref_errors.an:10:38
+//  9 | // Nor can it be made mutable
+//    | // error: The body of this function has type ref 'p I32 but it is expected to return mut 'p I32
+// 10 | to_mut (r: ref 'p I32): mut 'p I32 = r
+//    |                                      ^
+// 
+// examples/typechecking/polymorphic_ref_errors.an:17:6
+// 16 |     v = Vec.of [1, 2]
+//    |     // error: Cannot assign through a value of type ref 'v! _, a mut reference is required
+// 17 |     v.get 0 := 5
+//    |      ^^^^^^
+// 
+// examples/typechecking/polymorphic_ref_errors.an:25:5
+// 24 |     rx = ref x
+// 25 |     rx.* := 3	// error: Cannot assign to rx, declare it with var to make it mutable
+//    |     ^^
+// 
+// examples/typechecking/polymorphic_ref_errors.an:29:5
+// 28 |     either = if true then ref x else ref y
+// 29 |     either.* := 4	// error: Cannot assign to either, declare it with var to make it mutable
+//    |     ^^^^^^
+// 
+// examples/typechecking/polymorphic_ref_errors.an:32:14
+// 31 |     // `read` is never mutable
+// 32 |     use_mut (read y)	// error: Argument 1 has type read 'y I32 but mut I32 was expected
+//    |              ^^^^^^
+// 
+// Found 6 errors and 0 warnings
+

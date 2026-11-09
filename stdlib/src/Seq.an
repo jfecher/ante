@@ -95,7 +95,7 @@ Seq.with_capacity (capacity: Usz): Seq t =
     else
         size = size_of (MkType: Type (Data t)) + (capacity - 1) * size_of (MkType: Type t)
         buffer: Ptr (Data t) = malloc size
-        buffer_ref = ptr_to_mut buffer
+        buffer_ref = ptr_to_ref buffer
 
         buffer_ref.direct_rc := 1
         buffer_ref.fork_rc := 0
@@ -112,7 +112,7 @@ Seq.push (seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
         ptr_store data_ptr (Data 1 0 1 1 0 (null ()) elem)
         return Seq 1 data_ptr
 
-    data_ref = ptr_to_mut seq.data
+    data_ref = ptr_to_ref seq.data
 
     // fast case: just insert the new element.
     if seq.len < data_ref.cap and (seq.len == data_ref.len or (data_ref.direct_rc == 1 and data_ref.fork_rc == 0)) then
@@ -123,7 +123,7 @@ Seq.push (seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
         // and thus need to drop them here before writing over any.
         if seq.len < data_ref.len then
             old = offset seq.data.elements (Usz seq.len)
-            Drop.drop (ptr_to_mut old)
+            Drop.drop (ptr_to_ref old)
         else
             // Writing to len above would shrink the max-written-to len
             data_ref.len := new_len
@@ -148,7 +148,7 @@ Seq.push (seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
         data_ref.fork_rc += 1
         data_ref.direct_rc -= 1
         buffer: Ptr (Data t) = memcpy (malloc size) seq.data old_size
-        buffer_ref = ptr_to_mut buffer
+        buffer_ref = ptr_to_ref buffer
         buffer_ref.fork_rc := 0
         buffer_ref.fork_point := seq.len
         buffer_ref.parent := seq.data
@@ -156,7 +156,7 @@ Seq.push (seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
     else
         realloc seq.data size
 
-    buffer_ref = ptr_to_mut buffer
+    buffer_ref = ptr_to_ref buffer
     buffer_ref.len := seq.len + 1
     buffer_ref.cap := new_cap
     buffer_ref.direct_rc := 1
@@ -189,18 +189,13 @@ Seq.get_copied (seq: ref Seq t) (index: U32) {Copy t}: Maybe t =
 Seq.get (seq: ref Seq t) (index: U32): Maybe (ref t) =
     if index < seq.len then
         elem = offset seq.data.elements (Usz index)
-        Some (ptr_to_mut elem)
+        Some (ptr_to_ref elem)
     else None
 
-Seq.iter (seq: ref Seq t) (f: fn (ref t) => Unit): Unit =
+Seq.iter (seq: ref Seq t) (f: fn (ref 'seq t) => Unit): Unit =
     for i in 0 .. seq.len do
         elem = offset seq.data.elements (Usz i)
-        f (ptr_to_mut elem)
-
-Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) => Unit): Unit =
-    for i in 0 .. seq.len do
-        elem = offset seq.data.elements (Usz i)
-        f (ptr_to_mut elem)
+        f (ptr_to_ref elem)
 
 // Paper cut #2: Copy t
 impl print_seq {p: Display t e} {Copy t}: Display (Seq t) e with
@@ -209,7 +204,7 @@ impl print_seq {p: Display t e} {Copy t}: Display (Seq t) e with
         for i in 0 .. seq.len do
             if i != 0 then print ", "
             elem = offset seq.data.elements (Usz i)
-            e: t = (ptr_to_mut elem).*
+            e: t = (ptr_to_ref elem).*
             print e
         print "]"
 
@@ -217,14 +212,14 @@ impl clone_seq: Clone (Seq t) with
     // bug: multiple matching implicits if we just return `seq`
     clone (seq: ref (Seq t)) =
         if seq.data != null () then
-            rc = ptr_to_mut seq.data.direct_rc
+            rc = ptr_to_ref seq.data.direct_rc
             rc += 1
         deref seq
 
 impl drop_seq {Drop t e}: Drop (Seq t) e with
     drop (seq: mut Seq t) =
         if seq.data != null () then
-            data = ptr_to_mut seq.data
+            data = ptr_to_ref seq.data
             if data.direct_rc > 1 then
                 data.direct_rc -= 1
             else
@@ -236,17 +231,17 @@ impl drop_seq {Drop t e}: Drop (Seq t) e with
 /// direct_rc == 0 and fork_rc == 1, this child is its sole referent so
 /// we remove the parent from the chain and place the child in its place.
 collapse_parents (child: Ptr (Data t)) {Drop t e}: Unit can e =
-    child = ptr_to_mut child
+    child = ptr_to_ref child
     var parent_ptr = child.parent
     while parent_ptr != null () do
-        parent = ptr_to_mut parent_ptr
+        parent = ptr_to_ref parent_ptr
         if parent.direct_rc != 0 or parent.fork_rc != 1 then
             parent_ptr := null ()
         else
             // Drop parent's private tail, otherwise it'd be leaked
             for i in child.fork_point .. parent.len do
                 elem = offset parent_ptr.elements (Usz i)
-                Drop.drop (ptr_to_mut elem)
+                Drop.drop (ptr_to_ref elem)
 
             child.fork_point := parent.fork_point
             child.parent := parent.parent
@@ -257,17 +252,17 @@ collapse_parents (child: Ptr (Data t)) {Drop t e}: Unit can e =
 /// freeing its allocation when both its rcs reach zero.
 drop_data (var data: Ptr (Data t)) {Drop t e}: Unit can e =
     while data != null () do
-        cur = ptr_to_mut data
+        cur = ptr_to_ref data
         for i in cur.fork_point .. cur.len do
             elem = offset data.elements (Usz i)
-            Drop.drop (ptr_to_mut elem)
+            Drop.drop (ptr_to_ref elem)
 
         parent = cur.parent
         free data
         data := parent
 
         if data != null () then
-            parent_ref = ptr_to_mut data
+            parent_ref = ptr_to_ref data
             parent_ref.fork_rc -= 1
             if parent_ref.direct_rc != 0 or parent_ref.fork_rc != 0 then
                 data := null ()
@@ -276,7 +271,7 @@ impl stream_seq: Stream (Seq a) (ref a) pure with
     stream seq =
         for i in 0 .. seq.len do
             elem = offset seq.data.elements (Usz i)
-            emit (ptr_to_mut elem)
+            emit (ptr_to_ref elem)
 
 impl eq_seq {Eq t e}: Eq (Seq t) e with
     (==) l r =
@@ -284,8 +279,8 @@ impl eq_seq {Eq t e}: Eq (Seq t) e with
             return false
 
         for i in 0 .. l.len do
-            le = ptr_to_mut (offset l.data.elements (Usz i))
-            re = ptr_to_mut (offset r.data.elements (Usz i))
+            le = ptr_to_ref (offset l.data.elements (Usz i))
+            re = ptr_to_ref (offset r.data.elements (Usz i))
             if le != re then
                 return false
         true

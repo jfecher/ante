@@ -4,6 +4,7 @@ use crate::shared_arc::Shared;
 
 use crate::type_inference::{
     TypeChecker, Variance,
+    places::{join_entries, same_place},
     types::{Type, TypeBindings},
 };
 
@@ -15,6 +16,17 @@ pub(super) enum RowMode {
     /// A position where the mir builder can adapt a wider effect set so subtyping is possible
     Coercible,
     /// Both rows must unify exactly
+    Exact,
+}
+
+/// Which side of a comparison a row's open end being bound is on
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RowEnd {
+    /// The end of the expected row, bound to actual entries
+    Expected,
+    /// The end of the actual row, bound to expected entries
+    Actual,
+    /// Either end when unifying
     Exact,
 }
 
@@ -34,7 +46,7 @@ impl RowKind {
                 typ.effect_head(&no_bindings, &no_bindings).map(Type::UserDefined)
             },
             RowKind::Places => {
-                if let Type::Place(_) = typ {
+                if let Type::Place(..) = typ {
                     Some(typ.clone())
                 } else {
                     None
@@ -71,10 +83,16 @@ pub(super) struct RowMatch {
     pub(super) b_leftover: Vec<Type>,
 }
 
-/// True if this entry is an unbound type variable acting as the row's open tail.
-/// Entries must already be zonked.
+/// True if this entry is an unbound type variable acting as the row's open tail, possibly
+/// with a mode for places like `mut ?t`. Entries must already be zonked.
 pub(super) fn is_open(typ: &Type) -> bool {
-    matches!(typ, Type::Variable(_))
+    match typ {
+        Type::Variable(_) => true,
+        Type::PlaceProjection(base, segments, Some(_)) => {
+            segments.is_empty() && matches!(base.as_ref(), Type::Variable(_))
+        },
+        _ => false,
+    }
 }
 
 /// Remove any open tails both rows share
@@ -99,8 +117,8 @@ pub(super) fn flatten_row_into(
     for entry in entries {
         let followed = entry.follow_two(bindings, more_bindings);
         // Push the segments into whatever the base is bound to
-        if let Type::PlaceProjection(base, segments) = &followed {
-            match Type::project_place(base, segments, bindings, more_bindings) {
+        if let Type::PlaceProjection(base, segments, mode) = &followed {
+            match Type::project_place_with_mode(base, segments, *mode, bindings, more_bindings) {
                 projection @ Type::PlaceProjection(..) => found.push(projection),
                 projected => flatten_row_into(kind, &[projected], found, bindings, more_bindings),
             }
@@ -130,7 +148,16 @@ pub(super) fn sort_and_dedup_row(kind: RowKind, entries: &mut Vec<Type>) {
         (is_open(entry), head.is_none(), head)
     };
     entries.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)).then_with(|| a.cmp(b)));
-    entries.dedup();
+    match kind {
+        RowKind::Effects => entries.dedup(),
+        RowKind::Places => entries.dedup_by(|entry, previous| {
+            let same = same_place(entry, previous);
+            if same {
+                *previous = join_entries(previous.clone(), entry.clone());
+            }
+            same
+        }),
+    }
 }
 
 /// Flatten, follow, sort, and deduplicate `entries` (dedup is by exact equality, not unification)
@@ -193,9 +220,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }))
     }
 
-    /// Row-subtype two rows, adding `a`'s open ends to `b` rather than binding them to `b`'s other entries
+    /// Row-subtype two rows, adding `a`'s open ends to `b` rather than binding them to `b`'s other entries.
+    /// `sides` are how `a`'s and `b`'s ends are bound, see [RowEnd].
     pub(super) fn row_subtype_generic(
-        &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
+        &self, kind: RowKind, m: RowMatch, sides: (RowEnd, RowEnd), new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         let RowMatch { mut a_open, b_open, mut a_leftover, b_leftover } = m;
         a_open.retain(|a_end| !b_open.contains(a_end));
@@ -206,22 +234,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Some(b_end) => {
                 a_leftover.extend(a_open);
                 a_leftover.push(self.next_type_variable());
-                self.bind_row_end(kind, b_end, &a_leftover, new_bindings)
+                self.bind_end(kind, b_end, &a_leftover, sides.1, new_bindings)
             },
             None if !a_leftover.is_empty() => Err(()),
-            None => a_open.iter().try_for_each(|a_end| self.bind_row_end(kind, a_end, &b_leftover, new_bindings)),
+            None => a_open.iter().try_for_each(|a_end| self.bind_end(kind, a_end, &b_leftover, sides.0, new_bindings)),
         }
     }
 
     /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
     pub(super) fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let Some(m) = self.match_rows(a, b, Variance::Contravariant, new_bindings) else { return Ok(()) };
-        self.row_subtype_generic(RowKind::Effects, m, new_bindings)
+        self.row_subtype_generic(RowKind::Effects, m, (RowEnd::Exact, RowEnd::Exact), new_bindings)
     }
 
     /// Unify two rows, both must end up with the same set of entries.
+    /// `sides` are how `a`'s and `b`'s ends are bound, see [RowEnd].
     pub(super) fn row_unify_generic(
-        &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
+        &self, kind: RowKind, m: RowMatch, sides: (RowEnd, RowEnd), new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
         let (mut a_open, mut b_open) = cancel_shared_open(a_open, b_open);
@@ -229,10 +258,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Against a closed row, every open end is bound to that row's remaining entries
         match (a_open.is_empty(), b_open.is_empty()) {
             (false, true) if a_leftover.is_empty() => {
-                return a_open.iter().try_for_each(|end| self.bind_row_end(kind, end, &b_leftover, new_bindings));
+                return a_open.iter().try_for_each(|end| self.bind_end(kind, end, &b_leftover, sides.0, new_bindings));
             },
             (true, false) if b_leftover.is_empty() => {
-                return b_open.iter().try_for_each(|end| self.bind_row_end(kind, end, &a_leftover, new_bindings));
+                return b_open.iter().try_for_each(|end| self.bind_end(kind, end, &a_leftover, sides.1, new_bindings));
             },
             _ => (),
         }
@@ -256,8 +285,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let fresh = self.next_type_variable();
                 a_leftover.push(fresh.clone());
                 b_leftover.push(fresh);
-                self.bind_row_end(kind, a_end, &b_leftover, new_bindings)?;
-                self.bind_row_end(kind, b_end, &a_leftover, new_bindings)
+                self.bind_end(kind, a_end, &b_leftover, sides.0, new_bindings)?;
+                self.bind_end(kind, b_end, &a_leftover, sides.1, new_bindings)
             },
         }
     }
@@ -265,7 +294,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Unify two effect rows
     pub(super) fn row_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let Some(m) = self.match_rows(a, b, Variance::Invariant, new_bindings) else { return Ok(()) };
-        self.row_unify_generic(RowKind::Effects, m, new_bindings)
+        self.row_unify_generic(RowKind::Effects, m, (RowEnd::Exact, RowEnd::Exact), new_bindings)
+    }
+
+    /// Bind a row's open end to the row of `entries`, checking any mode a places end has
+    fn bind_end(
+        &self, kind: RowKind, end: &Type, entries: &[Type], side: RowEnd, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        match kind {
+            RowKind::Effects => self.bind_row_end(kind, end, entries, new_bindings),
+            RowKind::Places => self.bind_places_end(end, entries, side, new_bindings),
+        }
     }
 
     /// Bind a row's open end to the row of `entries`

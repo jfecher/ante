@@ -1,0 +1,50 @@
+import Std.Slice.Slice, MutSlice, slice, get_unchecked, extract_slice, insert_slice, copy_slice
+import Std.Vec.Vec, extract_vec
+import Std.Fail.assert, abort_on_fail, try, fail
+
+first (s: Slice 'a I32): ref 'a I32 can Panic =
+    s.[0]
+
+swap_first_two (s: MutSlice 'a I32): Unit can Panic, Mutate 'a =
+    tmp = s.[0].*
+    s.[0] := s.[1].*
+    s.[1] := tmp
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    abort_on_fail do
+
+    arr = [1, 2, 3]
+    s = slice arr
+    assert <| s.[1] == 2
+    x: I32 = s.[0]
+    assert <| x == 1
+
+    assert <| first s == 1
+    assert <| s.get_unchecked 2 == 3
+
+    var writable = [10, 20, 30]
+    m = slice (mut writable)
+    m.[1] := 21
+    m.[2] += 1
+    r = m.[0]
+    r := 11
+    assert <| writable.[0] == 11
+    assert <| writable.[1] == 21
+    assert <| writable.[2] == 31
+
+    swap_first_two (slice (mut writable))
+    assert <| writable.[0] == 21
+    assert <| writable.[1] == 11
+
+    var slices = Vec.empty ()
+    slices.push s
+    assert <| slices.[0].[2] == 3
+
+    // s.[3] is out of bounds
+    handle s.[3]; fail () : Unit  // TODO: The `: Unit` here is necessary
+    | panic _ -> () // expected
+
+// args: --delete-binary --no-color
+// expected stdout:

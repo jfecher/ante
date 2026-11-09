@@ -142,7 +142,7 @@ where
             TCType::U32(n) => Type::U32(*n),
             // A row used as a type (e.g. a row-generic instantiation binding) is its evidence.
             TCType::Effects(_) => self.evidence_type(typ),
-            TCType::Place(_) | TCType::Places(_) | TCType::PlaceProjection(..) => Type::UNIT,
+            TCType::Place(..) | TCType::Places(_) | TCType::PlaceProjection(..) => Type::UNIT,
         }
     }
 
@@ -488,7 +488,7 @@ where
             crate::type_inference::types::PrimitiveType::Never => Type::UNIT,
             crate::type_inference::types::PrimitiveType::Int(kind) => Type::int(kind),
             crate::type_inference::types::PrimitiveType::Float(kind) => Type::float(kind),
-            crate::type_inference::types::PrimitiveType::Reference(..) => Type::POINTER,
+            crate::type_inference::types::PrimitiveType::Reference => Type::POINTER,
             crate::type_inference::types::PrimitiveType::Array => {
                 unreachable!("bare Array reached MIR; applied form is handled in convert_type")
             },
