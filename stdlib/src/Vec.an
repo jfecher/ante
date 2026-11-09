@@ -7,7 +7,7 @@ import Std.Slice.Slice
 export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
     Vec.remove_index, Vec.remove_first, Vec.remove_indices, Vec.remove_all, Vec.swap_last,
     Vec.reverse, Vec.swap, Vec.insert, Vec.dedup, Vec.truncate, Vec.clear, Vec.sort_by, Vec.sort,
-    Vec.windows, Vec.chunks, Vec.permutations,
+    Vec.slice, Vec.slice_range, Vec.slice_from, Vec.slice_until, Vec.windows, Vec.chunks, Vec.permutations,
     print_vec, extract_vec, stream_vec, stream_ref_vec, eq_vec, cmp_vec, clone_vec, drop_vec, insert_vec
 
 type Vec t =
@@ -265,27 +265,39 @@ Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit can Mutate 'v
 Vec.sort (v: mut Vec t) {Cmp t}: Unit can Mutate 'v! =
     v.sort_by (<)
 
-Vec.windows (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v t) ->
+Vec.slice (v: ref 'v Vec t): Slice 'v! t =
+    Slice.from_parts v.data v.len
+
+Vec.slice_range (v: ref 'v Vec t) (start: Usz) (end: Usz): Slice 'v! t can Panic =
+    (v.slice ()).slice_range start end
+
+Vec.slice_from (v: ref 'v Vec t) (start: Usz): Slice 'v! t can Panic =
+    (v.slice ()).slice_from start
+
+Vec.slice_until (v: ref 'v Vec t) (end: Usz): Slice 'v! t can Panic =
+    (v.slice ()).slice_until end
+
+Vec.windows (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v! t) ->
     if n != 0 and n <= v.len then
         for i in 0 .. v.len - n + 1 do
-            emit (Slice (transmute (offset v.data i)) n)
+            emit (Slice.from_parts (offset v.data i) n)
 
-Vec.chunks (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v t) ->
+Vec.chunks (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v! t) ->
     if n != 0 then
         var start = 0usz
         while start < v.len do
             len = if v.len - start < n then v.len - start else n
-            emit (Slice (transmute (offset v.data start)) len)
+            emit (Slice.from_parts (offset v.data start) len)
             start += len
 
-Vec.permutations (v: ref 'v Vec t) = fn () can Emit (Slice 'v t) ->
+Vec.permutations (v: ref 'v Vec t) = fn () can Emit (Slice 'v! t) ->
     n = v.len
     elem_size = size_of (MkType: Type t)
     buffer: Ptr t = malloc (n * elem_size)
     memcpy buffer v.data (n * elem_size)
     counters: Ptr Usz = calloc n (size_of (MkType: Type Usz))
 
-    emit (Slice (transmute buffer) n)
+    emit (Slice.from_parts buffer n)
     var i = 1usz
     while i < n do
         count = deref_ptr (offset counters i)
@@ -294,7 +306,7 @@ Vec.permutations (v: ref 'v Vec t) = fn () can Emit (Slice 'v t) ->
             tmp = deref_ptr (offset buffer other)
             array_insert buffer other (deref_ptr (offset buffer i))
             array_insert buffer i tmp
-            emit (Slice (transmute buffer) n)
+            emit (Slice.from_parts buffer n)
             array_insert counters i (count + 1)
             i := 1
         else

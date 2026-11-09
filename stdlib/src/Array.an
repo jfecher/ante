@@ -1,4 +1,5 @@
 import Std.Mem.Type, MkType, size_of, transmute, offset, ptr_to_ref, ptr_store
+import Std.Slice.Slice
 
 array_len (_array: ref Array n t): Usz =
     size_t = size_of (MkType : Type t)
@@ -24,6 +25,18 @@ array_set (array: mut Array n t) (index: Usz) elem: Unit can Panic, Mutate 'arra
     if index >= array_len array then
         panic "array_set index out of bounds"
     array_set_unchecked array index elem
+
+slice (array: ref 'a Array n t): Slice 'a t =
+    Slice.from_parts (transmute array) (array_len array)
+
+slice_range (array: ref 'a Array n t) (start: Usz) (end: Usz): Slice 'a t can Panic =
+    (slice array).slice_range start end
+
+slice_from (array: ref 'a Array n t) (start: Usz): Slice 'a t can Panic =
+    (slice array).slice_from start
+
+slice_until (array: ref 'a Array n t) (end: Usz): Slice 'a t can Panic =
+    (slice array).slice_until end
 
 impl extract_array: Extract (ref 'a Array n t) Usz (ref 'a t) Panic with
     (.[]) = array_get

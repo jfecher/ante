@@ -2,7 +2,8 @@ import Std.Fail.Fail, fail, panic_on_fail
 import Std.Mem.transmute, offset
 import Std.Stream.Stream, emit
 
-export Slice, MutSlice, slice, Slice.len, Slice.get, Slice.get_unchecked,
+export Slice, MutSlice, Slice.slice_range, Slice.slice_from, Slice.slice_until,
+    Slice.from_parts, Slice.len, Slice.get, Slice.get_unchecked,
     copy_slice, extract_slice, extract_ref_slice, insert_slice, stream_slice, print_slice, cmp_slice
 
 /// A contiguous series of elements from 'a.
@@ -14,8 +15,20 @@ type Slice 'a t =
 /// A mutable, continguous series of elements from 'a.
 type MutSlice 'a t = Slice (mut 'a) t
 
-slice (array: ref 'a Array n t): Slice 'a t =
-    Slice (transmute array) (array_len array)
+Slice.from_parts (data: Ptr t) (len: Usz): Slice 'a t =
+    Slice (transmute data) len
+
+Slice.slice_range (s: Slice 'a t) (start: Usz) (end: Usz): Slice 'a t can Panic =
+    if start > end or end > s.len then
+        panic "Slice range out of bounds"
+    data: Ptr t = transmute s.data
+    Slice.from_parts (offset data start) (end - start)
+
+Slice.slice_from (s: Slice 'a t) (start: Usz): Slice 'a t can Panic =
+    s.slice_range start s.len
+
+Slice.slice_until (s: Slice 'a t) (end: Usz): Slice 'a t can Panic =
+    s.slice_range 0 end
 
 impl copy_slice: Copy (Slice 'a t) with
     (.*) = deref
