@@ -198,18 +198,18 @@ Arc.of (value: t): Arc t =
     Arc ptr
 
 Arc.as_ref (a: ref 'a Arc t): ref 'a t =
-    inner = ptr_to_mut a.ptr
+    inner = ptr_to_ref a.ptr
     inner.value
 
 impl clone_arc: Clone (Arc t) with
     clone (a: ref Arc t) =
-        inner = ptr_to_mut a.ptr
+        inner = ptr_to_ref a.ptr
         inner.count.fetch_add 1
         deref a
 
 impl drop_arc {Drop t e}: Drop (Arc t) e with
     drop (a: mut Arc t) =
-        inner = ptr_to_mut a.ptr
+        inner = ptr_to_ref a.ptr
         previous = inner.count.fetch_sub 1
         if previous == 1 then
             drop inner.value

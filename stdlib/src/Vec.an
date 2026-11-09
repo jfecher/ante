@@ -2,10 +2,10 @@ import Std.C.realloc, free
 import Std.Stream.Stream, iter, emit
 import Std.Fail.Fail, fail, panic_on_fail
 
-export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_mut, Vec.get_unchecked, Vec.get_mut_unchecked,
+export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
     Vec.remove_index, Vec.remove_first, Vec.remove_indices, Vec.remove_all, Vec.swap_last,
     Vec.reverse, Vec.swap, Vec.insert, Vec.dedup, Vec.truncate, Vec.clear, Vec.sort_by, Vec.sort,
-    print_vec, extract_vec, extract_vec_move, stream_vec, stream_ref_vec, eq_vec, drop_vec, insert_vec
+    print_vec, extract_vec, stream_vec, stream_ref_vec, eq_vec, drop_vec, insert_vec
 
 type Vec t =
     data: Ptr t
@@ -56,20 +56,13 @@ Vec.pop (v: mut Vec t): Maybe t can Fs, Mutate 'v =
     if v.is_empty () then None
     else
         v.len -= 1
-        Some (v.data.[v.len])
+        Some (deref_ptr (offset v.data v.len))
 
-/// Retrieves the element at the given 0-based index.
+/// Retrieves a reference to the element at the given 0-based index.
 /// Fails if the index is out of bounds
 Vec.get (v: ref Vec t) (i: Usz): ref! t can Fail =
     if i < v.len
     then v.get_unchecked i
-    else fail ()
-
-/// Retrieves a mutable reference to the element at the given 0-based index.
-/// Fails if the index is out of bounds
-Vec.get_mut (v: mut Vec t) (i: Usz): mut! t can Fail =
-    if i < v.len
-    then v.get_mut_unchecked i
     else fail ()
 
 /// An unsafe function to retrieve an element at the given index
@@ -78,19 +71,13 @@ Vec.get_unchecked (v: ref Vec t) (i: Usz): ref! t =
     ptr = offset v.data i
     transmute ptr
 
-/// An unsafe function to retrieve a mutable element at the given index
-/// without checking if the index is inbounds
-Vec.get_mut_unchecked (v: mut Vec t) (i: Usz): mut! t =
-    ptr = offset v.data i
-    transmute ptr
-
 /// Remove the element at the given index and return it.
 /// will Fail if the index is out of bounds.
 Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail, Mutate 'v =
     if idx >= 0 and idx < v.len then
-        item = v.data.[idx]
+        item = v.get_unchecked idx |> deref
         for i in idx .. v.len - 1 do
-            array_insert v.data i (v.data.[i+1])
+            array_insert v.data i (deref_ptr (offset v.data (i+1)))
 
         v.len -= 1
         item
@@ -122,11 +109,11 @@ Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Mutate 'v =
             nxt = idxs.data.[i + 1]
             for j in 0 .. (nxt - cur - 1) do
                 j = j + cur + 1
-                array_insert v.data (j - moved) (v.data.[j])
+                array_insert v.data (j - moved) (v.get_unchecked j |> deref)
         else
             for j in 0 .. (v.len - cur - 1) do
                 j = j + cur + 1
-                array_insert v.data (j - moved) (v.data.[j])
+                array_insert v.data (j - moved) (v.get_unchecked j |> deref)
 
     v.len -= moved
 
@@ -151,7 +138,7 @@ Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Fs, Mutate 'v =
     if idx >= v.len or idx + 1 == v.len then false
     else
         v.len := v.len - 1
-        array_insert v.data idx (v.data.[v.len])
+        array_insert v.data idx (deref_ptr (offset v.data v.len))
         true
 
 /// Reverse the elements of this vector in place.
@@ -160,16 +147,16 @@ Vec.reverse (v: mut Vec t): Unit can Fs =
     half = v.len / 2
     for i in 0 .. half do
         opposite = v.len - i - 1
-        tmp = v.data.[i]
-        array_insert v.data i (v.data.[opposite])
+        tmp = deref_ptr (offset v.data i)
+        array_insert v.data i (deref_ptr (offset v.data opposite))
         array_insert v.data opposite tmp
 
 /// Swap the elements at indices `i` and `j`. Fails if either index is out of bounds.
 Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Fs =
     if i >= v.len or j >= v.len then fail ()
     if i == j then return ()
-    tmp = v.data.[i]
-    array_insert v.data i (v.data.[j])
+    tmp = deref_ptr (offset v.data i)
+    array_insert v.data i (deref_ptr (offset v.data j))
     array_insert v.data j tmp
 
 /// Insert `elem` at `idx`, shifting elements at `[idx, len)` one position right.
@@ -180,7 +167,7 @@ Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic, Mutate 'v 
         v.reserve (if v.cap == 0 then 1 else v.cap)
     var i = v.len
     while i > idx do
-        array_insert v.data i (v.data.[i - 1])
+        array_insert v.data i (deref_ptr (offset v.data (i - 1)))
         i -= 1
     array_insert v.data idx elem
     v.len += 1
@@ -189,10 +176,10 @@ Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic, Mutate 'v 
 Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can Fs, e, Mutate 'v =
     if v.len < 2 then return ()
     var write = 1
-    for read in 1 .. v.len do
-        if v.data.[read] != v.data.[write - 1] then
-            if write != read then
-                array_insert v.data write (v.data.[read])
+    for i in 1 .. v.len do
+        if v.data.[i] != v.data.[write - 1] then
+            if write != i then
+                array_insert v.data write (deref_ptr (offset v.data i))
             write += 1
     v.len := write
 
@@ -202,7 +189,7 @@ Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
     if new_len >= v.len then return ()
     for i in new_len .. v.len do
         elem = offset v.data i
-        Drop.drop (ptr_to_mut elem)
+        Drop.drop (ptr_to_ref elem)
     v.len := new_len
 
 /// Remove and drop every element.
@@ -217,8 +204,8 @@ Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit =
     for i in 1 .. v.len do
         var j = i
         while j > 0 do
-            a = v.data.[j]
-            b = v.data.[j - 1]
+            a = deref_ptr (offset v.data j)
+            b = deref_ptr (offset v.data (j - 1))
             if not (cmp a b) then break
             array_insert v.data (j - 1) a
             array_insert v.data j b
@@ -235,18 +222,12 @@ impl print_vec {p: Display t e}: Display (Vec t) e with
 
         for i in 0 .. v.len do
             if i != 0 then print ", "
-            elem: t = v.data.[i]
+            elem: t = deref_ptr (offset v.data i)
             print elem
 
         print "]"
 
-impl extract_vec_move: Extract (Vec t) Usz t Panic with
-    (.[]) v i =
-        if i >= v.len () then
-            panic "Vec index out of bounds"
-        v.data.[i]
-
-impl extract_vec: Extract (ref Vec t) Usz (ref t) Panic with
+impl extract_vec: Extract (ref 'v Vec t) Usz (ref 'v! t) Panic with
     (.[]) v i =
         if i >= v.len () then
             panic "Vec index out of bounds"
@@ -256,9 +237,9 @@ impl extract_vec: Extract (ref Vec t) Usz (ref t) Panic with
 /// Vec.insert will insert into a slot, moving the previous element and each
 /// element after to the right. This `Insert` implementation will instead
 /// directly mutate the element at the given index to the new element.
-impl insert_vec: Insert (mut Vec t) Usz t Panic with
-    (.[]:=) (v: mut Vec t) i e =
-        slot = v.get_mut i ~> panic_on_fail
+impl insert_vec: Insert (mut 'v Vec t) Usz t (Panic & Mutate 'v!) with
+    (.[]:=) v i e =
+        slot = v.get i ~> panic_on_fail
         slot := e
 
 impl stream_vec: Stream (Vec a) a pure with
@@ -276,7 +257,7 @@ impl drop_vec {Drop t e}: Drop (Vec t) e with
         if v.cap != 0 then
             for i in 0 .. v.len do
                 elem = offset v.data i
-                Drop.drop (ptr_to_mut elem)
+                Drop.drop (ptr_to_ref elem)
             free v.data
 
 impl eq_vec {Eq t e}: Eq (Vec t) e with

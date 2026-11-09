@@ -887,8 +887,7 @@ impl Diagnostic {
             Diagnostic::AssignThroughImmutableReference { typ, location: _ } => {
                 let typ = color_type(typ);
                 let mutable = color_keyword("mut");
-                let unique = color_keyword("uniq");
-                format!("Cannot assign through a value of type {typ}, a {mutable} or {unique} reference is required")
+                format!("Cannot assign through a value of type {typ}, a {mutable} reference is required")
             },
             Diagnostic::MutableReferenceToImmutable { name, location: _ } => {
                 let name = color_name(name);

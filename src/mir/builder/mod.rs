@@ -404,7 +404,7 @@ where
             cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             cst::Expr::Handle(handle) => self.handle(handle, expr),
-            cst::Expr::Reference(reference) => self.reference(reference, expr),
+            cst::Expr::Reference(reference) => self.reference(reference),
             cst::Expr::TypeAnnotation(type_annotation) => self.expression(type_annotation.lhs),
             cst::Expr::Constructor(constructor) => self.constructor(constructor, expr),
             cst::Expr::Quoted(quoted) => self.quoted(quoted),
@@ -2004,23 +2004,14 @@ where
         self.push_instruction(Instruction::Handle { body, cases }, result_type)
     }
 
-    fn reference(&mut self, reference: &cst::Reference, expr: ExprId) -> Value {
+    fn reference(&mut self, reference: &cst::Reference) -> Value {
         let rhs = reference.rhs;
-
-        // Reborrow: if the rhs already has a reference type its value is already a pointer
-        // TODO: Probe this for bugs when creating nested references
-        let bindings = &self.types.bindings;
-        let rhs_type = self.types.result.maps.expr_types[&rhs].follow(bindings);
-        if rhs_type.reference_element(bindings).is_some() {
-            let expr_type = self.types.result.maps.expr_types[&expr].follow(bindings);
-            let element_is_ref = expr_type
-                .reference_element(bindings)
-                .is_some_and(|(_, element)| element.reference_element(bindings).is_some());
-            if !element_is_ref {
+        if reference.implicit {
+            let bindings = &self.types.bindings;
+            if self.types.result.maps.expr_types[&rhs].reference_element(bindings).is_some() {
                 return self.expression(rhs);
             }
         }
-
         if self.is_addressable(rhs) {
             return self.address_of(rhs);
         }

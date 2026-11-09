@@ -1,21 +1,21 @@
-effect Read = read: fn Unit -> String
+effect View = view: fn Unit -> String
 effect Write = write: fn String -> Unit
 
-effect FileIO = Read, Write
+effect FileIO = View, Write
 effect WithLog (e: effect) = Log, e
 effect Log = log: fn String -> Unit
 
 // FileIO allows read & write access
 copy_file (): Unit can FileIO =
-    read () |> write
+    view () |> write
 
-copy_file_expanded (): Unit can Read, Write =
-    read () |> write
+copy_file_expanded (): Unit can View, Write =
+    view () |> write
 
 // Ensure effect kinds work & are expanded properly in aliases
-with_log (): Unit can WithLog Read =
+with_log (): Unit can WithLog View =
     log "reading"
-    read () |> ignore
+    view () |> ignore
 
 // Effect aliases cannot be recursive
 effect A = B
@@ -26,28 +26,28 @@ use_a (): Unit can A = ()
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// effect Read =
-//     read: fn Unit -> String
+// effect View =
+//     view: fn Unit -> String
 // 
 // effect Write =
 //     write: fn String -> Unit
 // 
-// effect FileIO = Read, Write
+// effect FileIO = View, Write
 // 
 // effect WithLog (e: effect) = Log, e
 // 
 // effect Log =
 //     log: fn String -> Unit
 // 
-// (copy_file: fn Unit -> Unit can Write, Read) (): Unit can FileIO =
-//     (read: fn Unit -> String can Read) () (|>: fn String (fn String [fn String -> Unit can Write] -> Unit can Write) -> Unit can Write) (write: fn String -> Unit can Write)
+// (copy_file: fn Unit -> Unit can Write, View) (): Unit can FileIO =
+//     (view: fn Unit -> String can View) () (|>: fn String (fn String [fn String -> Unit can Write] -> Unit can Write) -> Unit can Write) (write: fn String -> Unit can Write)
 // 
-// (copy_file_expanded: fn Unit -> Unit can Write, Read) (): Unit can Read, Write =
-//     (read: fn Unit -> String can Read) () (|>: fn String (fn String [fn String -> Unit can Write] -> Unit can Write) -> Unit can Write) (write: fn String -> Unit can Write)
+// (copy_file_expanded: fn Unit -> Unit can Write, View) (): Unit can View, Write =
+//     (view: fn Unit -> String can View) () (|>: fn String (fn String [fn String -> Unit can Write] -> Unit can Write) -> Unit can Write) (write: fn String -> Unit can Write)
 // 
-// (with_log: fn Unit -> Unit can Log, Read) (): Unit can WithLog Read =
+// (with_log: fn Unit -> Unit can Log, View) (): Unit can WithLog View =
 //     (log: fn String -> Unit can Log) "reading"
-//     (read: fn Unit -> String can Read) () (|>: fn String (fn String [fn String -> Unit is pure] -> Unit is pure) -> Unit is pure) (ignore: fn String -> Unit is pure)
+//     (view: fn Unit -> String can View) () (|>: fn String (fn String [fn String -> Unit is pure] -> Unit is pure) -> Unit is pure) (ignore: fn String -> Unit is pure)
 // 
 // effect A = B
 // 

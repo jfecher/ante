@@ -1,4 +1,4 @@
-import Std.Vec.Vec, of, get, get_mut, clear, push
+import Std.Vec.Vec, of, get, clear, push
 import Std.Stream.stream_array
 import Std.Fail.Fail
 
@@ -21,7 +21,7 @@ bad (a: mut Vec I32) (b: mut Maybe String) (c: mut (String, String)) =
 
 example2 (v: mut Vec String) =
     a: ref 'v! String = v.get 0
-    b: mut 'v! String = v.get_mut 0
+    b: mut 'v! String = v.get 0
     use a
 
     // Mutating 'v! only invalidates 'v!!

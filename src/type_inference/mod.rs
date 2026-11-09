@@ -29,6 +29,7 @@ use crate::{
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
         implicits::ImplicitsContext,
+        places::{Mutability, PlaceMode},
         row::{RowKind, RowMode},
         types::{
             FunctionType, LocalKinds, Omissions, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId,
@@ -227,6 +228,12 @@ struct TypeChecker<'local, 'inner> {
     /// The Prelude's `Mutate` effect
     mutate_name: TopLevelName,
 
+    /// The Prelude's `Extract` trait
+    extract_name: TopLevelName,
+
+    /// The Prelude's `Insert` trait
+    insert_name: TopLevelName,
+
     /// True while inferring the left-hand side of an assignment
     inferring_assignment_lhs: bool,
 
@@ -349,6 +356,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             prelude_origins: Default::default(),
             copy_trait: None,
             mutate_name: prelude_type_name(compiler, "Mutate"),
+            extract_name: prelude_type_name(compiler, "Extract"),
+            insert_name: prelude_type_name(compiler, "Insert"),
             inferring_assignment_lhs: false,
             integer_literal_vars: Default::default(),
             float_literal_vars: Default::default(),
@@ -818,7 +827,7 @@ fn strip_environments(typ: &Type) -> Type {
         | Type::UserDefined(_)
         | Type::U32(_)
         | Type::Effects(_)
-        | Type::Place(_)
+        | Type::Place(..)
         | Type::Places(_)
         | Type::PlaceProjection(..) => typ.clone(),
     }
@@ -831,7 +840,7 @@ pub(super) enum CoercionOutcome {
     None,
     /// The expression at the given `expr` was replaced; the caller should re-check it.
     ReplacedExpr,
-    /// The expression at `expr` was wrapped to `ref expr` or `imm expr`.
+    /// The expression at `expr` was wrapped to `ref expr` or `read expr`.
     /// The caller should undo any moves caused by `expr` when this occurs.
     AutoRef,
     /// The Call at `call_expr` had implicit arguments spliced in; the function expression
@@ -882,7 +891,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // can be found and `expected` is a concrete type.
                 if let Type::Application(constructor, args) = &actual
                     && args.len() == 2
-                    && matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Reference(_)))
+                    && matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Reference))
                     && self.is_concrete_type_or_numeric_typevar(expected)
                     && expected.reference_element(&self.bindings).is_none()
                 {
@@ -895,24 +904,28 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         return CoercionOutcome::ReplacedExpr;
                     }
                 }
-                // Auto-ref: coerce `t` to `ref t` or `imm t` by wrapping `expr` in a reference expression.
+                // Auto-ref: coerce `t` to `ref t` or `read t` by wrapping `expr` in a reference expression.
                 // FIXME: simplify these rules. The `|| actual_is_place` allows us to bind to unbound
                 // type variables which requires us to do some messy tracking, preventing them from
                 // being bound to references themselves later. But without this type inference
                 // really suffers.
                 let actual_is_place = self.try_build_move_path(expr).is_some();
+                let actual_is_concrete = self.is_concrete_type_or_numeric_typevar(actual);
                 if let Type::Application(expected_ctor, expected_args) = &expected
                     && expected_args.len() == 2
-                    && (self.is_concrete_type_or_numeric_typevar(actual) || actual_is_place)
+                    && (actual_is_concrete || actual_is_place)
                     && actual.reference_element(&self.bindings).is_none()
                 {
                     let kind = match self.follow_type(expected_ctor) {
-                        Type::Primitive(PrimitiveType::Reference(kind)) => Some(*kind),
+                        Type::Primitive(PrimitiveType::Reference) => match self.uniform_mode(&expected_args[0]) {
+                            // TODO: Remove distinction between Mut and Read
+                            Some(PlaceMode::Mut) => actual_is_concrete.then_some(ReferenceKind::Mut),
+                            Some(PlaceMode::Read) => Some(ReferenceKind::Read),
+                            None => Some(ReferenceKind::Ref),
+                        },
                         _ => None,
                     };
-                    if let Some(kind) = kind
-                        && matches!(kind, ReferenceKind::Ref | ReferenceKind::Imm)
-                    {
+                    if let Some(kind) = kind {
                         let inner = expected_args[1].clone();
                         let actual = actual.clone();
                         // Prevent the id from being bound to a reference later
@@ -1077,9 +1090,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             unreachable!("type_autoref_wrapper called on a non-Reference expr")
         };
         let element = self.expr_types[&reference.rhs].clone();
+        if reference.kind == ReferenceKind::Mut {
+            self.check_mutable_borrow_of_place(reference.rhs);
+        }
         let place = self.infer_place(reference.rhs);
-        let constructor = Type::reference(reference.kind);
-        let typ = Type::Application(Shared::new(constructor), Shared::new(vec![place, element]));
+        let typ = self.reference_type(reference.kind, place, element);
         self.expr_types.insert(expr, typ.clone());
         self.unify(&typ, expected, kind, expr);
         typ
@@ -1136,7 +1151,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         cst::Expr::Call(cst::Call { function: func_expr, arguments: vec![cst::Argument::explicit(arg_id)] })
     }
 
-    /// Synthesize a `ref`/`imm` expression wrapping the original expression for
+    /// Synthesize a `ref`/`read` expression wrapping the original expression for
     /// auto-ref coercion. The original expression at `expr` is copied to a new
     /// ExprId and the returned expression references it.
     fn auto_ref_coercion(&mut self, expr: ExprId, kind: ReferenceKind, element_type: Type) -> cst::Expr {
@@ -1144,7 +1159,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let original_expr = self.current_extended_context()[expr].clone();
         let rhs = self.push_expr(original_expr, element_type, location);
         self.copy_expr_metadata(expr, rhs);
-        cst::Expr::Reference(cst::Reference { kind, rhs })
+        cst::Expr::Reference(cst::Reference { kind, rhs, implicit: false })
     }
 
     /// Copy everything recorded about the expression `from` onto `to`, which it was moved to
@@ -1203,7 +1218,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         },
                         // `a` may already be an entry of `b`'s row
                         b @ Type::Places(_) if self.places_entry_is(&b, *a_id, new_bindings) => {
-                            self.relate_places(a, &b, row_mode, new_bindings)
+                            self.relate_places(a, &b, row_mode, variance, new_bindings)
                         },
                         b => self.try_bind_type_variable(*a_id, b, new_bindings),
                     }
@@ -1216,6 +1231,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.subtype(a, &b, variance, row_mode, new_bindings)
                 } else {
                     let a = a.follow_two(&self.bindings, new_bindings);
+
+                    // `b` may already be an entry of `a`'s row
+                    if matches!(a, Type::Places(_)) && self.places_entry_is(&a, *b_id, new_bindings) {
+                        return self.relate_places(&a, b, row_mode, variance, new_bindings);
+                    }
 
                     // Avoid b aliasing an open row to get subtype-like semantics instead of row polymorphism semantics
                     let coercible = variance == Variance::Covariant && row_mode == RowMode::Coercible;
@@ -1249,27 +1269,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     return Err(());
                 }
 
-                // TODO: References are special-cased for now (mut args are invariant) but
+                // TODO: References are special-cased for now (mutable elements are invariant) but
                 // users should be able to specify variance on their types in the future.
                 // We can combine both branches by querying the constructor to get arg variances.
-                let a_kind = a_constructor.reference_constructor(&self.bindings);
-                let b_kind = b_constructor.reference_constructor(&self.bindings);
-                if let (Some(_), Some(b_kind)) = (a_kind, b_kind) {
-                    // Reference-kind subtyping (e.g. `uniq <: mut`) is handled by the arm below.
-                    self.subtype(a_constructor, b_constructor, variance, RowMode::Exact, new_bindings)?;
+                if a_constructor.is_reference_constructor(&self.bindings)
+                    && b_constructor.is_reference_constructor(&self.bindings)
+                    && a_args.len() == 2
+                {
+                    self.subtype(&a_args[0], &b_args[0], variance, row_mode, new_bindings)?;
 
-                    // `mut`/`uniq` elements are invariant
-                    let read_only = matches!(b_kind, ReferenceKind::Imm | ReferenceKind::Ref);
-                    let element_variance = if !read_only { Variance::Invariant } else { variance };
-
-                    for (index, (a_arg, b_arg)) in a_args.iter().zip(b_args.iter()).enumerate() {
-                        let (arg_variance, row_mode) = match index {
-                            0 => (variance, row_mode),
-                            _ => (element_variance, RowMode::Exact),
-                        };
-                        self.subtype(a_arg, b_arg, arg_variance, row_mode, new_bindings)?;
-                    }
-                    Ok(())
+                    // Elements are only covariant through a reference that can never be mutable,
+                    // otherwise a store through it could widen the original.
+                    let read_only = self.places_mutability(&a_args[0], new_bindings) == Mutability::ReadOnly
+                        || self.places_mutability(&b_args[0], new_bindings) == Mutability::ReadOnly;
+                    // A reference to `Never` is unreachable so it may be used as any reference
+                    let never = matches!(
+                        a_args[1].follow_two(&self.bindings, new_bindings),
+                        Type::Primitive(PrimitiveType::Never)
+                    );
+                    let element_variance = if read_only || never { variance } else { Variance::Invariant };
+                    self.subtype(&a_args[1], &b_args[1], element_variance, RowMode::Exact, new_bindings)
                 } else {
                     // A trait dictionary may only be adapted to wider effect args where the adaptation is
                     // recorded for the mir builder. See [Self::subtype_widening].
@@ -1289,15 +1308,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.subtype(&a_generic, &b_generic, Variance::Invariant, RowMode::Exact, new_bindings)?;
                 }
                 self.subtype(a_body, b_body, Variance::Invariant, RowMode::Exact, new_bindings)
-            },
-            (Type::Primitive(PrimitiveType::Reference(a_kind)), Type::Primitive(PrimitiveType::Reference(b_kind))) => {
-                match (a_kind, b_kind) {
-                    (_, ReferenceKind::Ref) => Ok(()),
-                    (ReferenceKind::Uniq, ReferenceKind::Mut) => Ok(()),
-                    (ReferenceKind::Uniq, ReferenceKind::Imm) => Ok(()),
-                    (_, _) if a_kind == b_kind => Ok(()),
-                    _ => Err(()),
-                }
             },
             (Type::UserDefined(a), Type::UserDefined(b)) => {
                 if a == b {
@@ -1322,19 +1332,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 | Type::Effects(..)
                 | Type::Generic(_)
                 | Type::Places(..)
-                | Type::Place(_)
+                | Type::Place(..)
                 | Type::PlaceProjection(..),
                 Type::UserDefined(_)
                 | Type::Application(..)
                 | Type::Effects(..)
                 | Type::Generic(_)
                 | Type::Places(..)
-                | Type::Place(_)
+                | Type::Place(..)
                 | Type::PlaceProjection(..),
             ) => {
                 // TODO: Remove this check and combine the if branches below
                 if a.is_place_row() || b.is_place_row() {
-                    self.relate_places(a, b, row_mode, new_bindings)
+                    self.relate_places(a, b, row_mode, variance, new_bindings)
                 } else {
                     match row_mode {
                         RowMode::Coercible => self.row_subtype(a, b, new_bindings),
@@ -1477,7 +1487,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Used to prevent the creation of infinitely recursive types when binding type variables.
     fn occurs(&self, typ: &Type, variable: TypeVariableId, new_bindings: &TypeBindings) -> bool {
         match typ {
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => false,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(..) => false,
             Type::Variable(candidate_id) => {
                 if let Some(binding) = self.bindings.get(candidate_id) {
                     self.occurs(binding, variable, new_bindings)
@@ -1505,7 +1515,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Places(places) => places
                 .as_ref()
                 .is_some_and(|places| places.iter().any(|place| self.occurs(place, variable, new_bindings))),
-            Type::PlaceProjection(base, _) => self.occurs(base, variable, new_bindings),
+            Type::PlaceProjection(base, ..) => self.occurs(base, variable, new_bindings),
         }
     }
 
@@ -1595,11 +1605,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // TODO: Error if `generic_args` is non-empty
                 let constructor = constructor.clone();
                 let arguments = arguments.clone();
-                // If the constructor is a reference kind (mut, ref, imm, uniq) or `Ptr`,
+                // If the constructor is a reference or `Ptr`,
                 // look up the fields of the inner type and wrap each field type in the
                 // same constructor (so the field is accessible as an offset).
-                let is_reference =
-                    matches!(self.follow_type(&constructor), Type::Primitive(PrimitiveType::Reference(_)));
+                let is_reference = matches!(self.follow_type(&constructor), Type::Primitive(PrimitiveType::Reference));
                 let is_pointer = matches!(self.follow_type(&constructor), Type::Primitive(PrimitiveType::Pointer));
                 if is_reference || is_pointer {
                     let (lifetime, inner) = if is_reference {
@@ -1628,7 +1637,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    let body = id.type_body(generic_args, self.compiler);
+                    let arguments = generic_args.and_then(|args| self.with_method_generics(*id, args, false));
+                    let body = id.type_body(arguments.as_deref().or(generic_args), self.compiler);
                     match body {
                         TypeBody::Product { fields, .. } => {
                             let fields = fields.into_iter().enumerate();
@@ -1653,6 +1663,48 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             _ => BTreeMap::default(),
         }
+    }
+
+    /// The types of the members of the trait dictionary `typ`, applied to any supplied generics.
+    fn impl_member_types(&mut self, typ: &Type) -> BTreeMap<Name, (Type, u32)> {
+        if let Type::Application(constructor, arguments) = self.follow_type(typ)
+            && let Type::UserDefined(Origin::TopLevelDefinition(name)) = self.follow_type(constructor)
+            && let Some(arguments) = self.with_method_generics(*name, arguments, true)
+        {
+            return self.get_field_types(&constructor.clone(), Some(&arguments));
+        }
+        self.get_field_types(typ, None)
+    }
+
+    /// `arguments` of the trait `name`, followed by an argument for each generic its constructor
+    /// promoted from its method signatures. A place in the signature itself is rigid if `rigid`
+    /// is set, but one within a function parameter never is. Returns None if `name` is not a
+    /// trait or it has no such generics.
+    /// TODO: Rework this when rank-2 types are better implemented. Places should generally be
+    /// rank-2 by default on a trait function.
+    fn with_method_generics(&self, name: TopLevelName, arguments: &[Type], rigid: bool) -> Option<Vec<Type>> {
+        let definition = TraitDefinition::get(name, self.compiler)?;
+        let result = TypeCheck(name.top_level_item).get(self.compiler);
+        let constructor = result.get_generalized(definition.definition().name);
+        let Type::Forall(generics, body) = &constructor else { return None };
+        let promoted = generics.get(arguments.len()..).filter(|promoted| !promoted.is_empty())?;
+
+        let mut signature_places = FxHashSet::default();
+        let mut all_places = FxHashSet::default();
+        body.collect_method_places(false, &mut signature_places);
+        body.collect_method_places(true, &mut all_places);
+
+        let promoted = promoted.iter().map(|generic| {
+            if rigid && signature_places.contains(generic) {
+                Type::Generic(Generic::Elided(self.next_type_variable_id()))
+            } else if all_places.contains(generic) {
+                let none = TypeBindings::default();
+                Type::places(&[self.next_type_variable()], &none, &none)
+            } else {
+                self.next_type_variable()
+            }
+        });
+        Some(arguments.iter().cloned().chain(promoted).collect())
     }
 
     /// Returns a set of substitutions for a user-defined type to replace instances of its generics

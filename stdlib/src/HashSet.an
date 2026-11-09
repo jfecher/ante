@@ -48,7 +48,7 @@ HashSet.extend (set: mut HashSet k) (stream: s) {Stream s k e} {Eq k e}: Unit ca
 
 HashSet.retain (set: mut HashSet k) (predicate: fn k => Bool) {Copy k}: Unit can Mutate 'set =
     for i in 0 .. set.inner.capacity do
-        entry = ptr_to_mut (offset set.inner.entries i)
+        entry = ptr_to_ref (offset set.inner.entries i)
         if entry.occupied and not (predicate entry.key) then
             entry.occupied := false
             entry.tombstone := true
@@ -64,7 +64,7 @@ HashSet.keys (set: ref HashSet k) =
 impl stream_set: Stream (HashSet k) k pure with
     stream set =
         repeat set.inner.capacity fn i ->
-            entry = set.inner.entries.[i]
+            entry = deref_ptr (offset set.inner.entries i)
             if entry.occupied then
                 emit entry.key
 

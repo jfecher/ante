@@ -1,0 +1,47 @@
+import Std.Slice.Slice, MutSlice, extract_slice, insert_slice, copy_slice
+import Std.Vec.Vec, extract_vec, insert_vec
+
+replace_vec_element () =
+    var inner = Vec.empty ()
+    inner.push 1
+    var other = Vec.empty ()
+    other.push 2
+    var v = Vec.empty ()
+    v.push inner
+    x = v.[0].[0]
+    v.[0] := other
+    println x
+
+replace_slice_element (s: MutSlice 'a (Vec I32)) (other: Vec I32) =
+    x = s.[0].[0]
+    s.[0] := other
+    println x
+
+// A sibling element isn't invalidated
+assign_sibling () =
+    var v = Vec.empty ()
+    v.push 1
+    v.push 2
+    x = v.[0]
+    v.[1] := 5
+    println x
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/index_assign_invalidation.an:13:13
+// 11 |     x = v.[0].[0]
+// 12 |     v.[0] := other	// note: x may be invalidated by this mutation
+//    |      -------------
+// 13 |     println x	// error: x may have been invalidated by an earlier mutation
+//    |             ^
+// 
+// examples/typechecking/borrows/index_assign_invalidation.an:18:13
+// 16 |     x = s.[0].[0]
+// 17 |     s.[0] := other	// note: x may be invalidated by this mutation
+//    |      -------------
+// 18 |     println x	// error: x may have been invalidated by an earlier mutation
+//    |             ^
+// 
+// Found 2 errors and 0 warnings
+

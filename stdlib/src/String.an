@@ -109,7 +109,7 @@ reverse (var s: String): String can Fs =
         var buf = malloc (Usz s.length + 1)
         len = Usz s.length
         for i in 0 .. len do
-            array_insert buf i (s.data.[len - i - 1])
+            array_insert buf i (deref_ptr (offset s.data (len - i - 1)))
         String.from_parts buf s.length
 
 /// Split a string at the given character. Emits substrings
