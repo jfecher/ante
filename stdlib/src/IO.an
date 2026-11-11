@@ -21,11 +21,11 @@ File.open (path: String) (mode: String): File can Fs, Fail =
     File c_file
 
 File.close (file: File): Unit can Fs =
-    fclose file.c_file
+    _ = fclose file.c_file
 
 impl drop_file: Drop File Fs with
     drop f =
-        fclose f.c_file
+        _ = fclose f.c_file
 
 /// Convenience function for using feof with better types
 File.eof (f: ref File): Bool can Fs =
