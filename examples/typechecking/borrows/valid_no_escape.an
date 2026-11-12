@@ -1,3 +1,4 @@
+import Std.Array.array_get_unchecked
 first_of_explicit (array: ref 'a Array n t): ref 'a t =
     array_get_unchecked array 0
 

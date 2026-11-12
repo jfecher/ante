@@ -1,0 +1,64 @@
+import Std.Mem.Type, MkType, size_of, transmute, offset, ptr_to_ref, ptr_store
+import Std.Slice.Slice
+
+array_len (_array: ref Array n t): Usz =
+    size_t = size_of (MkType : Type t)
+    if size_t == 0 then 0 else
+        size_of (MkType : Type (Array n t)) / size_t
+
+/// Unsafe get without bounds-checking
+array_get_unchecked (array: ref Array n t) (i: Usz): ref t =
+    ptr: Ptr t = transmute array
+    ptr_to_ref (offset ptr i)
+
+/// Unsafe set without bounds-checking
+array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit can Mutate 'array =
+    ptr: Ptr t = transmute array
+    ptr_store (offset ptr i) v
+
+array_get (array: ref Array n t) (index: Usz): ref t can Panic =
+    if index >= array_len array then
+        panic "array_get index out of bounds"
+    array_get_unchecked array index
+
+array_set (array: mut Array n t) (index: Usz) elem: Unit can Panic, Mutate 'array =
+    if index >= array_len array then
+        panic "array_set index out of bounds"
+    array_set_unchecked array index elem
+
+slice (array: ref 'a Array n t): Slice 'a t =
+    Slice.from_parts (transmute array) (array_len array)
+
+slice_range (array: ref 'a Array n t) (start: Usz) (end: Usz): Slice 'a t can Panic =
+    (slice array).slice_range start end
+
+slice_from (array: ref 'a Array n t) (start: Usz): Slice 'a t can Panic =
+    (slice array).slice_from start
+
+slice_until (array: ref 'a Array n t) (end: Usz): Slice 'a t can Panic =
+    (slice array).slice_until end
+
+impl extract_array: Extract (ref 'a Array n t) Usz (ref 'a t) Panic with
+    (.[]) = array_get
+
+impl insert_array: Insert (mut 'a Array n t) Usz t (Panic & Mutate 'a) with
+    (.[]:=) arr index value = array_set arr index value
+
+impl cmp_array {Cmp t}: Cmp (Array n t) with
+    (<) l r =
+        for i in 0 .. array_len l do
+            a = array_get_unchecked l i
+            b = array_get_unchecked r i
+            if a < b then return true
+            if b < a then return false
+        false
+
+impl print_array {Display t e}: Display (Array n t) (Panic & e) with
+    print array =
+        print "["
+        for i in 0 .. array_len array do
+            if i != 0 then
+                print ", "
+            elem: ref t = array.[i]
+            print elem
+        print "]"

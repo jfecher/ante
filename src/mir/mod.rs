@@ -1202,7 +1202,7 @@ impl Type {
     }
 
     /// The type of a string: this needs to be updated whenever the repr of a string is changed in
-    /// the prelude.
+    /// Std.String.
     pub fn string() -> Type {
         Type::Tuple(Arc::new(vec![
             Type::POINTER,

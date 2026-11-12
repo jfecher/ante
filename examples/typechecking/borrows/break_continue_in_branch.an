@@ -1,4 +1,4 @@
-import Std.Vec.Vec, of, get_mut_unchecked, push
+import Std.Vec.Vec, of, get_unchecked, push
 import Std.Stream.stream_array
 
 consume (_: Vec I32): Unit = ()
@@ -7,7 +7,7 @@ cond (): Bool = true
 
 mutate_then_break (): Unit can Panic =
     var v = Vec.of [1, 2]
-    elem = v.get_mut_unchecked 0
+    elem = v.get_unchecked 0
     while cond () do
         if cond () then
             // The borrow checker used to not count invalidations before a break/return
@@ -17,7 +17,7 @@ mutate_then_break (): Unit can Panic =
 
 mutate_then_continue (): Unit can Panic =
     var v = Vec.of [1, 2]
-    elem = v.get_mut_unchecked 0
+    elem = v.get_unchecked 0
     while cond () do
         use elem
         if cond () then
@@ -40,7 +40,7 @@ move_then_break (): Unit can Panic =
 
 inner_loop_break (): Unit can Panic =
     var v = Vec.of [1, 2]
-    elem = v.get_mut_unchecked 0
+    elem = v.get_unchecked 0
     for _i in 0 .. 3 do
         while cond () do
             if cond () then
@@ -50,7 +50,7 @@ inner_loop_break (): Unit can Panic =
 
 break_before_return (): Unit can Panic =
     var v = Vec.of [1, 2]
-    elem = v.get_mut_unchecked 0
+    elem = v.get_unchecked 0
     while cond () do
         if cond () then
             v.push 3
@@ -60,7 +60,7 @@ break_before_return (): Unit can Panic =
 
 mutate_then_return (): Unit can Panic =
     var v = Vec.of [1, 2]
-    elem = v.get_mut_unchecked 0
+    elem = v.get_unchecked 0
     while cond () do
         use elem
         if cond () then

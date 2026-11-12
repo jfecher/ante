@@ -410,10 +410,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 .row_carrying(constructor, atom)
                 .or_else(|| args.iter().find_map(|arg| self.row_carrying(arg, atom))),
             Type::Tuple(elements) => elements.iter().find_map(|element| self.row_carrying(element, atom)),
-            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => {
+            Type::Places(_) | Type::Place(..) | Type::PlaceProjection(..) => {
                 let row =
                     Type::canonicalize_places(std::slice::from_ref(typ), &self.tc.bindings, &TypeBindings::default());
-                row.contains(&Type::Place(atom.clone())).then_some(row)
+                row.iter().any(|entry| matches!(entry, Type::Place(place, _) if place == atom)).then_some(row)
             },
             Type::Forall(_, typ) => self.row_carrying(typ, atom),
             Type::Effects(effects) => {
@@ -629,7 +629,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         match typ {
             Type::Application(constructor, args) => {
                 let place_parameters = match constructor.as_ref() {
-                    Type::Primitive(PrimitiveType::Reference(_)) => vec![true, false],
+                    Type::Primitive(PrimitiveType::Reference) => vec![true, false],
                     Type::UserDefined(Origin::TopLevelDefinition(name)) => {
                         let (item, _) = GetItem(name.top_level_item).get(self.tc.compiler);
                         match &item.kind {
@@ -649,7 +649,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                     }
                 }
             },
-            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => {
+            Type::Places(_) | Type::Place(..) | Type::PlaceProjection(..) => {
                 self.collect_place_generics_in_row(typ, out)
             },
             // A function parameter's places are given by the callee rather than to it

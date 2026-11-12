@@ -1,5 +1,6 @@
 import Std.Stream.foldl, stream_fn
-import Std.String.bytes
+import Std.Mem.transmute
+import Std.Bitwise.bxor, shr, bitwise_u64
 
 trait Hash t =
     hash: fn t -> U64
@@ -8,7 +9,7 @@ trait Hash t =
 /// and prime of 1099511628211 (0x100000001b3).
 impl hash_string: Hash String with
     hash s =
-        foldl (bytes s) 14695981039346656037 fn acc c ->
+        foldl (s.bytes ()) 14695981039346656037 fn acc c ->
             bxor acc (U64 c) * 1099511628211
 
 impl hash_u64: Hash U64 with
@@ -56,8 +57,8 @@ impl hash_char: Hash Char with
 /// Combine two hashes to form a new one. This is order-sensitive so (a, b) and
 /// (b, a) hash differently. Uses a mixing constant of 2^64 / phi.
 hash_combine (h1: U64) (h2: U64): U64 =
-    // TODO: `Bitwise` has no bit shifting operators. Should be `shl h1 6 + shr h1 2`
-    bxor h1 (h2 + 11400714819323198485 + h1*64 + h1/4)
+    h = (h1 * 11400714819323198485 + h2) * 18397679294719823053
+    bxor h (shr h 32)
 
 impl hash_pair {Hash a} {Hash b}: Hash (a, b) with
     hash p = hash_combine (Hash.hash p.first) (Hash.hash p.second)

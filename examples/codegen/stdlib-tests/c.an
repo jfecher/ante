@@ -4,6 +4,7 @@ import Std.C.puts, putchar, strlen, system, memcmp, memcpy, malloc, free,
     copy_file
 import Std.String.from_c_string
 import Std.Fail.Fail, panic_on_fail, assert, abort_on_fail
+import Std.Mem.null, deref_ptr, array_insert
 
 mkdtemp = extern "mkdtemp": fn C.String -> C.String can Fs
 
@@ -78,15 +79,15 @@ main () =
     array_insert one_byte 0usz 33u8            // '!'
     _ = fwrite one_byte 1usz 1usz fw.*
     free one_byte
-    fclose fw
+    _ = fclose fw
 
     fr = fopen path_r (C.String "r\0".data)
     if fr.f == null () then panic "fopen failed to open the test file for reading"
-    _ = fseek fr.* 0i32 2i32                   // SEEK_END
+    _ = fseek fr 0 2                   // SEEK_END
     assert <| ftell fr == 3
-    _ = fseek fr.* 0i32 0i32                   // SEEK_SET
+    _ = fseek fr 0 0                   // SEEK_SET
     assert <| ferror fr == 0
-    fclose fr
+    _ = fclose fr
 
     remove_dir = "rm -rf " ++ dir ++ "\0"
     _ = system (C.String remove_dir.data)

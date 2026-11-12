@@ -1,3 +1,4 @@
+import Std.Mem.transmute
 two_candidates (a: ref I32) (_b: ref I32): ref I32 =
     a
 
@@ -14,11 +15,12 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/ambiguous_elided_place.an:1:44
+// examples/typechecking/ambiguous_elided_place.an:2:44
+// 1 | import Std.Mem.transmute
 //   | // error: Place annotation required here
-// 1 | two_candidates (a: ref I32) (_b: ref I32): ref I32 =
+// 2 | two_candidates (a: ref I32) (_b: ref I32): ref I32 =
 //   |                                            ^^^^^^^
-// 2 |     a
+// 3 |     a
 // 
 // Found 1 error and 0 warnings
 

@@ -1,4 +1,6 @@
-import Std.Slice.Slice, slice
+import Std.Slice.Slice
+import Std.Array
+import Std.Array.array_get_unchecked
 
 first_of (array: ref Array n t): ref t =
     array_get_unchecked array 0
@@ -11,7 +13,7 @@ mix (a: ref 'a Array n t) (_b: ref Array m t): ref 'a t =
 
 main () =
     arr = [1, 2, 3]
-    s = slice arr
+    s = Array.slice arr
     _ = s.len
     _ = first_of arr
     _ = first_of_explicit arr
@@ -19,7 +21,9 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// import Std.Slice.Slice, slice
+// import Std.Slice.Slice
+// import Std.Array
+// import Std.Array.array_get_unchecked
 // 
 // (first_of: fn (ref 'array (Array n t)) -> ref 'array t is pure) (array: ref 'array (Array n t)): ref t =
 //     (array_get_unchecked: fn (ref 'array (Array n t)) Usz -> ref 'array t is pure) (array: ref 'array (Array n t)) 0
@@ -32,7 +36,7 @@ main () =
 // 
 // (main: fn Unit -> Unit is pure) () =
 //     (arr: Array 3 I32) = [1, 2, 3]
-//     (s: Slice 'arr I32) = (slice: fn (ref 'arr (Array 3 I32)) -> Slice 'arr I32 is pure) (ref (arr: Array 3 I32))
+//     (s: Slice 'arr I32) = (Array.slice: fn (ref 'arr (Array 3 I32)) -> Slice 'arr I32 is pure) (ref (arr: Array 3 I32))
 //     (_: Usz) = (s: Slice 'arr I32).len
 //     (_: ref 'arr I32) = (first_of: fn (ref 'arr (Array 3 I32)) -> ref 'arr I32 is pure) (ref (arr: Array 3 I32))
 //     (_: ref 'arr I32) = (first_of_explicit: fn (ref 'arr (Array 3 I32)) -> ref 'arr I32 is pure) (ref (arr: Array 3 I32))

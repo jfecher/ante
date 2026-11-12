@@ -1,5 +1,6 @@
 import Std.Fail.Fail, fail, try, on_fail, assert, ignore_fail, retry_until_success, abort_on_fail
 import Std.C.malloc, free
+import Std.Mem.deref_ptr, ptr_store
 
 fail_int (): I32 can Fail = fail ()
 ok_int (): I32 can Fail = 7

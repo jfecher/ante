@@ -1,6 +1,7 @@
 import Std.String
 import Std.C.malloc
 import Std.String.is_valid_utf8
+import Std.Mem.transmute, array_insert
 
 main () =
     abort_on_panic do

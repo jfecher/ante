@@ -1,3 +1,4 @@
+import Std.Mem.null, deref_ptr
 // TODO: Should this be merged with the Throw effect?
 effect Fail =
     fail: fn Unit -> Never

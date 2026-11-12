@@ -237,7 +237,7 @@ fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker,
         // - Capture everything by move if it is a `move` closure
         if !is_move && checker.item.mutable_definitions.contains(name) {
             let place = checker.open_place(checker.binding_place(*name));
-            Type::Application(Shared::new(Type::MUT), Shared::new(vec![place, typ]))
+            checker.reference_type(cst::ReferenceKind::Mut, place, typ)
         } else {
             typ
         }

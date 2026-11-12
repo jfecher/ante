@@ -4,6 +4,7 @@ import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, any, foldl
     find, find_map, take, take_while, skip, skip_while, sum, product, for_, Loop,
     break_, continue_, Emit, emit
 import Std.Fail.Fail, try, assert, abort_on_fail
+import Std.Mem.transmute
 
 main () =
     print_to_stdout do

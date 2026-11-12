@@ -1,3 +1,4 @@
+import Std.Mem.transmute
 type T =
    | A U32 U32 U32 U32
    | B (fn Unit -> String)

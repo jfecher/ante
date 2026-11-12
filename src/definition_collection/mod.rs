@@ -308,11 +308,7 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Arc<TypeDe
     // make this impossible with Ante' current syntax however.
     let result = match build_export_set(&parse) {
         None => types,
-        Some(export_set) => {
-            let mut filtered = (*types).clone();
-            filtered.retain(|name, _| export_set.names.contains(name));
-            Arc::new(filtered)
-        },
+        Some(export_set) => Arc::new(filter_exports(db, context.0, &parse, &export_set, &types, Namespace::Types)),
     };
 
     incremental::exit_query();
@@ -391,12 +387,7 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
         return all;
     };
 
-    let definitions = all
-        .definitions
-        .iter()
-        .filter(|(name, _)| export_set.names.contains(name))
-        .map(|(k, v)| (k.clone(), *v))
-        .collect();
+    let definitions = filter_exports(db, context.0, &parse, &export_set, &all.definitions, Namespace::Definitions);
 
     let qualified: HashSet<(TopLevelId, &Name)> = export_set
         .qualified
@@ -419,6 +410,86 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
 
     incremental::exit_query();
     Arc::new(VisibleDefinitionsResult { definitions, methods, imported_modules: BTreeMap::new() })
+}
+
+/// Map each name in `export_set` to its item in `local` or, failing that, the imported item it re-exports.
+fn filter_exports(
+    db: &DbHandle, file: SourceFileId, parse: &ParseResult, export_set: &ExportSet,
+    local: &BTreeMap<Name, TopLevelName>, namespace: Namespace,
+) -> BTreeMap<Name, TopLevelName> {
+    let names = export_set.names.iter();
+    names
+        .filter_map(|name| {
+            let found =
+                local.get(*name).copied().or_else(|| find_in_imports(db, parse, name, namespace, &mut vec![file]))?;
+            Some(((*name).clone(), found))
+        })
+        .collect()
+}
+
+#[derive(Copy, Clone)]
+enum Namespace {
+    Definitions,
+    Types,
+}
+
+/// Find the item `name` refers to when imported from `file`, following any chain of re-exports.
+fn find_exported(
+    db: &DbHandle, file: SourceFileId, name: &Name, namespace: Namespace, visited: &mut Vec<SourceFileId>,
+) -> Option<TopLevelName> {
+    if visited.contains(&file) {
+        return None;
+    }
+    visited.push(file);
+
+    let parse = Parse(file).get(db);
+    let exports = parse.cst.exports.as_ref();
+    let exports_name = exports.is_none_or(|exports| exports.iter().any(|e| e.qualifier.is_none() && e.name == *name));
+
+    match namespace {
+        Namespace::Types => {
+            if exports_name && let Some(found) = AllTypes(file).get(db).get(name) {
+                return Some(*found);
+            }
+        },
+        Namespace::Definitions => {
+            let all = AllDefinitions(file).get(db);
+            if exports_name && let Some(found) = all.definitions.get(name) {
+                return Some(*found);
+            }
+
+            // Methods are importable as free functions if they're exported
+            let method = match exports {
+                None => all.methods.values().find_map(|methods| methods.get(name)),
+                Some(exports) => exports.iter().filter(|e| e.name == *name).find_map(|e| {
+                    let type_id = all.definitions.get(&e.qualifier.as_ref()?.0)?;
+                    all.methods.get(&type_id.top_level_item)?.get(name)
+                }),
+            };
+            if let Some(found) = method {
+                return Some(*found);
+            }
+        },
+    }
+
+    // Only files with an explicit `export` clause re-export imported items
+    if exports.is_some() && exports_name { find_in_imports(db, &parse, name, namespace, visited) } else { None }
+}
+
+/// Search each of this file's imports which import `name` for the item it refers to.
+fn find_in_imports(
+    db: &DbHandle, parse: &ParseResult, name: &Name, namespace: Namespace, visited: &mut Vec<SourceFileId>,
+) -> Option<TopLevelName> {
+    for import in &parse.cst.imports {
+        if !import.items.iter().any(|(item, _)| item == name) {
+            continue;
+        }
+        let Some(import_file) = get_file_id(&import.crate_name, &import.module_path, db) else { continue };
+        if let Some(found) = find_exported(db, import_file, name, namespace, visited) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 /// Verify every name listed in this file's `export` statement is actually defined or imported

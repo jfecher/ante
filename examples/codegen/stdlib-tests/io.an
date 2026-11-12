@@ -3,6 +3,7 @@ import Std.C
 import Std.C.fputs, fopen, fclose, system
 import Std.Fail.Fail, try, abort_on_fail, assert
 import Std.String.eq_string
+import Std.Iterator.iterate
 
 write_test_file (path: String): Unit can Fs, Fail =
     var f = File.open path "w"

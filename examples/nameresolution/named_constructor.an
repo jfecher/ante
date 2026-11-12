@@ -32,7 +32,7 @@ z = y * 2.0
 //     x_? = x_c1m818_8644_0
 // 
 // // id = c1m818_1897
-// z_c1m818_1897_0 = y_? *_c0m703_5387_2 2.0
+// z_c1m818_1897_0 = y_? *_c0m145_5387_2 2.0
 
 // expected stderr:
 // examples/nameresolution/named_constructor.an:7:6
@@ -51,3 +51,4 @@ z = y * 2.0
 //    |     ^
 // 
 // Found 3 errors and 0 warnings
+

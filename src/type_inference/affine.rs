@@ -6,15 +6,12 @@ use crate::{
     iterator_extensions::mapvec,
     name_resolution::Origin,
     parser::{
-        cst::{Expr, ReferenceKind, TopLevelItemKind},
+        cst::{Expr, TopLevelItemKind},
         get_item::TraitDefinition,
         ids::{ExprId, NameId, PatternId, TopLevelName},
     },
     shared_arc::Shared,
-    type_inference::{
-        Locateable, TypeChecker, prelude_type_name,
-        types::{PrimitiveType, Type},
-    },
+    type_inference::{Locateable, TypeChecker, prelude_type_name, types::Type},
 };
 
 use super::places::{Place, PlaceEntry};
@@ -278,17 +275,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // for functions in the stdlib because we can't manually access a closure's environment
             // and we can't define every copy impl for every possible parameter count.
             Type::Function(_) => true,
-            // `ref`, `mut`, and `imm` references are always Copy, see `copy_ref`, `copy_mut`, and `copy_imm`
-            Type::Application(constructor, _)
-                if matches!(
-                    constructor.follow(&self.bindings),
-                    Type::Primitive(PrimitiveType::Reference(
-                        ReferenceKind::Ref | ReferenceKind::Mut | ReferenceKind::Imm
-                    ))
-                ) =>
-            {
-                true
-            },
+            Type::Application(constructor, _) if constructor.is_reference_constructor(&self.bindings) => true,
             // TODO: Actually require abilities only capture `Copy` types
             typ if self.is_trait_or_effect(typ) => true,
             // `shared` types are pointer-wrapped in MIR and are always Copy.

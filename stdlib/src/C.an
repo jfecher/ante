@@ -1,7 +1,8 @@
+import Std.Mem.transmute, deref_ptr
 export String, copy_cstring, String.new, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,
-    fgetc, fgets, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
+    fgetc, fgets, fread, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
     FilePos, Clock, clock_gettime, nanosleep, VoidPtr
 
 /// A C string is a pointer to a null-terminated character array.
@@ -69,12 +70,13 @@ fwrite = extern "fwrite": fn VoidPtr Usz Usz File -> Usz can Fs
 
 fgetc = extern "fgetc": fn File -> I32 can Fs
 fgets = extern "fgets": fn String I32 File -> String can Fs
+fread = extern "fread": fn VoidPtr Usz Usz File -> Usz can Fs
 ungetc = extern "ungetc": fn I32 File -> I32 can Fs
 
-fgetpos = extern "fgetpos": fn File FilePos -> Unit can Fs
-ftell = extern "ftell": fn File -> I32 can Fs
-fsetpos = extern "fsetpos": fn File FilePos -> Unit can Fs
-fseek = extern "fseek": fn File I32 I32 -> I32 can Fs
+fgetpos = extern "fgetpos": fn File FilePos -> I32 can Fs
+ftell = extern "ftell": fn File -> I64 can Fs
+fsetpos = extern "fsetpos": fn File FilePos -> I32 can Fs
+fseek = extern "fseek": fn File I64 I32 -> I32 can Fs
 
 feof = extern "feof": fn File -> I32 can Fs
 ferror = extern "ferror": fn File -> I32 can Fs

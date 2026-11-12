@@ -1,3 +1,4 @@
+import Std.Iterator.Iterator, iterate
 impl countdown: Iterator I32 I32 pure with
     next x =
         if x <= 0

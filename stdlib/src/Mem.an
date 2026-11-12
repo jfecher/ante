@@ -1,0 +1,34 @@
+type Type t = | MkType
+
+size_of (v: Type t): Usz = intrinsic "SizeOf" v
+
+offset (ptr: Ptr t) (index: Usz): Ptr t =
+    addr = Usz ptr
+    new_addr = addr + index * size_of (MkType: Type t)
+    transmute new_addr
+
+offset_bytes (ptr: Ptr t) (index: Usz): Ptr t =
+    addr = Usz ptr
+    transmute (addr + index)
+
+offset_negative (ptr: Ptr t) (index: Usz): Ptr t =
+    addr = Usz ptr
+    transmute (addr - index)
+
+deref_ptr (p: Ptr t): t =
+    deref (transmute p)
+
+ptr_store (p: Ptr a) (value: a): Unit =
+    addr = ptr_to_ref p
+    addr := value
+
+array_insert (p: Ptr a) (index: Usz) (value: a): Unit =
+    offset p index |> ptr_store value
+
+ptr_to_ref: fn (Ptr a) -> ref a = transmute
+ref_to_ptr: fn (ref a) -> Ptr a = transmute
+
+null (): Ptr a = transmute 0usz
+
+transmute (x: a): b =
+    intrinsic "Transmute" x

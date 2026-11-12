@@ -1,0 +1,76 @@
+trait Bitwise t =
+    band: fn t t -> t
+    bor: fn t t -> t
+    bxor: fn t t -> t
+    shl: fn t t -> t
+    shr: fn t t -> t
+
+impl bitwise_i8: Bitwise I8 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_i16: Bitwise I16 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_i32: Bitwise I32 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_i64: Bitwise I64 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_isz: Bitwise Isz with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_u8: Bitwise U8 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_u16: Bitwise U16 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_u32: Bitwise U32 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_u64: Bitwise U64 with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y
+
+impl bitwise_usz: Bitwise Usz with
+    band x y = intrinsic "BitwiseAnd" x y
+    bor x y = intrinsic "BitwiseOr" x y
+    bxor x y = intrinsic "BitwiseXor" x y
+    shl x y = intrinsic "BitwiseShl" x y
+    shr x y = intrinsic "BitwiseShr" x y

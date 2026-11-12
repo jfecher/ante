@@ -37,9 +37,9 @@ main () =
 //     (_: ref 'mut_tuple.missing (error)) = ref (mut_tuple: I32, I32).missing
 //     (_: mut 'mut_tuple.missing (error)) = mut (mut_tuple: I32, I32).missing
 //     (mut_ref: mut 'mut_tuple (I32, I32)) = mut (mut_tuple: I32, I32)
-//     (_: ref 'mut_tuple.missing (error)) = ref (mut_ref: mut 'mut_tuple (I32, I32)).missing
+//     (_: mut 'mut_tuple.missing (error)) = ref (mut_ref: mut 'mut_tuple (I32, I32)).missing
 //     (_: mut 'mut_tuple.missing (error)) = mut (mut_ref: mut 'mut_tuple (I32, I32)).missing
-//     (_: mut '_58 (ref 'tuple.first I32)) = mut (deref: fn (ref '_56.first (ref 'tuple.first I32)) -> ref 'tuple.first I32 is pure) (mut ref (tuple: I32, I32)).first
+//     (_: mut '_58 (ref 'tuple.first I32)) = mut (deref: fn (mut '_56.first (ref 'tuple.first I32)) -> ref 'tuple.first I32 is pure) (mut ref (tuple: I32, I32)).first
 
 // expected stderr:
 // examples/typechecking/field_diagnostics.an:7:18

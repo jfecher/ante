@@ -1,5 +1,6 @@
 import Std.Vec.Vec, get_unchecked
 import Std.Fail.Fail, fail
+import Std.Array.array_get_unchecked
 
 /// Emit a single item of type `a`. Another name for this is `Yield`.
 effect Emit a =

@@ -291,19 +291,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if scope.implicits_in_scope.is_empty()
             && let Some(top) = self.implicits.last_mut()
         {
-            let has_delayed_implicits = scope.delayed_implicits.iter().any(|implicit| !implicit.optional);
+            let resolved_early = &self.item.resolved_early_implicits;
+            let has_delayed_implicits = (scope.delayed_implicits.iter())
+                .any(|implicit| !implicit.optional && !resolved_early.contains_key(&implicit.destination));
             top.extend(scope);
             return has_delayed_implicits;
         }
 
         let mut any_bubbled = false;
 
-        // The scope has local implicits. Partition delayed implicits so ones that can't possibly
-        // bind to a local name are deferred to the parent. Then transitively pull along any
-        // bubbled candidate that shares a type variable with a staying implicit's target type:
-        // resolving it at this scope is required to commit the bindings the staying implicit
-        // depends on (e.g. `print v.data.[i]` keeps `Print u` here, and `Extract (Ptr t) Usz u`
-        // shares `u` so it must also resolve here to bind `u` before the `Print` phase-2 retry).
+        // Partition delayed implicits so ones that can't possibly bind to a local name are deferred
+        // to the parent. Then transitively pull along any bubbled candidate that shares a type
+        // variable with a staying implicit's target type.
         if !self.implicits.is_empty() {
             let local_implicits = scope.implicits_in_scope.clone();
             let mut stays_here = Vec::new();
@@ -325,11 +324,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let bubbles_up = self.pull_transitive_implicits(&mut stays_here, candidates_to_bubble, &mut kept_vars);
 
             if stays_here.is_empty() {
+                let resolved_early = &self.item.resolved_early_implicits;
+                let has_delayed_implicits = (bubbles_up.iter())
+                    .any(|implicit| !implicit.optional && !resolved_early.contains_key(&implicit.destination));
                 let parent = self.implicits.last_mut().unwrap();
                 scope.delayed_implicits = bubbles_up;
                 scope.implicits_in_scope.clear(); // local names die with this scope, must not leak up
                 parent.extend(scope);
-                return true;
+                return has_delayed_implicits;
             }
 
             // Keep here only int/float vars whose id appears in a kept implicit's target. The
@@ -414,11 +416,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // We must perform any queued requests before popping any implicits which should be visible
         let scope = self.implicits.last_mut().unwrap();
 
-        let implicits = std::mem::take(&mut scope.delayed_implicits);
+        let mut implicits = std::mem::take(&mut scope.delayed_implicits);
         let closures = std::mem::take(&mut scope.deferred_closure_checks);
         let integers = std::mem::take(&mut scope.integer_type_variables);
         let floats = std::mem::take(&mut scope.float_type_variables);
         let effect_variables = std::mem::take(&mut scope.effect_type_variables);
+
+        // Implicits resolved early have already been inserted
+        implicits.retain(|implicit| self.item.resolved_early_implicits.remove(&implicit.destination).is_none());
 
         // Phase 1: resolve to a fixpoint, since binding one implicit can unblock another.
         // FIXME: Likely performance issue. Remove the fixpoint maybe with eagerly trying each implicit
@@ -576,6 +581,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.find_implicit_value(delayed, &in_scope).is_ok()
     }
 
+    /// Whether any implicit in scope could match `target_type`. Does not recursively check
+    /// each impl's requirements.
+    pub(super) fn implicit_candidate_exists(&mut self, target_type: &Type) -> bool {
+        let no_bindings = TypeBindings::default();
+        for name in self.collect_implicits_in_scope() {
+            let typ = self.name_types[&name].clone();
+            if !matches!(self.implicit_type_matches(&typ, target_type, &no_bindings), ImplicitMatch::NoMatch) {
+                return true;
+            }
+        }
+
+        let Some(item) = self.current_item else { return false };
+        let mut found = false;
+        VisibleImplicits(item.source_file).get(self.compiler).iter_possibly_matching_impls(target_type, |_, name| {
+            let (typ, _) = self.type_and_bindings_of_top_level_name(name);
+            found = !matches!(self.implicit_type_matches(&typ, target_type, &no_bindings), ImplicitMatch::NoMatch);
+            found
+        });
+        found
+    }
+
     /// Whether the implicit requested for `destination` has been found yet
     pub(super) fn implicit_was_found(&self, destination: ExprId) -> bool {
         !matches!(self.current_extended_context()[destination], cst::Expr::Error)
@@ -663,15 +689,54 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let implicits_in_scope = self.collect_implicits_in_scope();
         let mut resolved = Vec::new();
         for implicit in to_resolve {
-            // Read before dispatch: on success the destination's type is replaced by the candidate's
-            let target = self.expr_types[&implicit.destination].clone();
-            if self.find_implicit_value(implicit, &implicits_in_scope).is_err() {
-                self.implicits.last_mut().unwrap().delayed_implicits.push(implicit);
-            } else {
+            if let Some(target) = self.item.resolved_early_implicits.remove(&implicit.destination) {
                 resolved.push(target);
+            } else if let Some(target) = self.try_resolve_implicit(implicit, &implicits_in_scope) {
+                resolved.push(target);
+            } else {
+                self.implicits.last_mut().unwrap().delayed_implicits.push(implicit);
             }
         }
         resolved
+    }
+
+    /// Try to resolve `implicit`, returning its target type from before resolution on success.
+    fn try_resolve_implicit(&mut self, implicit: DelayedImplicit, implicits_in_scope: &[NameId]) -> Option<Type> {
+        // On success the destination's type is replaced by the candidate's
+        let target = self.expr_types[&implicit.destination].clone();
+        self.find_implicit_value(implicit, implicits_in_scope).ok().map(|()| target)
+    }
+
+    /// If `typ` is still an unbound type variable, try to resolve any delayed implicits now since
+    /// they may bind it, e.g. the element type of `Stream s a e` is only known once the impl is
+    /// found. This is meant to be called where inference cannot continue without knowing `typ`,
+    /// so the retry only costs anything where inference would otherwise fail.
+    pub(super) fn poke_type_with_implicits(&mut self, typ: &Type) {
+        let element = typ.reference_element(&self.bindings).map(|(_, element)| element);
+        if matches!(self.follow_type(element.as_ref().unwrap_or(typ)), Type::Variable(_)) {
+            self.resolve_delayed_implicits_early();
+        }
+    }
+
+    /// Try to resolve every delayed implicit in every scope, using only the implicits visible in that
+    /// scope. Unlike [Self::resolve_new_delayed_implicits], resolved implicits are left in their scope
+    /// (tracked by `resolved_early_implicits`) so callers holding a [Self::delayed_implicits_count]
+    /// still see the same implicits after it. No diagnostics are emitted.
+    fn resolve_delayed_implicits_early(&mut self) {
+        let mut implicits_in_scope = Vec::new();
+        for scope_index in 0..self.implicits.len() {
+            implicits_in_scope.extend_from_slice(&self.implicits[scope_index].implicits_in_scope);
+
+            for index in 0..self.implicits[scope_index].delayed_implicits.len() {
+                let implicit = self.implicits[scope_index].delayed_implicits[index];
+                if self.item.resolved_early_implicits.contains_key(&implicit.destination) {
+                    continue;
+                }
+                if let Some(target) = self.try_resolve_implicit(implicit, &implicits_in_scope) {
+                    self.item.resolved_early_implicits.insert(implicit.destination, target);
+                }
+            }
+        }
     }
 
     /// Find an implicit value & modify the current cst to insert the implicit if found,
@@ -1032,7 +1097,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let exports = ExportedDefinitions(*source_file_id).get(self.compiler);
 
                 for (name, top_level_name) in &exports.definitions {
-                    if skip.contains(top_level_name) {
+                    // Skip re-exports so each implicit is only suggested from its defining module
+                    if skip.contains(top_level_name) || top_level_name.top_level_item.source_file != *source_file_id {
                         continue;
                     }
 
@@ -1316,7 +1382,7 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
         | Type::Generic(_)
         | Type::Primitive(_)
         | Type::U32(_)
-        | Type::Place(_)
+        | Type::Place(..)
         | Type::Places(_)
         | Type::PlaceProjection(..) => {},
     }

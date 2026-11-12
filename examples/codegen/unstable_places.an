@@ -1,5 +1,6 @@
 import Std.Vec.Vec, of
 import Std.Stream.stream_array
+import Std.Mem.transmute, offset
 
 get (v: ref 'v Vec t) (i: Usz): ref 'v! t =
     transmute (offset v.data i)

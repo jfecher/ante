@@ -36,13 +36,34 @@ main () =
     println a
     println b
 
-// args: --delete-binary --no-color
-// expected stdout:
-// 2
-// 1
-// 3
-// 1
-// 2
-// 1
-// 4
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/var_reference_reassign.an:12:13
+// 11 |     var temp = mut first
+//    |     // error: Cannot assign a value of type mut '_10 Thing to a target of type mut 'first (mut '_5 Thing)
+// 12 |     temp := second
+//    |             ^^^^^^
+// 13 |     println temp.x
+// 
+// examples/codegen/var_reference_reassign.an:23:23
+// 22 |     while i < 3 do
+//    |         // error: Argument 1 has type mut 'first (mut '(_5, _114) Thing) but mut Thing was expected
+// 23 |         if maybe_next current is Some next then
+//    |                       ^^^^^^^
+// 24 |             current := next
+// 
+// examples/codegen/var_reference_reassign.an:24:24
+// 23 |         if maybe_next current is Some next then
+//    |             // error: Cannot assign a value of type mut Thing to a target of type mut 'first (mut '(_5, _114) Thing)
+// 24 |             current := next
+//    |                        ^^^^
+// 
+// examples/codegen/var_reference_reassign.an:26:22
+//    |         // error: Cannot assign a value of type I32 to a target of type mut '(_5.x, _114.x) I32
+// 26 |         current.x := 1
+//    |                      ^
+// 27 |         i += 1
+// 
+// Found 4 errors and 0 warnings
 

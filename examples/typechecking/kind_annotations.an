@@ -1,3 +1,4 @@
+import Std.Array.array_get_unchecked
 // A `U32`-kinded generic for type-level array lengths
 type Buffer (n: U32) (t: type) =
     storage: Array n t
@@ -30,6 +31,8 @@ type Mismatch (n: type) =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
+// import Std.Array.array_get_unchecked
+// 
 // type Buffer (n: U32) (t: type) =
 //     storage: Array n t
 // 
@@ -53,22 +56,22 @@ type Mismatch (n: type) =
 //     arr: Array n I32
 
 // expected stderr:
-// examples/typechecking/kind_annotations.an:21:16
-// 20 | type Bad n t =
+// examples/typechecking/kind_annotations.an:22:16
+// 21 | type Bad n t =
 //    |     // error: Expected a type constructor of kind U32, but found one of kind type
-// 21 |     arr: Array n t
+// 22 |     arr: Array n t
 //    |                ^
-// 22 |     extra: n
+// 23 |     extra: n
 // 
-// examples/typechecking/kind_annotations.an:24:30
+// examples/typechecking/kind_annotations.an:25:30
 //    | // error: Expected a type constructor of kind U32, but found one of kind type
-// 24 | bad_fn (x: n) (_array: Array n t) = x
+// 25 | bad_fn (x: n) (_array: Array n t) = x
 //    |                              ^
 // 
-// examples/typechecking/kind_annotations.an:28:16
-// 27 | type Mismatch (n: type) =
+// examples/typechecking/kind_annotations.an:29:16
+// 28 | type Mismatch (n: type) =
 //    |     // error: Expected a type constructor of kind U32, but found one of kind type
-// 28 |     arr: Array n I32
+// 29 |     arr: Array n I32
 //    |                ^
 // 
 // Found 3 errors and 0 warnings

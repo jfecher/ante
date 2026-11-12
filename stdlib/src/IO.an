@@ -1,11 +1,13 @@
-import Std.C.fclose, fopen, fwrite, fgetc, ungetc, feof, malloc, realloc, getchar, copy_file
+import Std.C.fclose, fopen, fwrite, fgetc, fread, ungetc, feof, ferror, malloc, realloc, free, getchar, copy_file
 import Std.C
 import Std.Fail.Fail, fail, fail_if
-import Std.String.split
 import Std.Stream.iter, stream_fn, foldl
+import Std.Mem.transmute, null, array_insert, offset
+import Std.String.is_valid_utf8_bytes
+import Std.Iterator.Iterator
 
 export File, File.open, File.close, drop_file, File.eof, File.write, File.next_char, File.next_line,
-    iterator_file, read_line, print_to_file, create_dir, create_dir_all
+    iterator_file, read_line, read_file, read_file_bytes, print_to_file, create_dir, create_dir_all
 
 type File = c_file: C.File
 
@@ -19,11 +21,11 @@ File.open (path: String) (mode: String): File can Fs, Fail =
     File c_file
 
 File.close (file: File): Unit can Fs =
-    fclose file.c_file
+    _ = fclose file.c_file
 
 impl drop_file: Drop File Fs with
     drop f =
-        fclose f.c_file
+        _ = fclose f.c_file
 
 /// Convenience function for using feof with better types
 File.eof (f: ref File): Bool can Fs =
@@ -94,6 +96,29 @@ read_line (): String can Fs =
     array_insert buffer len '\0'
     String.from_parts buffer (U32 len)
 
+read_file_bytes (path: String): Vec U8 can Fs, Fail =
+    file = File.open path "rb"
+    var capacity = 4096usz
+    var data: Ptr U8 = malloc capacity
+    var len = 0usz
+
+    while data != null () do
+        len += fread (offset data len) 1 (capacity - len) file.c_file
+        if len < capacity then break
+        capacity *= 2
+        data := realloc data capacity
+
+    read_error = data == null () or ferror file.c_file != 0
+    file.close ()
+    fail_if read_error
+    Vec data len capacity
+
+read_file (path: String): String can Fs, Fail =
+    bytes = read_file_bytes path
+    fail_if (bytes.len > 0xFFFF_FFFF)
+    fail_if (not is_valid_utf8_bytes bytes.data bytes.len)
+    String.from_parts (transmute bytes.data) (U32 bytes.len)
+
 create_dir_: fn C.String -> I32 can Fs = extern "ante_create_dir"
 
 /// Create the directory at `path`.
@@ -104,7 +129,7 @@ create_dir (path: String): Unit can Fs, Fail =
 /// Create each directory in `path` along with any missing parent directories.
 /// Fails if any of them cannot be created.
 create_dir_all (path: String): Unit can Fs, Fail =
-    split path '/' |> foldl "" fn prefix component ->
+    path.split '/' |> foldl "" fn prefix component ->
         if component.length == 0 then
             // An empty first component means the path is absolute.
             if prefix.length == 0 then "/" else prefix

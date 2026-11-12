@@ -3,7 +3,7 @@ import Std.Fail.Fail, fail_if
 export sqrt, sqrtf, cbrt, pow, powf, exp, log, log2, log10,
     sin, cos, tan, asin, acos, atan, atan2,
     floor, ceil, round, trunc, fmod, hypot,
-    pi, tau, e, abs,
+    pi, tau, e, abs, gcd, lcm,
     CheckedNum, checked_add, checked_sub, checked_mul,
     checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i64, checked_num_isz,
     checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz,
@@ -52,6 +52,23 @@ abs (x: t) {n: Num t} {Copy t}: t =
     (<) = n.cmp.(<)
     (-) = n.sub.(-)
     if x < n.zero then n.zero - x else x
+
+gcd (a: t) (b: t) {n: Num t} {Mod t} {Copy t}: t =
+    (==) = n.eq.(==)
+    var x = abs a
+    var y = abs b
+    while not (y == n.zero) do
+        remainder = x % y
+        x := y
+        y := remainder
+    x
+
+lcm (a: t) (b: t) {n: Num t} {Mod t} {Copy t}: t =
+    (==) = n.eq.(==)
+    (/) = n.div.(/)
+    (*) = n.mul.(*)
+    if a == n.zero or b == n.zero then n.zero
+    else abs a / gcd a b * abs b
 
 checked_add_i8 (x: I8) (y: I8): I8 can Fail =
     result, overflowed = overflowing_add_i8 x y

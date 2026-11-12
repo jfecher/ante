@@ -1,5 +1,6 @@
 import Std.C.puts, exit
 import Std.C
+import Std.Mem.transmute
 
 foo (_: I32) (_: String) : Char = 'a'
 
@@ -22,6 +23,7 @@ main () =
 // expected stdout:
 // import Std.C.puts, exit
 // import Std.C
+// import Std.Mem.transmute
 // 
 // (foo: fn I32 String -> Char is pure) (_: I32) (_: String): Char = 'a'
 // 
@@ -39,16 +41,16 @@ main () =
 //     ()
 
 // expected stderr:
-// examples/typechecking/type_annotations.an:7:15
-// 6 | bar: fn a a -> I32 =
-//   |     // error: The body of this function has type a but it is expected to return I32
-// 7 |     fn _ b -> b
-//   |               ^
+// examples/typechecking/type_annotations.an:8:15
+//  7 | bar: fn a a -> I32 =
+//    |     // error: The body of this function has type a but it is expected to return I32
+//  8 |     fn _ b -> b
+//    |               ^
 // 
-// examples/typechecking/type_annotations.an:16:11
-// 16 |     exit2 "test"	// error: Argument 1 has type String but I32 was expected
+// examples/typechecking/type_annotations.an:17:11
+// 17 |     exit2 "test"	// error: Argument 1 has type String but I32 was expected
 //    |           ^^^^^^
-// 17 |     puts2
+// 18 |     puts2
 // 
 // Found 2 errors and 0 warnings
 

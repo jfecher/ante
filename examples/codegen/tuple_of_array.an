@@ -1,3 +1,4 @@
+import Std.Array.array_get, array_set
 // The C backend needs to handle arrays with special checks and memcpy when necessary
 // since arrays in C otherwise degrade into pointers. This test is to ensure consistency
 // with the llvm backend and array value semantics.

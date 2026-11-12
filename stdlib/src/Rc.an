@@ -1,6 +1,7 @@
 import Std.C.malloc, free
+import Std.Mem.Type, MkType, size_of, transmute, null, deref_ptr, ptr_store, ptr_to_ref
 
-export Rc, Rc.of, Rc.as_ref, Rc.as_mut, ref_count, inc_ref_count, dec_ref_count,
+export Rc, Rc.of, Rc.as_ref, ref_count, inc_ref_count, dec_ref_count,
     Rc.try_unwrap, Rc.unwrap_or_clone, clone_rc, drop_rc
 
 /// A non-threadsafe reference-counted pointer.
@@ -13,26 +14,20 @@ Rc.of (value: t): Rc t =
     ptr_store ptr (1, value)
     Rc ptr
 
-/// Returns a reference into the inner element
 Rc.as_ref (rc: ref Rc t): ref! t =
-    rc = ptr_to_mut rc.ptr
-    rc.second
-
-/// Returns a mutable reference into the inner element
-Rc.as_mut (rc: mut Rc t): mut! t =
-    rc = ptr_to_mut rc.ptr
+    rc = ptr_to_ref rc.ptr
     rc.second
 
 ref_count (rc: ref Rc t): U32 =
-    rc = ptr_to_mut rc.ptr
+    rc = ptr_to_ref rc.ptr
     rc.first
 
 inc_ref_count (rc: mut Rc t): Unit =
-    rc = ptr_to_mut rc.ptr
+    rc = ptr_to_ref rc.ptr
     rc.first += 1
 
 dec_ref_count (rc: mut Rc t): Unit =
-    rc = ptr_to_mut rc.ptr
+    rc = ptr_to_ref rc.ptr
     rc.first -= 1
 
 /// If the reference count is 1, unwraps the Rc returning the value directly.
@@ -72,7 +67,7 @@ impl drop_rc {Drop t e}: Drop (Rc t) e with
         if rc.ptr == null () then
             ()
         else if ref_count rc == 1 then
-            ptr = ptr_to_mut rc.ptr
+            ptr = ptr_to_ref rc.ptr
             drop ptr.second
             free rc.ptr
         else

@@ -1,0 +1,89 @@
+// Regression test ensuring implicit places are quantified correctly
+// on trait methods. `escape_method` used to not error.
+trait Getter c =
+    get_it: fn (ref c) -> ref I32
+
+trait Keep c =
+    keep: fn (ref c) -> ref! I32
+
+trait Mutator c =
+    bump: fn (read c) -> Unit
+
+trait Each c =
+    each: fn (ref c) (fn (ref I32) -> Unit) -> Unit
+
+type Holder = x: I32
+
+impl getter_local: Getter Holder with
+    get_it _h =
+        local = 42
+        ref local
+
+keep_helper (a: ref 'a I32) (_: ref Holder): ref 'a I32 = a
+
+impl keep_local: Keep Holder with
+    keep h =
+        v = 5
+        keep_helper (ref v) h
+
+impl mutate_read: Mutator Holder with
+    bump h = h.x := 9
+
+impl each_holder: Each Holder with
+    each h f =
+        local = h.x
+        f (ref local)
+
+escape_dictionary {d: Keep Holder _} (): ref I32 =
+    local = Holder 1
+    d.keep (ref local)
+
+escape_method (): ref I32 =
+    local = Holder 1
+    keep (ref local)
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/impl_method_places.an:19:1
+// 18 |     get_it _h =
+//    |         // error: The body of this function has type ref 'local I32 but it is expected to return ref '_ I32
+// 19 |         local = 42
+//    | ^^^^^^^^^^^^^^^^^^
+// 20 |         ref local
+// 
+// examples/typechecking/impl_method_places.an:20:9
+// 18 |     get_it _h =
+// 19 |         local = 42	// note: local is only valid until the end of this scope
+//    |         -----
+// 20 |         ref local	// error: This reference to local outlives its scope
+//    |         ^^^^^^^^^
+// 
+// examples/typechecking/impl_method_places.an:27:22
+// 26 |         v = 5
+//    |         // error: Argument 1 has type ref 'v I32 but ref '_! I32 was expected
+// 27 |         keep_helper (ref v) h
+//    |                      ^^^^^
+// 
+// examples/typechecking/impl_method_places.an:30:15
+// 29 | impl mutate_read: Mutator Holder with
+//    |     // error: Cannot assign through a value of type read '_.x I32, a mut reference is required
+// 30 |     bump h = h.x := 9
+//    |               ^^
+// 
+// examples/typechecking/impl_method_places.an:39:6
+// 37 | escape_dictionary {d: Keep Holder _} (): ref I32 =
+// 38 |     local = Holder 1	// note: local! is only valid until the end of this scope
+//    |     -----
+// 39 |     d.keep (ref local)	// error: This reference to local! outlives its scope
+//    |      ^^^^^^^^^^^^^^^^
+// 
+// examples/typechecking/impl_method_places.an:43:5
+// 41 | escape_method (): ref I32 =
+// 42 |     local = Holder 1	// note: local! is only valid until the end of this scope
+//    |     -----
+// 43 |     keep (ref local)	// error: This reference to local! outlives its scope
+//    |     ^^^^^^^^^^^^^^^
+// 
+// Found 6 errors and 0 warnings
+
