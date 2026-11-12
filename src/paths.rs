@@ -12,6 +12,16 @@ pub fn binary_name(module_name: &str) -> PathBuf {
     std::fs::canonicalize(&path).unwrap_or(path)
 }
 
+/// The C compiler used to compile C output and link binaries. Uses `$CC` if set, otherwise
+/// `clang` on Windows and `cc` elsewhere.
+pub fn c_compiler() -> String {
+    match std::env::var("CC") {
+        Ok(cc) if !cc.is_empty() => cc,
+        _ if cfg!(target_os = "windows") => "clang".to_string(),
+        _ => "cc".to_string(),
+    }
+}
+
 /// The path to `aminicoro`, the runtime library for coroutines
 /// which effects are currently lowered into.
 pub fn aminicoro_path() -> PathBuf {

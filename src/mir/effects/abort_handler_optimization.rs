@@ -353,6 +353,9 @@ fn emit_reap_pending_abort(e: &mut Emitter) {
 }
 
 /// 256 bytes should hopefully covers all common platforms. Windows seems to be the largest at 256B.
+/// Windows also requires 16-byte alignment, which backends give every `StackAllocUninit`.
+/// This isn't desirable but this whole abort optimization pass is temporary anyway since it
+/// bypasses drops.
 ///
 /// TODO: Tighten this or replace it, test on more platforms, etc.
 fn jmp_buf_type() -> Type {

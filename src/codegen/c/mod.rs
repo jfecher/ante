@@ -44,11 +44,11 @@ use super::{
 
 /// Codegen the given Mir into a single C file, then invoke cc to create
 /// a object file and a binary. On success, the object file is removed, but
-/// the .c file is kept.
+/// the .c file is kept. Returns whether compiling and linking succeeded.
 pub fn codegen_c_for_mir(
     mir: &mir::Mir, ptr_size: u32, binary_name: &str, opt_level: OptLevel, selected_main: Option<TopLevelName>,
     link_options: &super::LinkOptions, show_time: bool,
-) {
+) -> bool {
     // Create the C file
     let c_file = time_phase("C codegen", show_time, || build_c_file(mir, ptr_size, selected_main));
     let c_file_name = format!("{binary_name}.c");
@@ -57,7 +57,7 @@ pub fn codegen_c_for_mir(
     // Create the .o file
     let o_file_name = format!("{binary_name}.o");
     let status = time_phase("C compilation", show_time, || {
-        Command::new("cc")
+        Command::new(crate::paths::c_compiler())
             .arg(&c_file_name)
             .arg(format!("-o{o_file_name}"))
             .arg(opt_level.as_cc_opt_string())
@@ -69,10 +69,14 @@ pub fn codegen_c_for_mir(
     });
 
     // And link it into a binary
-    if status.success() {
-        time_phase("Linking", show_time, || super::link_with_cc(&[o_file_name.clone()], binary_name, link_options, true));
-        std::fs::remove_file(&c_file_name).unwrap();
+    if !status.success() {
+        return false;
     }
+    let linked = time_phase("Linking", show_time, || {
+        super::link_with_cc(&[o_file_name.clone()], binary_name, link_options, true)
+    });
+    std::fs::remove_file(&c_file_name).unwrap();
+    linked
 }
 
 /// The main context struct to build a [CFile] from [mir::Mir]
@@ -989,6 +993,8 @@ impl Builder {
                 let _ = write!(self.current_item, " void* {id} = &{id}_slot;");
             },
             mir::Instruction::StackAllocUninit(typ) => {
+                // Windows needs jmp_buf to be 16-byte aligned
+                let _ = write!(self.current_item, "_Alignas({}) ", mir::MAX_ALIGNMENT);
                 self.write_declarator(typ, &|this| {
                     let _ = write!(this.current_item, "{id}_slot");
                 });
@@ -1145,7 +1151,7 @@ impl Builder {
             },
             mir::Instruction::SetJmp(buffer) => {
                 self.write_result_binding(id, definition);
-                self.write("_setjmp(");
+                self.write("ANTE_SETJMP(");
                 self.write_value(buffer, mir);
                 self.write(");");
             },

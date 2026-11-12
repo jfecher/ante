@@ -892,7 +892,12 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             mir::Instruction::StackAllocUninit(typ) => {
                 let typ = self.convert_type(typ);
-                self.entry_alloca(typ).into()
+                let alloca = self.entry_alloca(typ);
+                // Windows requires jmp_bufs to be 16-byte aligned
+                let instruction = alloca.as_instruction().unwrap();
+                let alignment = instruction.get_alignment().unwrap().max(mir::MAX_ALIGNMENT);
+                instruction.set_alignment(alignment).unwrap();
+                alloca.into()
             },
             mir::Instruction::StackAllocBytes(size) => {
                 let size = self.lookup_value(size).into_int_value();
@@ -1167,11 +1172,16 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             mir::Instruction::SetJmp(buffer) => {
                 let ptr_type = self.llvm.ptr_type(AddressSpace::default());
-                let fn_type = self.llvm.i32_type().fn_type(&[ptr_type.into()], false);
+                // On Windows_setjmp takes a second frame argument
+                let windows = cfg!(target_os = "windows");
+                let params: &[_] = if windows { &[ptr_type.into(), ptr_type.into()] } else { &[ptr_type.into()] };
+                let fn_type = self.llvm.i32_type().fn_type(params, false);
                 // Without `returns_twice`, llvm optimizations may delete stores made before a longjmp back
                 let setjmp = self.runtime_function("_setjmp", fn_type, "returns_twice");
                 let buffer = self.lookup_value(buffer);
-                let call = self.builder.build_direct_call(setjmp, &[buffer.into()], "").unwrap();
+                let null = ptr_type.const_null();
+                let arguments: &[_] = if windows { &[buffer.into(), null.into()] } else { &[buffer.into()] };
+                let call = self.builder.build_direct_call(setjmp, arguments, "").unwrap();
                 call.add_attribute(AttributeLoc::Function, self.enum_attribute("returns_twice"));
                 call.try_as_basic_value().unwrap_basic()
             },

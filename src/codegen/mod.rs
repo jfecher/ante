@@ -49,13 +49,17 @@ pub struct LinkOptions {
 pub fn link_with_cc(
     object_filenames: &[String], binary_filename: &str, link_options: &LinkOptions, link_runtime: bool,
 ) -> bool {
-    let output = format!("-o{}", binary_filename);
-    let mut command = Command::new("cc");
+    let output = format!("-o{}", crate::paths::binary_name(binary_filename).display());
+    let mut command = Command::new(crate::paths::c_compiler());
     command.args(object_filenames);
     if link_runtime {
         command.arg(aminicoro_path()).arg("-O2");
     }
-    command.arg("-lm").arg("-lpthread").arg("-w").arg(output);
+    // libm and libpthread are part of the C runtime on Windows
+    if !cfg!(target_os = "windows") {
+        command.arg("-lm").arg("-lpthread");
+    }
+    command.arg("-w").arg(output);
 
     for path in &link_options.search_paths {
         command.arg(format!("-L{path}"));

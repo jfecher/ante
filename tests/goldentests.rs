@@ -1,13 +1,16 @@
 use goldentests::{TestConfig, TestResult};
 
-/// Shared by each test so the stdlib is only checked once
-const STDLIB_CACHE: &str = concat!("--stdlib-cache ", env!("CARGO_TARGET_TMPDIR"), "/goldentests-stdlib.inc");
+/// Shared by each test so the stdlib is only checked once.
+fn stdlib_cache() -> String {
+    // goldentests splits arguments like a shell, so use forward slashes to keep Windows paths intact.
+    format!("--stdlib-cache {}/goldentests-stdlib.inc", env!("CARGO_TARGET_TMPDIR").replace('\\', "/"))
+}
 
 /// Run every test in the examples directory and assert against its expected output in the same file
 #[test]
 fn goldentests() -> TestResult<()> {
     let mut config = TestConfig::new(env!("CARGO_BIN_EXE_ante"), "examples", "// ");
-    config.base_args = STDLIB_CACHE.to_string();
+    config.base_args = stdlib_cache();
     config.run_tests()
 }
 
@@ -15,7 +18,7 @@ fn goldentests() -> TestResult<()> {
 #[test]
 fn goldentests_c_backend() -> TestResult<()> {
     let mut config = TestConfig::new(env!("CARGO_BIN_EXE_ante"), "examples/codegen", "// ");
-    config.base_args = format!("--backend=c {STDLIB_CACHE}");
+    config.base_args = format!("--backend=c {}", stdlib_cache());
     config.run_tests()
 }
 
@@ -23,6 +26,6 @@ fn goldentests_c_backend() -> TestResult<()> {
 #[test]
 fn goldentests_monomorphization() -> TestResult<()> {
     let mut config = TestConfig::new(env!("CARGO_BIN_EXE_ante"), "examples/codegen", "// ");
-    config.base_args = format!("--generics=mono {STDLIB_CACHE}");
+    config.base_args = format!("--generics=mono {}", stdlib_cache());
     config.run_tests()
 }
