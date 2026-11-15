@@ -35,7 +35,13 @@ fn precompile_minicoro(source: &Path, stdlib_dir: &Path) {
     println!("cargo:rerun-if-changed={}", source.with_file_name("minicoro.h").display());
 
     // If this fails, the linker compiles aminicoro from source for each program instead
-    compile_into_place(Command::new("cc").arg("-c").arg(source).args(["-O2", "-w"]), &stdlib_dir.join("minicoro.o"));
+    let cc = match env::var("CC") {
+        Ok(cc) if !cc.is_empty() => cc,
+        _ if env::var("CARGO_CFG_WINDOWS").is_ok() => "clang".to_string(),
+        _ => "cc".to_string(),
+    };
+    println!("cargo:rerun-if-env-changed=CC");
+    compile_into_place(Command::new(cc).arg("-c").arg(source).args(["-O2", "-w"]), &stdlib_dir.join("minicoro.o"));
 
     // The LLVM backend falls back to `minicoro.o` if this is missing or unreadable.
     compile_into_place(

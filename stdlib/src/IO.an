@@ -29,7 +29,7 @@ File.close (file: File): Unit can Fs =
 
 impl drop_file: Drop File Fs with
     drop f =
-        fclose f.c_file
+        _ = fclose f.c_file
 
 /// Convenience function for using feof with better types
 File.eof (f: ref File): Bool can Fs =

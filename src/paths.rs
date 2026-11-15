@@ -12,6 +12,16 @@ pub fn binary_name(module_name: &str) -> PathBuf {
     std::fs::canonicalize(&path).unwrap_or(path)
 }
 
+/// The C compiler used to compile C output and link binaries. Uses `$CC` if set, otherwise
+/// `clang` on Windows and `cc` elsewhere.
+pub fn c_compiler() -> String {
+    match std::env::var("CC") {
+        Ok(cc) if !cc.is_empty() => cc,
+        _ if cfg!(target_os = "windows") => "clang".to_string(),
+        _ => "cc".to_string(),
+    }
+}
+
 /// The path to `aminicoro`, the runtime library for coroutines
 /// which effects are currently lowered into.
 pub fn aminicoro_path() -> PathBuf {
@@ -20,9 +30,9 @@ pub fn aminicoro_path() -> PathBuf {
         return object;
     }
 
-    match option_env!("ANTE_MINICORO_PATH") {
+    match std::env::var_os("ANTE_MINICORO_PATH") {
         Some(path) => PathBuf::from(path),
-        None => panic!("ANTE_MINICORO_PATH is not set"),
+        None => PathBuf::from(env!("ANTE_MINICORO_PATH")),
     }
 }
 
@@ -33,13 +43,11 @@ pub fn aminicoro_bitcode_path() -> Option<PathBuf> {
 }
 
 pub fn stdlib_path() -> PathBuf {
-    match option_env!("ANTE_STDLIB_DIR") {
-        Some(env) => match std::fs::canonicalize(env) {
-            Ok(env) => env,
-            Err(_) => panic!("Failed to canonicalize stdlib path {env} ; does it exist?"),
-        },
-        None => panic!("ANTE_STDLIB_DIR is not set"),
-    }
+    let raw_path = std::env::var_os("ANTE_STDLIB_DIR").unwrap_or(env!("ANTE_STDLIB_DIR").into());
+    std::fs::canonicalize(&raw_path).unwrap_or_else(|err| {
+        let raw_path = raw_path.display();
+        panic!("Couldn't canonicalize stdlib path {raw_path} : {err}");
+    })
 }
 
 /// Returns "Prelude.an"

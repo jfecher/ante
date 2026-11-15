@@ -522,8 +522,7 @@ fn codegen_all(
             let mir = time_phase("Lowering generics", show_time, || mir::lower_generics(compiler, generics));
             let ptr_size = TargetPointerSize.get(compiler);
             let main = Some(selected_main);
-            codegen::c::codegen_c_for_mir(&mir, ptr_size, program_name, opt_level, main, link_options, show_time);
-            true
+            codegen::c::codegen_c_for_mir(&mir, ptr_size, program_name, opt_level, main, link_options, show_time)
         },
         _ => unreachable!("resolve_backend only returns backends this compiler can run"),
     };
@@ -556,7 +555,9 @@ fn run_binary(program_name: &str, delete_binary: bool, program_args: &[OsString]
         std::fs::remove_file(&binary_path).unwrap();
     }
     // A crash loses whatever the program had buffered, so it would otherwise look like a clean exit
-    if status.code().is_none() {
+    // Windows reports crashes as an NTSTATUS error code (e.g. 0xC0000005) rather than a signal
+    let windows_crash = cfg!(target_os = "windows") && status.code().is_some_and(|code| code as u32 >= 0xC000_0000);
+    if status.code().is_none() || windows_crash {
         eprintln!("{} exited with {status}", binary_path.display());
     }
 }

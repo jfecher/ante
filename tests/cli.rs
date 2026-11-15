@@ -23,5 +23,7 @@ fn init_creates_a_runnable_program() {
 
     let run = Command::new(ante).args(["run", "--backend", "c"]).current_dir(&project).output().unwrap();
     assert_success(&run);
-    assert_eq!(String::from_utf8_lossy(&run.stdout), "Hello, World!\n");
+    
+    let i_love_my_windows_compatible_string = String::from_utf8_lossy(&run.stdout).replace("\r\n", "\n");
+    assert_eq!(i_love_my_windows_compatible_string, "Hello, World!\n");
 }
