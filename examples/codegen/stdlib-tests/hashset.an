@@ -36,7 +36,7 @@ test_of_extend_retain_merge () =
     set.extend [2, 3, 4]
     assert <| set.len () == 4
 
-    set.retain is_even
+    set.retain fn k -> is_even k.*
     assert <| set.len () == 2
     assert <| not set.contains 1
     assert <| set.contains 2

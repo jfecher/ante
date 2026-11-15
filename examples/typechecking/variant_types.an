@@ -50,6 +50,24 @@ rest_loc (e: Expr): I32 =
 
 main () = ()
 
+impl drop_expr: Drop Expr pure with
+    drop _ = ()
+
+impl drop_shape: Drop Shape pure with
+    drop _ = ()
+
+impl drop_expr_lit: Drop Expr.Lit pure with
+    drop _ = ()
+
+impl drop_expr_var: Drop Expr.Var pure with
+    drop _ = ()
+
+impl drop_shape_circle: Drop Shape.Circle pure with
+    drop _ = ()
+
+impl drop_shape_rectangle: Drop Shape.Rectangle pure with
+    drop _ = ()
+
 // args: --no-color
 // expected exit status: 1
 // expected stderr:

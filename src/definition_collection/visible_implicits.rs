@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{self, DbHandle, GetItem, Resolve, VisibleDefinitions, VisibleImplicits},
+    incremental::{self, DbHandle, GetImplicitKey, GetItem, Resolve, VisibleDefinitions, VisibleImplicits},
     name_resolution::Origin,
     parser::{
         cst::{Name, TopLevelItemKind},
@@ -63,8 +63,8 @@ struct ImplicitImpls {
 /// be checked against every argument type.
 ///
 /// TODO: [Origin] makes this enum too large
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-enum TypeKey {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TypeKey {
     Primitive(PrimitiveType),
     UserDefined(Origin),
     Function,
@@ -102,53 +102,30 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
     let mut implicits = Implicits::default();
 
     for (name, top_level_name) in definitions.definitions.iter() {
-        let (item, item_context) = GetItem(top_level_name.top_level_item).get(db);
-        let TopLevelItemKind::Definition(definition) = &item.kind else { continue };
-        if !definition.implicit {
-            continue;
-        }
+        match GetImplicitKey(*top_level_name).get(db) {
+            ImplicitKey::NotImplicit => (),
+            ImplicitKey::Unknown => implicits.unknown_ability_to_impls.push((name.clone(), *top_level_name)),
+            ImplicitKey::Ability(ability_id, arg_key) => {
+                let impls = implicits.known_ability_to_impls.entry(ability_id).or_default();
 
-        let resolution = Resolve(top_level_name.top_level_item).get(db);
-
-        // A top-level implicit whose type cannot be derived from its annotation or RHS shape is
-        // reported as a missing annotation error and must not contribute to global implicit resolution.
-        // Otherwise, we get cascading errors for every implicit search
-        let Some((typ, _declared)) =
-            try_get_seeded_and_declared_type(definition, &item_context, &resolution, db, &mut 0)
-        else {
-            continue;
-        };
-
-        if typ.is_error() {
-            continue;
-        }
-
-        let mut inserted = false;
-
-        if let Some((ability_id, arg_key)) = get_ability_id_and_first_argument(&typ, true) {
-            // Fast path: ability and argument types are known
-            let impls = implicits.known_ability_to_impls.entry(ability_id).or_default();
-
-            match arg_key {
-                // If this implicit is a function, register it as a candidate for both functions
-                // and for its return type
-                KeyKind::Function(return_key) => {
-                    impls.type_to_impls.entry(TypeKey::Function).or_default().push((name.clone(), *top_level_name));
-                    impls.type_to_impls.entry(return_key).or_default().push((name.clone(), *top_level_name));
-                },
-                KeyKind::Key(key) => {
-                    impls.type_to_impls.entry(key).or_default().push((name.clone(), *top_level_name));
-                },
-                KeyKind::GenericOrUnknown => {
-                    impls.generic_type_impls.push((name.clone(), *top_level_name));
-                },
-            }
-
-            inserted = true;
-        }
-
-        if !inserted {
-            implicits.unknown_ability_to_impls.push((name.clone(), *top_level_name));
+                match arg_key {
+                    // If this implicit is a function, register it as a candidate for both functions
+                    // and for its return type
+                    KeyKind::Function(return_key) => {
+                        impls.type_to_impls.entry(TypeKey::Function).or_default().push((name.clone(), *top_level_name));
+                        // Skip this if the return type is also a function or the impl would be found twice
+                        if return_key != TypeKey::Function {
+                            impls.type_to_impls.entry(return_key).or_default().push((name.clone(), *top_level_name));
+                        }
+                    },
+                    KeyKind::Key(key) => {
+                        impls.type_to_impls.entry(key).or_default().push((name.clone(), *top_level_name));
+                    },
+                    KeyKind::GenericOrUnknown => {
+                        impls.generic_type_impls.push((name.clone(), *top_level_name));
+                    },
+                }
+            },
         }
     }
 
@@ -156,7 +133,46 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
     Arc::new(implicits)
 }
 
-enum KeyKind {
+/// Where an implicit is registered in [Implicits]. This only depends on the implicit, so we
+/// compute it once rather than for each file it is visible in.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ImplicitKey {
+    /// Not an implicit, or an implicit whose type is unknown or an error. These never match.
+    NotImplicit,
+    Unknown,
+    Ability(TopLevelId, KeyKind),
+}
+
+pub fn implicit_key_impl(context: &GetImplicitKey, db: &DbHandle) -> ImplicitKey {
+    let top_level_name = context.0;
+    let (item, item_context) = GetItem(top_level_name.top_level_item).get(db);
+    let TopLevelItemKind::Definition(definition) = &item.kind else { return ImplicitKey::NotImplicit };
+    if !definition.implicit {
+        return ImplicitKey::NotImplicit;
+    }
+
+    let resolution = Resolve(top_level_name.top_level_item).get(db);
+
+    // A top-level implicit whose type cannot be derived from its annotation or RHS shape is
+    // reported as a missing annotation error and must not contribute to global implicit resolution.
+    // Otherwise, we get cascading errors for every implicit search
+    let Some((typ, _declared)) = try_get_seeded_and_declared_type(definition, &item_context, &resolution, db, &mut 0)
+    else {
+        return ImplicitKey::NotImplicit;
+    };
+
+    if typ.is_error() {
+        return ImplicitKey::NotImplicit;
+    }
+
+    match get_ability_id_and_first_argument(&typ, true) {
+        Some((ability_id, arg_key)) => ImplicitKey::Ability(ability_id, arg_key),
+        None => ImplicitKey::Unknown,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum KeyKind {
     Key(TypeKey),
     /// We can call implicit functions to get their return types so function-typed implicits
     /// get keyed both as a Function and as their return type
@@ -251,6 +267,20 @@ impl Implicits {
         }
         // Finally, for any target type we need to consider all of the impls for unknown abilities
         apply_f_to_candidates!(f, &self.unknown_ability_to_impls);
+    }
+
+    /// Like [Self::iter_possibly_matching_impls] but for a target whose first argument is a generic
+    /// of kind type. Only impls whose first argument is also generic can match these.
+    pub fn iter_impls_of_any_type(&self, target_type: &Type, mut f: impl FnMut(&Name, &TopLevelName) -> bool) {
+        let Some((ability_id, _)) = get_ability_id_and_first_argument(target_type, false) else {
+            return self.iter_possibly_matching_impls(target_type, f);
+        };
+        let generic = self.known_ability_to_impls.get(&ability_id).map_or(&[][..], |impls| &impls.generic_type_impls);
+        for candidate in generic.iter().chain(&self.unknown_ability_to_impls) {
+            if f(&candidate.0, &candidate.1) {
+                return;
+            }
+        }
     }
 
     /// Return true if there are <= 1 implicits for this type

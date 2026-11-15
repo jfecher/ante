@@ -77,6 +77,7 @@ pub(crate) fn codegen_llvm_for_mir(
     let llvm = inkwell::context::Context::create();
     let target_machine = native_target_machine(opt_level);
     let module = build_module(&llvm, mir, &target_machine, name, main_id, mir.definitions.keys().copied());
+    internalize_definitions(&module.module);
 
     let runtime_linked = opt_level != OptLevel::O0
         // Avoid linking the runtime if `--emit ir` is set so we don't emit that as part of it
@@ -96,6 +97,23 @@ pub(crate) fn codegen_llvm_for_mir(
 
     let object = crate::timings::time_phase("Object emission", show_time, || emit_object(&module, &target_machine));
     Some(CodegenLlvmResult { objects: vec![object], runtime_linked })
+}
+
+/// Give every function defined in the whole-program `module` internal linkage, except for those
+/// called externally. This lets LLVM remove a function's body once it is inlined everywhere, and
+/// specialize functions on arguments they are always called with, such as dictionaries.
+fn internalize_definitions(module: &inkwell::module::Module) {
+    const EXTERNAL: [&str; 3] = ["main", "ante_get_argc", "ante_get_argv"];
+    // Without an entry point, such as with `--emit ir`, we must assume any function is called externally
+    if module.get_function("main").is_none_or(|main| main.count_basic_blocks() == 0) {
+        return;
+    }
+    for function in module.get_functions() {
+        let defined = function.count_basic_blocks() > 0;
+        if defined && !function.get_name().to_str().is_ok_and(|name| EXTERNAL.contains(&name)) {
+            function.set_linkage(Linkage::Internal);
+        }
+    }
 }
 
 /// Link the aminicoro runtime's LLVM bitcode into `module` so the optimizer can inline its
@@ -864,8 +882,8 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Instruction::CallClosure { .. } => {
                 unreachable!("Instruction::CallClosure remaining in LLVM codegen")
             },
-            mir::Instruction::PackClosure { .. } => {
-                unreachable!("Instruction::PackClosure remaining in LLVM codegen")
+            mir::Instruction::PackClosure { .. } | mir::Instruction::ClosureEnvironment(_) => {
+                unreachable!("closure instruction remaining in LLVM codegen")
             },
             mir::Instruction::IndexTuple { tuple, index } => {
                 let tuple = self.lookup_value(tuple).into_struct_value();

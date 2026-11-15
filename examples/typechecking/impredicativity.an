@@ -19,7 +19,7 @@ f9 =
     f = revapp (freeze id)
     f poly
 
-choose (x: a) (_y: a) = x
+choose (x: a) (y: a) = (Std.Mem.forget y; x)
 
 a5 = id auto
 a6 = id auto_prime
@@ -44,10 +44,12 @@ a7 = choose id auto
 //     (f: fn a -> a can _) 42 (,: fn a a -> a, a is pure) (f: fn a -> a can _) true
 // 
 // (f9: _) =
-//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ can _) = (revapp: fn _ [_] -> (fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ can _) can _) (error)
-//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ can _) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) -> _ can _) = (revapp: fn Unit -> (fn (fn (fn _ -> _ is pure) -> _, _ is pure) -> _ can _) can _) (error)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) -> _ can _) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
 // 
-// (choose: fn a a -> a is pure) (x: a) (_y: a) = (x: a)
+// (choose: fn a a -> a is pure) (x: a) (y: a) =
+//     (Std.Mem.forget: fn a -> Unit is pure) (y: a)
+//     (x: a)
 // 
 // (a5: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> (fn (fn _ -> _ is pure) -> _ is pure) is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
 // 

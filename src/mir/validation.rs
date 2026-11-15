@@ -210,6 +210,13 @@ impl Definition {
                     };
                     instr_assert!(closure_type.is_closure(), self, id, mir, "PackClosure result is not a closure");
                 }
+                Instruction::ClosureEnvironment(closure) => {
+                    let closure_type = mir.type_of_value(closure, self);
+                    let Type::Function(closure_type) = closure_type else {
+                        instr_panic!(self, id, mir, "ClosureEnvironment value is not a function, it is a(n) `{closure_type}`")
+                    };
+                    instr_assert_subtype!(closure_type.environment, *result_type, self, id, mir, "ClosureEnvironment result is not the closure's environment type");
+                }
                 Instruction::IndexTuple { tuple, index } => {
                     let tuple_type = mir.type_of_value(tuple, self);
                     let Type::Tuple(tuple_type) = tuple_type else {

@@ -8,7 +8,7 @@ use_state (y: I32): Unit can Use I32, Print, Panic =
     state = get ()
     println "Ending state = ${state}"
 
-state (f: fn Unit => a can Use s, Print, e) (initial: s) {Copy s}: a can Print, e =
+state (f: once fn Unit => a can Use s, Print, e) (initial: s) {Copy s}: a can Print, e =
     var current = initial
     handle f ()
     | get () -> resume current

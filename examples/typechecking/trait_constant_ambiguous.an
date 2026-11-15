@@ -4,14 +4,15 @@ trait Named t =
 impl named_bool: Named Bool with
     name = 7
 
-show (_x: t) {Named t}: I32 = Named.name
+show (x: t) {Named t}: I32 = (Std.Mem.forget x; Named.name)
 
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/trait_constant_ambiguous.an:7:31
+// examples/typechecking/trait_constant_ambiguous.an:7:49
 //   | // error: Multiple matching implicits found for type Named _ required by name: _, named_bool
-// 7 | show (_x: t) {Named t}: I32 = Named.name
-//   |                               ^^^^^^^^^^
+// 7 | show (x: t) {Named t}: I32 = (Std.Mem.forget x; Named.name)
+//   |                                                 ^^^^^^^^^^
 // 
 // Found 1 error and 0 warnings
+

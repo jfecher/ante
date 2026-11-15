@@ -18,6 +18,12 @@ narrow (f: fn I32 => I32 is pure): fn I32 -> I32 = f
 // An environment written as `[_]` is inferred instead
 infer_env (f: fn I32 [_] -> I32 is pure): fn I32 -> I32 = f
 
+impl drop_box: Drop (Box t) pure with
+    drop x = Std.Mem.forget x
+
+impl drop_pair: Drop (Pair a b) pure with
+    drop x = Std.Mem.forget x
+
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
@@ -41,6 +47,12 @@ infer_env (f: fn I32 [_] -> I32 is pure): fn I32 -> I32 = f
 // (narrow: fn (fn I32 [_] -> I32 is pure) -> (fn I32 -> I32 is pure) is pure) (f: fn I32 [_] -> I32 is pure): fn I32 -> I32 = (f: fn I32 [_] -> I32 is pure)
 // 
 // (infer_env: fn (fn I32 -> I32 is pure) -> (fn I32 -> I32 is pure) is pure) (f: fn I32 -> I32 is pure): fn I32 -> I32 = (f: fn I32 -> I32 is pure)
+// 
+// implicit (drop_box: Drop (Box t) pure drop_box) = Drop (Box t) pure with
+//     (drop: fn (Box t) -> Unit is pure) = fn (x: Box t) -> (Std.Mem.forget: fn (Box t) -> Unit is pure) (x: Box t)
+// 
+// implicit (drop_pair: Drop (Pair a b) pure drop_pair) = Drop (Pair a b) pure with
+//     (drop: fn (Pair a b) -> Unit is pure) = fn (x: Pair a b) -> (Std.Mem.forget: fn (Pair a b) -> Unit is pure) (x: Pair a b)
 
 // expected stderr:
 // examples/typechecking/type_hole.an:13:45

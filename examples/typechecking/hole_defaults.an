@@ -51,6 +51,9 @@ use_bool (x: Bool) {s: Show Bool show_i32_alt}: String = Show.show x {s}
 // The data type of an impl without parameters takes no arguments
 bad_impl_type {_: Show I32 (show_i32 I32)}: Unit = ()
 
+impl drop_tagged: Drop (Tagged a tag) pure with
+    drop x = Std.Mem.forget x
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
@@ -59,6 +62,12 @@ bad_impl_type {_: Show I32 (show_i32 I32)}: Unit = ()
 //   |     // error: Display's omitted parameter i defaults to `_`, which can't be used in this position
 // 6 |     log_value: fn I32 {Display I32 pure} -> Unit
 //   |                        ^^^^^^^^^^^^^^^^
+// 
+// examples/typechecking/hole_defaults.an:12:10
+//    | // error: _ goes out of scope without being moved, but its type Tagged does not implement Drop
+//    | // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+// 12 | too_few (_: Tagged): Unit = ()
+//    |          ^
 // 
 // examples/typechecking/hole_defaults.an:12:13
 //    | // error: Expected a type here, this type constructor is missing 2 arguments
@@ -104,5 +113,5 @@ bad_impl_type {_: Show I32 (show_i32 I32)}: Unit = ()
 // 52 | bad_impl_type {_: Show I32 (show_i32 I32)}: Unit = ()
 //    |                            ^^^^^^^^^^^^^^
 // 
-// Found 8 errors and 0 warnings
+// Found 9 errors and 0 warnings
 

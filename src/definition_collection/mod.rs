@@ -217,7 +217,7 @@ pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     }
 }
 
-fn kind_of_generic_param(param: &crate::parser::cst::GenericParam) -> Kind {
+pub(crate) fn kind_of_generic_param(param: &crate::parser::cst::GenericParam) -> Kind {
     use crate::parser::cst::KindAnnotation;
     match param.kind {
         None | Some(KindAnnotation::Type) => Kind::Type,

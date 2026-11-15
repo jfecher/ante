@@ -1,0 +1,30 @@
+// A handler branch drops what it owns before a `resume` in tail position, so the resumed value
+// may not refer to anything the branch owns
+type Box = value: I32
+
+impl drop_box: Drop Box pure with
+    drop _ = ()
+
+effect Ask =
+    ask: fn Unit -> ref Box
+
+answer (f: once fn Unit => Unit can Ask): Unit =
+    handle f ()
+    | ask () ->
+        local = Box 1
+        resume (ref local)
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/drops/tail_resume_reference.an:15:17
+// 13 |     | ask () ->
+// 14 |         local = Box 1	// note: local is only valid until the end of this scope
+//    |         -----
+// 15 |         resume (ref local)	// error: This reference to local outlives its scope
+//    |                 ^^^^^^^^^
+// 
+// Found 1 error and 0 warnings
+

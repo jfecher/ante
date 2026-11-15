@@ -1,6 +1,6 @@
 type Resource = id: I32
 
-consume _ = ()
+consume x = Std.Mem.forget x
 
 // error
 move_outer_in_body (r1: Resource) (r2: Resource) =
@@ -45,6 +45,9 @@ move_in_while_condition (r: Resource) =
     do ()
 
 main () = ()
+
+impl drop_resource: Drop Resource pure with
+    drop _ = ()
 
 // args: --check --no-color
 // expected exit status: 1

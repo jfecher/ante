@@ -1,0 +1,46 @@
+// Each way out of an `and` chain with an `is` drops only what was evaluated on the way there:
+// when an earlier condition fails, the value a later `is` would have matched does not exist.
+type Loud = id: I32
+
+impl drop_loud: Drop Loud Print with
+    drop loud = println "drop ${loud.id}"
+
+find (id: I32): Maybe Loud can Print =
+    println "find ${id}"
+    if id > 0 then Some (Loud id) else None
+
+id_of (loud: Loud): I32 can Print = loud.id
+
+check (ready: Bool) (id: I32): Unit can Print =
+    if ready and find id is Some loud then println "found ${id_of loud}"
+    println "checked"
+
+choose (ready: Bool) (id: I32): I32 can Print =
+    if find id is Some loud and ready then id_of loud else 0 - 1
+
+main () =
+    print_to_stdout do
+    check false 1
+    check true 0
+    check true 2
+    println (choose false 3)
+    println (choose true 4)
+    println (choose true 0)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// checked
+// find 0
+// checked
+// find 2
+// drop 2
+// found 2
+// checked
+// find 3
+// drop 3
+// -1
+// find 4
+// drop 4
+// 4
+// find 0
+// -1

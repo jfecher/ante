@@ -33,6 +33,15 @@ type Recursive a (b = Recursive a) = x: a
 
 type BadKind (n: U32 = I32) = x: Array n I32
 
+impl drop_foo {Drop a d} {Drop b d}: Drop (Foo a b) d with
+    drop _ = ()
+
+impl drop_sized {Drop t d}: Drop (Sized n t) d with
+    drop _ = ()
+
+impl drop_wrap {Drop t d}: Drop (Wrap t) d with
+    drop _ = ()
+
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
@@ -90,6 +99,15 @@ type BadKind (n: U32 = I32) = x: Array n I32
 // 
 // type BadKind (n: U32 = I32) =
 //     x: Array n I32
+// 
+// implicit (drop_foo: fn {Drop a d _} {Drop b d _} -> Drop (Foo a b) d (drop_foo (Drop a d _) (Drop b d _)) is pure) {(_: Drop a d _)} {(_: Drop b d _)}: Drop (Foo a b) d = Drop (Foo a b) d with
+//     (drop: fn (Foo a b) -> Unit can d) = fn (_: Foo a b) -> ()
+// 
+// implicit (drop_sized: fn {Drop t d _} -> Drop (Sized n t) d (drop_sized (Drop t d _)) is pure) {(_: Drop t d _)}: Drop (Sized n t) d = Drop (Sized n t) d with
+//     (drop: fn (Sized n t) -> Unit can d) = fn (_: Sized n t) -> ()
+// 
+// implicit (drop_wrap: fn {Drop t d _} -> Drop (Wrap t) d (drop_wrap (Drop t d _)) is pure) {(_: Drop t d _)}: Drop (Wrap t) d = Drop (Wrap t) d with
+//     (drop: fn (Wrap t) -> Unit can d) = fn (_: Wrap t) -> ()
 
 // expected stderr:
 // examples/typechecking/default_type_params.an:26:19

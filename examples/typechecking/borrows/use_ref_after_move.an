@@ -1,6 +1,6 @@
 type Resource = id: I32
 
-consume _ = ()
+consume x = Std.Mem.forget x
 
 ref_used_after_move () =
     r = Resource 1
@@ -65,6 +65,9 @@ ref_used_before_move () =
     consume r
 
 main () = ()
+
+impl drop_resource: Drop Resource pure with
+    drop _ = ()
 
 // args: --check --no-color
 // expected exit status: 1

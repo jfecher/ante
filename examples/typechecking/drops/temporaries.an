@@ -1,0 +1,42 @@
+// A temporary is dropped at the end of its statement, so nothing may keep a reference to it
+make (): String = "temporary" ++ "!"
+
+longest (a: ref 'a String) (b: ref 'a String): ref 'a String =
+    if a.length > b.length then a else b
+
+held () =
+    kept = "kept"
+    dangling = longest (ref kept) (ref make ())
+    println dangling
+
+pushed () =
+    var strings = Vec.empty ()
+    strings.push (ref make ())
+
+// A temporary borrowed by the definition itself lives as long as the definition's name
+extended () =
+    borrowed = ref make ()
+    println borrowed
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/drops/temporaries.an:9:40
+//  8 |     kept = "kept"
+//    |     // error: This reference to a temporary value outlives its scope
+//    |     // note: this value is only valid until the end of this scope
+//  9 |     dangling = longest (ref kept) (ref make ())
+//    |                                        ^^^^^^^
+// 10 |     println dangling
+// 
+// examples/typechecking/drops/temporaries.an:14:23
+// 13 |     var strings = Vec.empty ()
+//    |     // error: This reference to a temporary value outlives its scope
+//    |     // note: this value is only valid until the end of this scope
+// 14 |     strings.push (ref make ())
+//    |                       ^^^^^^^
+// 
+// Found 2 errors and 0 warnings
+

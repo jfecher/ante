@@ -10,7 +10,7 @@ impl named_i32: Named I32 with
     name = 8
     fallback = 42
 
-fallback_of (_x: t) {Named t}: t = Named.fallback
+fallback_of (_x: t) {Named t} {Drop t pure}: t = Named.fallback
 
 main () =
     print_to_stdout do

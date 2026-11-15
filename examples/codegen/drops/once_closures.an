@@ -1,0 +1,86 @@
+// A `move` closure owns what it captures. If its body moves any of that it is a `once fn`,
+// which a call consumes. Otherwise it may be called again and again, and drops what it
+// captured when it goes out of scope itself.
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop (r: R) = println "drop ${r.x}"
+
+show (r: ref R) = println "show ${r.x}"
+
+take (r: R) = println "take ${r.x}"
+
+call_once (f: once fn Unit => Unit can e): Unit can e = f ()
+
+call_twice (f: fn Unit [env] -> Unit can e) {Drop env e}: Unit can e =
+    f ()
+    f ()
+
+call_if (run: Bool) (f: once fn Unit [env] -> Unit can e) {Drop env e}: Unit can e =
+    if run then f ()
+
+main () = print_to_stdout do
+    a = R 1
+    takes = move fn () -> take a
+    takes ()
+
+    // Never called, so it still owns what it captured
+    b = R 2
+    _never = move fn () -> take b
+
+    c = R 3
+    shows = move fn () -> show c
+    shows ()
+    shows ()
+
+    // The body of a `once fn` drops whatever it captured and did not move
+    d = R 4
+    call_once (move fn () -> show d)
+    println "called once"
+
+    e = R 5
+    call_twice (move fn () -> show e)
+    println "called twice"
+
+    f = R 6
+    call_if false (move fn () -> take f)
+    println "not called"
+
+    // A `fn` is given where a `once fn` is expected by wrapping it in one which drops it
+    g = R 7
+    shows_g = move fn () -> show g
+    call_once shows_g
+
+    // A closure within a value of a generic type is dropped along with it
+    h = R 8
+    _held = Maybe.Some (move fn () -> show h)
+
+    // A closure called where it is written is a `once fn` if it moves what it captured
+    i = R 9
+    (move fn () -> take i) ()
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// take 1
+// drop 1
+// show 3
+// show 3
+// show 4
+// drop 4
+// called once
+// show 5
+// show 5
+// drop 5
+// called twice
+// drop 6
+// not called
+// show 7
+// drop 7
+// take 9
+// drop 9
+// end
+// drop 8
+// drop 3
+// drop 2
+

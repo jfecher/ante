@@ -40,6 +40,9 @@ implicit_call () =
     implicit make_string {Bool} = ""
     requires_string ()
 
+impl drop_box: Drop (Box a) pure with
+    drop x = Std.Mem.forget x
+
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
@@ -77,7 +80,7 @@ implicit_call () =
 // (ambiguous_unknown_type_args: fn Unit -> Unit is pure) () =
 //     implicit (box_i32: Box I32) = (Box: fn I32 -> Box I32 is pure) 1
 //     implicit (box_u32: Box U32) = (Box: fn U32 -> Box U32 is pure) 2
-//     (requires_box: fn {Box _} Unit -> Unit is pure) {(error)} ()
+//     (requires_box: fn {Box Unit} Unit -> Unit is pure) {(error)} ()
 // 
 // implicit (false_: Bool) = false
 // 
@@ -90,6 +93,9 @@ implicit_call () =
 // (implicit_call: fn Unit -> Unit is pure) () =
 //     implicit (make_string: fn {Bool} -> String can _) {(_: Bool)} = ""
 //     (requires_string: fn {String} Unit -> Unit is pure) {(make_string: fn {Bool} -> String can _) {(false_: Bool)}} ()
+// 
+// implicit (drop_box: Drop (Box a) pure drop_box) = Drop (Box a) pure with
+//     (drop: fn (Box a) -> Unit is pure) = fn (x: Box a) -> (Std.Mem.forget: fn (Box a) -> Unit is pure) (x: Box a)
 
 // expected stderr:
 // examples/typechecking/implicit.an:9:5

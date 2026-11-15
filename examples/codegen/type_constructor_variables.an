@@ -1,0 +1,18 @@
+// A type variable applied to arguments is a type constructor
+same (x: f a): f a = x
+
+both (x: f a) (y: f a): (f a, f a) = (x, y)
+
+main () =
+    print_to_stdout do
+    match same (Maybe.Some 3)
+    | Some n -> println n
+    | None -> println 0
+    match both (Maybe.Some 1) Maybe.None
+    | (Some n, None) -> println n
+    | _ -> println 0
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 3
+// 1

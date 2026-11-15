@@ -1,0 +1,54 @@
+// A branch which leaves a loop drops what it leaves before it jumps. It never reaches the end
+// of the branch, so nothing is dropped there for what another branch moved.
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop (r: R) = println "drop ${r.x}"
+
+take (r: R) = println "take ${r.x}"
+
+main () = print_to_stdout do
+    var i = 0
+    while i < 5 do
+        r = R i
+        i += 1
+        if i == 3 then break else take r
+
+    var j = 0
+    while j < 4 do
+        r = R (10 + j)
+        j += 1
+        match j
+        | 2 -> continue
+        | _ -> take r
+
+    var k = 0
+    while k < 2 do
+        r = R (20 + k)
+        k += 1
+        if k == 1 then
+            take r
+            continue
+        println "kept ${r.x}"
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// take 0
+// drop 0
+// take 1
+// drop 1
+// drop 2
+// take 10
+// drop 10
+// drop 11
+// take 12
+// drop 12
+// take 13
+// drop 13
+// take 20
+// drop 20
+// kept 21
+// drop 21
+// end
+

@@ -1,0 +1,30 @@
+// A `move` closure holds its own copy of a `var` it captures. Assigning to it within the
+// closure leaves the variable outside unchanged, and each call starts from the captured value.
+main () = print_to_stdout do
+    var n = 0u32
+    bump = move fn () ->
+        n += 1
+        println n
+    bump ()
+    bump ()
+    println n
+
+    // A closure within it captures that copy by reference
+    var m = 10u32
+    outer = move fn () ->
+        inner () =
+            m += 1
+        inner ()
+        inner ()
+        println m
+    outer ()
+    println m
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1
+// 1
+// 0
+// 12
+// 10
+

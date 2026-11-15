@@ -1,7 +1,7 @@
 // A nonCopy type for testing affine semantics
 type Resource = id: I32
 
-consume _ = ()
+consume x = Std.Mem.forget x
 
 // NonCopy type used twice should error on the first (nonlast) use 
 use_twice () =
@@ -43,7 +43,7 @@ use_before_branch (cond: Bool) =
     then consume r
     else ()
 
-// Closures capture by reference currently so this is fine, but should be an error if we capture by move
+// A closure captures `r` by reference, so it cannot move `r`
 capture_then_use () =
     r = Resource 5
     _f () = consume r
@@ -133,6 +133,15 @@ reassigned_in_every_branch (cond: Bool) =
 
 main () = ()
 
+impl drop_noncopy: Drop NonCopy pure with
+    drop _ = ()
+
+impl drop_resource: Drop Resource pure with
+    drop _ = ()
+
+impl drop_two {Drop t d}: Drop (Two t) d with
+    drop _ = ()
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
@@ -158,6 +167,13 @@ main () = ()
 // 43 |     then consume r	// error: Use of moved value r
 //    |                  ^
 // 44 |     else ()
+// 
+// examples/typechecking/affine.an:49:21
+// 48 |     r = Resource 5
+//    |     // error: Cannot move r because this closure captures it by reference. Use a move fn to capture it by value
+// 49 |     _f () = consume r
+//    |                     ^
+// 50 |     consume r
 // 
 // examples/typechecking/affine.an:63:16
 // 62 |     r = Resource 6
@@ -190,5 +206,5 @@ main () = ()
 // 112 |     consume p  // error	// error: Use of moved value p
 //     |             ^
 // 
-// Found 7 errors and 0 warnings
+// Found 8 errors and 0 warnings
 

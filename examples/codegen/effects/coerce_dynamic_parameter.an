@@ -1,6 +1,6 @@
 import Std.Stream.Emit, emit
 
-apply (f: fn Unit => a): a = f ()
+apply (f: once fn Unit => a): a = f ()
 
 // Passing `g` to `apply` widens its effect row. Type inference must record a coercion
 // for the MIR builder to wrap `g` in a closure of the widened type. This closure accepts

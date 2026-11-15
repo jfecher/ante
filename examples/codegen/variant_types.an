@@ -81,6 +81,30 @@ main () =
     set_loc (mut e)
     println (loc e)
 
+impl drop_expr: Drop Expr pure with
+    drop _ = ()
+
+impl drop_pair: Drop Pair pure with
+    drop _ = ()
+
+impl drop_shape: Drop Shape pure with
+    drop _ = ()
+
+impl drop_expr_pair2: Drop Expr.Pair2 pure with
+    drop _ = ()
+
+impl drop_expr_var: Drop Expr.Var pure with
+    drop _ = ()
+
+impl drop_pair_two: Drop Pair.Two pure with
+    drop _ = ()
+
+impl drop_shape_circle: Drop Shape.Circle pure with
+    drop _ = ()
+
+impl drop_shape_square: Drop Shape.Square pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 12, 16

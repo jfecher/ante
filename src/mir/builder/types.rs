@@ -494,6 +494,9 @@ where
             },
             crate::type_inference::types::PrimitiveType::NoClosureEnv => Type::NO_CLOSURE_ENV,
             crate::type_inference::types::PrimitiveType::ResumeEnv => Type::POINTER,
+            crate::type_inference::types::PrimitiveType::Once | crate::type_inference::types::PrimitiveType::Many => {
+                unreachable!("only found in a function type's `once`, which is not converted")
+            },
             crate::type_inference::types::PrimitiveType::ImplData(_) => self.impl_data_type(&[]),
         }
     }

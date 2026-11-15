@@ -10,8 +10,7 @@ bad () =
 
     var v = Vec.empty ()
     for i in 0 .. 3 do
-        // TODO: i is immutable so it is captured by value currently
-        // we should capture everything by reference unless it is a `move fn`
+        // Everything is captured by reference unless the closure is a `move fn`
         v.push (fn () -> i)
 
 main () = ()
@@ -27,5 +26,13 @@ main () = ()
 //    |                 ^^^^^^^^^^
 //  9 |         n += 1
 // 
-// Found 1 error and 0 warnings
+// examples/typechecking/borrows/closure_capture_in_loop.an:14:17
+// 11 |     var v = Vec.empty ()
+// 12 |     for i in 0 .. 3 do	// note: i is only valid until the end of this scope
+//    |         -
+// 13 |         // Everything is captured by reference unless the closure is a `move fn`
+// 14 |         v.push (fn () -> i)	// error: This reference to i outlives its scope
+//    |                 ^^^^^^^^^^
+// 
+// Found 2 errors and 0 warnings
 

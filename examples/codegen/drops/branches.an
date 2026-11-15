@@ -1,0 +1,79 @@
+// A value moved in only some branches is dropped at the end of the others, so that it is
+// either moved or dropped by the time the branches join.
+type Tag = id: U32
+
+impl drop_tag: Drop Tag Print with
+    drop tag =
+        print "drop "
+        println tag.id
+
+keep (tag: Tag): Unit can Print =
+    print "keep "
+    println tag.id
+
+if_else (flag: Bool): Unit can Print =
+    tag = Tag 1
+    if flag then keep tag else println "not kept"
+    println "after if"
+
+// The missing `else` drops the value instead
+if_only (flag: Bool): Unit can Print =
+    tag = Tag 2
+    if flag then keep tag
+    println "after if"
+
+match_arms (choice: U32): Unit can Print =
+    tag = Tag 3
+    match choice
+    | 0 -> keep tag
+    | 1 -> println "one"
+    | _ -> println "other"
+    println "after match"
+
+// A pattern which binds part of a value moves the value, and each binding is dropped
+// where its case ends unless it was moved first
+payloads (value: Maybe Tag) (flag: Bool): Unit can Print =
+    match value
+    | Some tag -> if flag then keep tag
+    | None -> println "none"
+    println "after match"
+
+main () =
+    print_to_stdout do
+    if_else true
+    if_else false
+    if_only true
+    if_only false
+    match_arms 0
+    match_arms 1
+    payloads (Some (Tag 4)) true
+    payloads (Some (Tag 5)) false
+    payloads None false
+
+// args: --delete-binary --no-color
+// expected stdout:
+// keep 1
+// drop 1
+// after if
+// not kept
+// drop 1
+// after if
+// keep 2
+// drop 2
+// after if
+// drop 2
+// after if
+// keep 3
+// drop 3
+// after match
+// one
+// drop 3
+// after match
+// keep 4
+// drop 4
+// after match
+// drop 5
+// after match
+// none
+// after match
+

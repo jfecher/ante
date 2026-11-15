@@ -5,7 +5,7 @@ iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
         emit i
         recur (i + 1)
 
-for_ (stream: fn Unit => Unit can Emit a) (f: fn a [env] -> Unit) =
+for_ (stream: once fn Unit => Unit can Emit a) (f: fn a [env] -> Unit can e) {Drop env e} =
     handle stream ()
     | emit x ->
         f x

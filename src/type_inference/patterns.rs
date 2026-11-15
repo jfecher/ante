@@ -20,7 +20,7 @@ use crate::{
         ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
     },
     type_inference::{
-        TypeBody, TypeChecker,
+        Locateable, TypeBody, TypeChecker,
         types::{PrimitiveType, Type},
     },
 };
@@ -171,7 +171,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, variable_to_match: PathId, rules: &[(PatternId, ExprId)], pattern_type: Type, location: Location,
     ) -> Option<DecisionTree> {
         let rows = opt_mapvec(rules, |(pattern, branch)| {
-            let pattern_location = self.current_context().pattern_location(*pattern).clone();
+            let pattern_location = pattern.locate(self);
             let pattern = self.convert_pattern(*pattern)?;
             let columns = vec![Column::new(variable_to_match, pattern)];
             let guard = None;
@@ -185,7 +185,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// If the given pattern is unable to be converted, an error is issued and None is returned.
     fn convert_pattern(&mut self, pattern: PatternId) -> Option<Pattern> {
-        Some(match &self.current_context()[pattern] {
+        Some(match self.pattern_of(pattern).as_ref() {
             cst::Pattern::Error => Pattern::Error,
             cst::Pattern::Variable(name_id) => Pattern::Variable(*name_id),
             cst::Pattern::Literal(Literal::Unit) => Pattern::Constructor(Constructor::Unit, Vec::new()),
@@ -197,7 +197,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Pattern::Constructor(Constructor::Int(value.to_bits()), Vec::new())
             },
             cst::Pattern::Literal(_) => {
-                let location = self.current_context().pattern_location(pattern).clone();
+                let location = pattern.locate(self);
                 self.compiler.accumulate(Diagnostic::InvalidPattern { location });
                 return None;
             },
@@ -213,7 +213,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             cst::Pattern::TypeAnnotation(pattern, _) => return self.convert_pattern(*pattern),
             cst::Pattern::MethodName { .. } => {
-                let location = self.current_context().pattern_location(pattern).clone();
+                let location = pattern.locate(self);
                 self.compiler.accumulate(Diagnostic::InvalidPattern { location });
                 return None;
             },

@@ -13,7 +13,7 @@ foo () = baz bar
 // type Baz a ($impl = _) =
 //     baz: fn a -> Unit
 // 
-// (foo: fn Unit -> Unit is pure) () = (error).baz (bar: _)
+// (foo: fn Unit -> Unit is pure) () = (error).baz (bar: Unit)
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10

@@ -1,4 +1,10 @@
-use std::{borrow::Cow, cell::Cell, collections::BTreeMap, rc::Rc, sync::Arc};
+use std::{
+    borrow::Cow,
+    cell::{Cell, OnceCell, RefCell},
+    collections::BTreeMap,
+    rc::Rc,
+    sync::Arc,
+};
 
 use inc_complete::DbGet;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -42,6 +48,7 @@ mod borrows;
 mod cst_traversal;
 pub mod dependency_graph;
 pub mod dictionary_coercions;
+mod drops;
 pub mod errors;
 mod free_variables;
 pub mod fresh_expr;
@@ -56,6 +63,7 @@ mod row;
 pub(crate) mod type_body;
 mod type_definitions;
 pub mod types;
+mod value_impls;
 
 pub use get_type::get_type_impl;
 pub use type_body::TypeBody;
@@ -68,7 +76,9 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
     let items = TypeChecker::item_contexts(&context.0, compiler);
     let mut checker = TypeChecker::new(&items, compiler);
 
-    let items = mapvec(context.0.iter(), |item_id| {
+    // We infer every item before borrow checking any of them since what an item drops, and how, can
+    // depend on types that are only known once a later item in the SCC is inferred.
+    let inferred = mapvec(context.0.iter(), |item_id| {
         incremental::println(format_args!("Type checking {item_id:?}"));
         checker.start_item(*item_id);
         checker.push_implicits_scope();
@@ -89,19 +99,40 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
 
         // Need to resolve any remaining implicits before the borrowing pass runs
         checker.pop_implicits_scope();
-        checker.check_impl_parameters_are_copy();
+        (depth, checker.suspend_item())
+    });
 
+    checker.default_unknown_types(inferred.iter().map(|(_, (_, maps))| maps));
+    let items = mapvec(context.0.iter().zip(inferred), |(item_id, (depth, suspended))| {
+        checker.resume_item(*item_id, suspended);
+        checker.resolve_value_impls();
+        checker.check_impl_parameters_are_copy();
+        let item = &checker.item_contexts[item_id].0;
         if let TopLevelItemKind::Definition(definition) = &item.kind {
             checker.check_borrows(definition, depth);
         }
         (*item_id, checker.finish_item())
     });
 
+    // Drops in a later item of the SCC may add effects to an earlier item's rows
+    checker.default_deferred_effects_to_pure();
+    checker.default_once_variables();
+
     // Whether a dictionary coercion widens any effects may depend on later items in the SCC
     checker.resolve_dictionary_coercions();
 
     incremental::exit_query();
     Arc::new(checker.finish(items))
+}
+
+/// The result of [TypeChecker::once_coercion] coercing a function to a `once fn`
+enum OnceCoercion {
+    /// No coercion was needed. The function is already a `once fn` or isn't expected to be one
+    None,
+    /// The function was only given this type. Its captures are `Copy` so nothing needs to drop them
+    Retyped(Type),
+    /// The expression was wrapped in a new `once fn`, which still needs to be type checked
+    Wrapped,
 }
 
 /// A `TypeCheckSCCResult` holds the `IndividualTypeCheckResult` of every item in
@@ -225,6 +256,42 @@ struct TypeChecker<'local, 'inner> {
     /// resolved on first use.
     copy_trait: Option<(TopLevelName, usize)>,
 
+    /// The Prelude's `Drop` trait and its number of generics, lazily resolved on first use.
+    drop_trait: Option<(TopLevelName, usize)>,
+
+    /// The Prelude's pair type, resolved the first time a closure captures more than one value
+    pair_type: OnceCell<TopLevelName>,
+
+    /// Open effect rows. These are only defaulted to pure once every item in the SCC is borrow
+    /// checked since a drop may still add effects to them.
+    deferred_effect_defaults: Vec<TypeVariableId>,
+
+    /// Environment variables for the body and each branch of every `handle`. These are only decided
+    /// once the `handle` is borrow checked.
+    handle_environments: FxHashSet<TypeVariableId>,
+
+    /// Variables for each function type's [FunctionType::once]. Any the borrow checker leaves
+    /// unbound are functions that may be called any number of times.
+    once_variables: Vec<TypeVariableId>,
+
+    /// False while the borrow walk type checks the drops it inserts. These are never copied or
+    /// dropped themselves so we don't need to search for their impls. See [value_impls].
+    requests_value_impls: bool,
+
+    /// The kind of each type variable that isn't a plain type. A variable gets its kind either when
+    /// it is created (see [Self::next_variable]) or when the type it was converted with enters the
+    /// checker (see [Self::record_kinds]).
+    variable_kinds: RefCell<FxHashMap<TypeVariableId, kinds::Kind>>,
+
+    /// Cache of whether the first parameter of each trait searched for is a type. See
+    /// [Self::subject_is_rigid_type]
+    type_subject_traits: FxHashMap<TopLevelName, bool>,
+
+    /// Maps each open effect row that reached the boundary of a function with a closed row to that
+    /// closed row. Anything the open row is later bound to must fit within the closed row, which we
+    /// check when binding it. See [Self::check_effect_bound].
+    effect_bounds: FxHashMap<TypeVariableId, Type>,
+
     /// The Prelude's `Mutate` effect
     mutate_name: TopLevelName,
 
@@ -266,9 +333,9 @@ struct ItemState {
     /// moves when both an alias and the original name are moved.
     binding_places: FxHashMap<NameId, places::Place>,
 
-    /// The `Copy` impl requested for each variable or member access expression in the current
-    /// item that may move a local place.
-    copy_witnesses: FxHashMap<ExprId, ExprId>,
+    /// For each value the borrow walk may copy or drop, the implicits we search with and the impl
+    /// we found. See [value_impls].
+    value_impls: value_impls::ValueImplTable,
 
     /// Names defined with `var` or as mutable parameters. Used by closure capture analysis
     /// to wrap mutable captures in a reference type so the closure shares the outer scope's storage.
@@ -277,6 +344,15 @@ struct ItemState {
     /// Failed implicit searches by destination
     failed_implicit_searches: FxHashMap<ExprId, implicits::ImplicitError>,
 
+    /// Cache of whether each fully known type is `Copy` with the local implicits in scope. This is
+    /// only used when the types of those implicits are fully known as well. See
+    /// [TypeChecker::type_is_copy_in].
+    copy_memo: FxHashMap<(Vec<NameId>, Type), bool>,
+
+    /// How many times an implicit search tried a candidate from the current SCC. Since the types of
+    /// these candidates may still be refined, a search that tried one can't have its result reused.
+    scc_candidates_tried: usize,
+
     /// Delayed implicits resolved early, mapped by the destination expr.
     /// These stay queued in their scope so that the position of other queued implicits is unchanged,
     /// mapping to their target type from before they were resolved.
@@ -284,6 +360,9 @@ struct ItemState {
 
     /// Set while checking the constructor of an impl of a trait. See [ImplState].
     impl_: Option<ImplState>,
+
+    /// The body and each branch of every `handle` in the item
+    handle_lambdas: FxHashSet<ExprId>,
 }
 
 /// An impl of a trait whose constructor is being checked. Each of the impl's methods takes a
@@ -295,7 +374,7 @@ struct ImplState {
 
     /// The `Copy` impl requested for each of the impl's parameters which aren't trivially `Copy`.
     /// See [TypeChecker::check_impl_parameters_are_copy].
-    copy_witnesses: Vec<(PatternId, ExprId)>,
+    copy_parameters: Vec<PatternId>,
 }
 
 impl TraitDefinition {
@@ -355,6 +434,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             string_type: None,
             prelude_origins: Default::default(),
             copy_trait: None,
+            drop_trait: None,
+            pair_type: Default::default(),
+            deferred_effect_defaults: Vec::new(),
+            once_variables: Vec::new(),
+            handle_environments: Default::default(),
+            effect_bounds: Default::default(),
+            variable_kinds: Default::default(),
+            type_subject_traits: Default::default(),
+            requests_value_impls: true,
             mutate_name: prelude_type_name(compiler, "Mutate"),
             extract_name: prelude_type_name(compiler, "Extract"),
             insert_name: prelude_type_name(compiler, "Insert"),
@@ -396,6 +484,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     };
 
                     this.next_type_variable_id.set(*next_id);
+                    this.record_kinds(&typ, &kinds::Kind::Type);
                     typ
                 } else {
                     this.next_type_variable()
@@ -462,6 +551,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Some(expr) => Cow::Owned(expr.clone()),
             None => Cow::Borrowed(&self.current_context()[id]),
         }
+    }
+
+    /// Returns the local variable `id` refers to, if it is just a variable
+    fn local_variable(&self, id: ExprId) -> Option<NameId> {
+        self.classify_place(id).filter(|place| place.fields.is_empty())?.local()
     }
 
     /// The name of the member a member access accesses
@@ -549,16 +643,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Prepare the TypeChecker to type check another item.
     fn start_item(&mut self, item_id: TopLevelId) {
-        self.current_item = Some(item_id);
+        self.enter_item(item_id);
         self.item = ItemState::default();
-
-        let (item, context, resolve) = &self.item_contexts[&item_id];
-        self.current_impl = match &item.kind {
-            TopLevelItemKind::Definition(definition) => {
-                get_type::trait_impl_of(definition, context, resolve, self.compiler)
-            },
-            _ => None,
-        };
 
         // Nearly every id in the item gets a type
         let context = &self.item_contexts[&item_id].1;
@@ -574,10 +660,94 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// Once every item in the SCC is inferred, a type variable that is still unbound and isn't part
+    /// of an item's generalized type can never have a value. Ex: the error type of a `Result` that
+    /// is only ever `Ok`. We default each of these that a value may hold to `Unit`. This happens
+    /// before borrow checking so that values holding one don't need a `Drop` impl for it.
+    ///
+    /// Only variables of kind type are defaulted since an unbound effect, place, or type
+    /// constructor is not the type of any value.
+    fn default_unknown_types<'a>(&mut self, items: impl Iterator<Item = &'a TypeMaps>) {
+        let types = items.flat_map(|maps| maps.name_types.values().chain(maps.expr_types.values()));
+
+        let mut atoms = Vec::new();
+        let mut held = FxHashSet::default();
+        let mut environments = FxHashSet::default();
+        for typ in types {
+            atoms.clear();
+            typ.owned_type_atoms(&self.bindings, self.compiler, &mut atoms);
+            for atom in &atoms {
+                if let Type::Variable(id) = atom
+                    && !self.is_unresolved_literal(atom)
+                {
+                    held.insert(*id);
+                }
+            }
+            typ.for_each_subterm(&self.bindings, &mut |typ, bindings| {
+                if let Type::Function(function) = typ
+                    && let Type::Variable(id) = function.environment.follow(bindings)
+                {
+                    environments.insert(*id);
+                }
+            });
+        }
+        let mut generalized = FxHashSet::default();
+        for typ in self.item_types.values() {
+            generalized.extend(typ.free_unification_vars(&self.bindings));
+        }
+
+        // Similarly, if a function type's environment is still unknown then no closure of that type
+        // was ever made, so any value of it is a plain function
+        for id in environments {
+            if !generalized.contains(&id) && !self.handle_environments.contains(&id) {
+                self.bindings.insert(id, Type::NO_CLOSURE_ENV);
+            }
+        }
+
+        for id in held {
+            if !generalized.contains(&id) && self.has_kind(id, &kinds::Kind::Type) {
+                self.bindings.insert(id, Type::UNIT);
+            }
+        }
+    }
+
+    /// Make `item_id` the current item
+    fn enter_item(&mut self, item_id: TopLevelId) {
+        self.current_item = Some(item_id);
+        let (item, context, resolve) = &self.item_contexts[&item_id];
+        self.current_impl = match &item.kind {
+            TopLevelItemKind::Definition(definition) => {
+                get_type::trait_impl_of(definition, context, resolve, self.compiler)
+            },
+            _ => None,
+        };
+    }
+
+    /// Pause the current item so it can be continued later with [Self::resume_item]
+    fn suspend_item(&mut self) -> (ItemState, TypeMaps) {
+        self.current_item = None;
+        (std::mem::take(&mut self.item), self.take_type_maps())
+    }
+
+    /// Continue an item paused by [Self::suspend_item]
+    fn resume_item(&mut self, item_id: TopLevelId, (state, maps): (ItemState, TypeMaps)) {
+        self.enter_item(item_id);
+        self.item = state;
+        self.name_types = maps.name_types;
+        self.path_types = maps.path_types;
+        self.expr_types = maps.expr_types;
+        self.pattern_types = maps.pattern_types;
+    }
+
     /// Finishes the current item, adding all bindings to the relevant entry in
     /// `self.finished_items`, clearing them out in preparation for resolving the next item.
     fn finish_item(&mut self) -> TypeMaps {
         self.current_item = None;
+        self.take_type_maps()
+    }
+
+    /// Take the types of everything in the current item, leaving its maps empty
+    fn take_type_maps(&mut self) -> TypeMaps {
         TypeMaps {
             name_types: std::mem::take(&mut self.name_types),
             path_types: std::mem::take(&mut self.path_types),
@@ -596,6 +766,89 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Type::Variable(self.next_type_variable_id())
     }
 
+    /// Create a fresh environment variable for the body or a branch of a `handle`
+    fn next_handle_environment(&mut self) -> Type {
+        let id = self.next_type_variable_id();
+        self.handle_environments.insert(id);
+        Type::Variable(id)
+    }
+
+    /// Create a fresh [FunctionType::once] variable for the borrow checker to decide later
+    fn next_once_variable(&mut self) -> Type {
+        let id = self.next_type_variable_id();
+        self.once_variables.push(id);
+        Type::Variable(id)
+    }
+
+    /// Any [FunctionType::once] left undecided defaults to a function that may be called any number
+    /// of times
+    fn default_once_variables(&mut self) {
+        for id in std::mem::take(&mut self.once_variables) {
+            self.bind_if_unbound(&Type::Variable(id), Type::MANY);
+        }
+    }
+
+    /// If `typ` follows to an unbound variable, bind it to `value`
+    pub(super) fn bind_if_unbound(&mut self, typ: &Type, value: Type) {
+        if let Type::Variable(id) = typ.follow(&self.bindings) {
+            let id = *id;
+            self.bindings.insert(id, value);
+        }
+    }
+
+    /// Create a fresh type variable of the given kind
+    fn next_variable(&self, kind: kinds::Kind) -> Type {
+        let id = self.next_type_variable_id();
+        self.set_kind(id, kind);
+        Type::Variable(id)
+    }
+
+    /// Create a fresh variable for each argument of `constructor` at `indices`, using the kind the
+    /// constructor declares for that argument
+    fn fresh_arguments(&self, constructor: &Type, indices: std::ops::Range<usize>) -> Vec<Type> {
+        let kinds = match constructor.constructor_kind(self.compiler) {
+            Some(kinds::Kind::TypeConstructorComplex { params, .. }) => params,
+            _ => Vec::new(),
+        };
+        mapvec(indices, |index| self.next_variable(kinds.get(index).cloned().unwrap_or(kinds::Kind::Type)))
+    }
+
+    /// Record that the variable `id` has the given kind
+    fn set_kind(&self, id: TypeVariableId, kind: kinds::Kind) {
+        if kind != kinds::Kind::Type {
+            self.variable_kinds.borrow_mut().insert(id, kind);
+        }
+    }
+
+    /// True if the variable `id` has the given kind
+    fn has_kind(&self, id: TypeVariableId, kind: &kinds::Kind) -> bool {
+        self.variable_kinds.borrow().get(&id).unwrap_or(&kinds::Kind::Type) == kind
+    }
+
+    /// Returns each unbound effect or effect row variable within `typ`
+    fn unbound_effect_variables(&self, typ: &Type) -> Vec<TypeVariableId> {
+        let mut effects = Vec::new();
+        typ.for_each_kinded_variable(&kinds::Kind::Type, &self.bindings, self.compiler, &mut |variable, kind| {
+            if let Type::Variable(id) = variable
+                && *kind == kinds::Kind::Effect
+            {
+                effects.push(*id);
+            }
+        });
+        effects
+    }
+
+    /// Record the kind of each unbound variable within `typ` based on its position, where `typ` is
+    /// a type of the given kind converted from the source. Type conversion runs outside of any
+    /// [TypeChecker] so this is the first chance we have to give its variables a kind.
+    fn record_kinds(&self, typ: &Type, expected: &kinds::Kind) {
+        typ.for_each_kinded_variable(expected, &self.bindings, self.compiler, &mut |variable, kind| {
+            if let Type::Variable(id) = variable {
+                self.set_kind(*id, kind.clone());
+            }
+        });
+    }
+
     /// Run `f` with a reference to `self.next_type_variable_id`
     fn with_next_id<T>(&self, f: impl FnOnce(&mut u32) -> T) -> T {
         let mut next_id = self.next_type_variable_id.get();
@@ -606,7 +859,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A fresh, open effect row.
     fn fresh_effect_row(&self) -> Type {
-        Type::Effects(Some(Shared::new(vec![self.next_type_variable()])))
+        Type::Effects(Some(Shared::new(vec![self.next_variable(kinds::Kind::Effect)])))
     }
 
     /// Generalize all types in the current SCC.
@@ -621,7 +874,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (name, typ) in self.item_types.clone().iter() {
             self.current_item = Some(name.top_level_item);
             self.default_unshared_effects_to_pure(typ, typ);
-            let typ = self.declared_types.get(name).cloned().unwrap_or_else(|| typ.generalize(&self.bindings));
+            let typ =
+                self.declared_types.get(name).cloned().unwrap_or_else(|| typ.generalize(&self.bindings, self.compiler));
             items.entry(name.top_level_item).or_default().insert(name.local_name_id, typ);
         }
 
@@ -646,22 +900,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.default_unshared_effects_to_pure(root, &parameter.typ);
         }
         self.default_unshared_effects_to_pure(root, &function_type.return_type);
-    }
-
-    /// Records every unbound effect row entry in `typ` so that [Self::try_default_effect_to_pure]
-    /// can close it if nothing binds it by the end of the scope.
-    ///
-    /// TODO: Record these variables when created in `self.next_type_variable_id` instead of finding
-    /// them here after the fact.
-    fn record_fresh_effect_variables(&mut self, typ: &Type) {
-        let ends = typ.unbound_effect_entries(&self.bindings);
-        if ends.is_empty() {
-            return;
-        }
-        let location = self.current_context().location().clone();
-        for id in ends {
-            self.push_inferred_effect(id, location.clone());
-        }
     }
 
     /// Unifies the two types. Returns false on failure
@@ -696,25 +934,30 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// `explicit_implicits` are the `(parameter type, argument type)` of each implicit argument given
     /// explicitly to the call.
     fn propagate_call_effects(
-        &mut self, effects_var: &Type, implicit_count_before_call: usize, explicit_implicits: &[(Type, Type)],
-        locator: impl Locateable + Copy,
+        &mut self, effects_var: &Type, implicits_before_call: implicits::ImplicitsMark,
+        explicit_implicits: &[(Type, Type)], locator: impl Locateable + Copy,
     ) {
         // Row subtyping lets an impl like `Eq I32 pure` match `Eq I32 e` without binding `e`,
         // but the impl decides that effect. Close whatever it left open before the call's row is
         // linked to the ambient row below, where an open `e` would absorb the whole row instead.
         // TODO: Remove. This is a workaround for the lack of a constraint-based system.
         let location = locator.locate(self);
-        for target in self.resolve_new_delayed_implicits(implicit_count_before_call) {
-            for id in target.unbound_effect_entries(&self.bindings) {
-                self.try_default_effect_to_pure(id, location.clone());
+        for target in self.resolve_new_delayed_implicits(implicits_before_call) {
+            // Copying or dropping a function doesn't depend on which effects calling it performs
+            let function = self.copied_or_dropped_function(&target);
+            let kept = function.map_or(Vec::new(), |function| self.unbound_effect_variables(&function));
+            for id in self.unbound_effect_variables(&target) {
+                if !kept.contains(&id) {
+                    self.try_default_effect_to_pure(id, location.clone());
+                }
             }
         }
 
         // The same goes for implicits given explicitly, although only the rows left open by matching
         // the argument against the parameter are closed. The argument's own open rows are left alone.
         for (parameter, argument) in explicit_implicits {
-            let argument_entries = argument.unbound_effect_entries(&self.bindings);
-            for id in parameter.unbound_effect_entries(&self.bindings) {
+            let argument_entries = self.unbound_effect_variables(argument);
+            for id in self.unbound_effect_variables(parameter) {
                 if !argument_entries.contains(&id) {
                     self.try_default_effect_to_pure(id, location.clone());
                 }
@@ -722,6 +965,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         self.propagate_effects(effects_var, locator);
+    }
+
+    /// If `target` is `Copy f` or `Drop f e` for a function type `f`, return `f`
+    fn copied_or_dropped_function(&mut self, target: &Type) -> Option<Type> {
+        let (_, subject) = self.copy_or_drop_subject(target)?;
+        matches!(self.follow_type(&subject), Type::Function(_)).then_some(subject)
     }
 
     /// Adds `effects` to the ambient row, deferring what only the function's boundary can decide
@@ -808,6 +1057,7 @@ fn prelude_type_name(compiler: &DbHandle, name: &str) -> TopLevelName {
 fn strip_environments(typ: &Type) -> Type {
     match typ {
         Type::Function(function) => Type::Function(Shared::new(FunctionType {
+            once: function.once.clone(),
             parameters: mapvec(&function.parameters, |param| {
                 ParameterType::new(strip_environments(&param.typ), param.is_implicit)
             }),
@@ -899,7 +1149,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     let expected = expected.clone();
                     if let Ok(bindings) = self.try_unify(&arg, &expected) {
                         self.bindings.extend(bindings);
-                        let new_expr = self.auto_deref_coercion(expr, expected);
+                        let borrowed = call_expr.is_some() && self.callee_is_borrowed(&expected, expr);
+                        let new_expr = self.auto_deref_coercion(expr, expected, borrowed);
                         self.current_extended_context_mut().insert_expr(expr, new_expr);
                         return CoercionOutcome::ReplacedExpr;
                     }
@@ -954,7 +1205,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             && let Some((_, inner)) = actual.reference_element(&self.bindings)
             && self.type_is_copy(&inner, expr.locate(self))
         {
-            let new_expr = self.auto_deref_coercion(expr, inner);
+            let new_expr = self.auto_deref_coercion(expr, inner, false);
             self.current_extended_context_mut().insert_expr(expr, new_expr);
             self.check_expr(expr, expected, kind);
             return actual;
@@ -976,6 +1227,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>, kind: TypeErrorKind,
         widen_row: bool,
     ) -> Type {
+        let once;
+        let actual = match self.once_coercion(actual, expected, expr) {
+            OnceCoercion::None => actual,
+            OnceCoercion::Wrapped => return self.check_expr(expr, expected, kind),
+            OnceCoercion::Retyped(typ) => {
+                once = typ;
+                &once
+            },
+        };
         let result = if widen_row && self.try_function_row_coercion(actual, expected, expr, kind.clone()) {
             CoercionOutcome::FunctionEffects
         } else {
@@ -997,6 +1257,50 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // implicit_parameter_coercion already performed the needed unification against the type
             CoercionOutcome::InPlaceCall | CoercionOutcome::FunctionEffects => actual.clone(),
         }
+    }
+
+    /// Coerce a function that may be called any number of times into a `once fn`, its supertype.
+    ///
+    /// A `once fn` is moved into its call so its body is responsible for dropping its captures.
+    /// Other functions leave that to whoever holds them, so unless the captures are `Copy` we need
+    /// to wrap the function in a `once fn` which holds it, calls it, and then drops it.
+    fn once_coercion(&mut self, actual: &Type, expected: &Type, expr: ExprId) -> OnceCoercion {
+        let (Type::Function(actual_fn), Type::Function(expected_fn)) =
+            (self.follow_type(actual), self.follow_type(expected))
+        else {
+            return OnceCoercion::None;
+        };
+        let once = |function: &FunctionType| *self.follow_type(&function.once) == Type::ONCE;
+        if !once(expected_fn) || once(actual_fn) || actual_fn.parameters.len() != expected_fn.parameters.len() {
+            return OnceCoercion::None;
+        }
+        let actual_fn = actual_fn.clone();
+
+        let location = expr.locate(self);
+        if self.type_is_copy(actual, location.clone()) {
+            let retyped = FunctionType { once: Type::ONCE, ..(*actual_fn).clone() };
+            return OnceCoercion::Retyped(Type::Function(Shared::new(retyped)));
+        }
+
+        let implicits_added = vec![None; actual_fn.parameters.len()];
+        let wrapper = if self.local_variable(expr).is_some() {
+            self.create_closure_wrapper_for_implicit(expr, implicits_added, actual_fn.parameters.clone())
+        } else {
+            // The function is evaluated here rather than each time the wrapper is called
+            let value = self.current_extended_context()[expr].clone();
+            let value = self.push_expr(value, actual.clone(), location.clone());
+            let (path, name) = self.fresh_variable("function", actual.clone(), location.clone());
+            let definition = self.let_binding(name, value);
+
+            let function = self.push_expr(cst::Expr::Variable(path), actual.clone(), location.clone());
+            let wrapper =
+                self.create_closure_wrapper_for_implicit(function, implicits_added, actual_fn.parameters.clone());
+            let wrapper = self.push_expr(wrapper, Type::ERROR, location);
+            let item = |expr| cst::SequenceItem { comments: Vec::new(), expr };
+            cst::Expr::Sequence(vec![item(definition), item(wrapper)])
+        };
+        self.current_extended_context_mut().insert_expr(expr, wrapper);
+        OnceCoercion::Wrapped
     }
 
     /// Coerce a function value to a wider effect row, recording it for the MIR builder to wrap in a
@@ -1034,6 +1338,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         let adapted = Type::Function(Shared::new(FunctionType {
+            once: actual_fn.once.clone(),
             parameters: actual_fn.parameters.clone(),
             environment: Type::Function(actual_fn.clone()),
             return_type: actual_fn.return_type.clone(),
@@ -1119,10 +1424,67 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         matches!(name, "+" | "-" | "*" | "/" | "%")
     }
 
+    /// True if the function at `callee`, called through a reference, can be called in place rather
+    /// than copied out of the reference. Only calling a `once fn` moves its captures, so if the
+    /// function's type doesn't say yet we decide here that it isn't a `once fn`.
+    ///
+    /// Calling a `once fn` through a reference is an error unless it is `Copy`.
+    fn callee_is_borrowed(&mut self, function: &Type, callee: ExprId) -> bool {
+        let Type::Function(function_type) = self.follow_type(function).clone() else { return false };
+        if !self.callee_is_once(&function_type) {
+            return true;
+        }
+        let location = callee.locate(self);
+        if self.type_is_copy(function, location.clone()) {
+            return false;
+        }
+        self.report_unowned_once_call(crate::diagnostics::UnownedHolder::Reference, location);
+        true
+    }
+
+    /// True if `function` is a `once fn`, so calling it moves it. If its type doesn't say yet, we
+    /// decide here that it may be called any number of times.
+    pub(super) fn callee_is_once(&mut self, function: &FunctionType) -> bool {
+        self.bind_if_unbound(&function.once, Type::MANY);
+        *self.follow_type(&function.once) == Type::ONCE
+    }
+
+    /// Report an error for calling a non-`Copy` `once fn` held by `holder` since it cannot be moved
+    /// out of it
+    pub(super) fn report_unowned_once_call(
+        &mut self, holder: crate::diagnostics::UnownedHolder, location: crate::diagnostics::Location,
+    ) {
+        self.compiler.accumulate(Diagnostic::CallOfUnownedOnceFn { holder, location });
+    }
+
+    /// Returns the type of `expr` if it is a function type
+    pub(super) fn expr_function_type(&self, expr: ExprId) -> Option<Shared<FunctionType>> {
+        match self.follow_type(self.expr_types.get(&expr)?) {
+            Type::Function(function) => Some(function.clone()),
+            _ => None,
+        }
+    }
+
+    /// True if `expr` is a call to the Prelude's `deref`, which reads a value in place
+    pub(super) fn is_deref_call(&mut self, expr: ExprId) -> bool {
+        let function = match self.resolved_expr(expr).as_ref() {
+            cst::Expr::Call(call) => call.function,
+            _ => return false,
+        };
+        let path = match self.resolved_expr(function).as_ref() {
+            cst::Expr::Variable(path) => *path,
+            _ => return false,
+        };
+        let origin = self.path_origin(path);
+        origin.is_some() && origin == Some(self.prelude_definition_origin("deref"))
+    }
+
     /// Synthesize a `(.*) expr` call expression for auto-deref coercion.
     /// The original expression at `expr` is copied to a new ExprId, and this returns
     /// a Call expression wrapping it with the Prelude's `(.*)` function.
-    fn auto_deref_coercion(&mut self, expr: ExprId, element_type: Type) -> cst::Expr {
+    ///
+    /// If `in_place` is set the value isn't copied so it doesn't need a `Copy` impl.
+    fn auto_deref_coercion(&mut self, expr: ExprId, element_type: Type, in_place: bool) -> cst::Expr {
         let location = expr.locate(self);
 
         // Copy original expression to a new ExprId since we're replacing `expr`
@@ -1132,22 +1494,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // A trivially `Copy` value, such as a trait dictionary, may have no `Copy` impl to call.
         // The Prelude's `deref` copies any value out of a reference.
-        let deref_name = if self.is_trivially_copy(&element_type) { "deref" } else { ".*" };
-        let deref_origin = self.prelude_definition_origin(deref_name);
-        let deref_path = self.push_path(
-            cst::Path::ident(Arc::new(deref_name.to_string()), location.clone()),
-            Type::ERROR, // overwritten when check_expr re-checks the synthesized call
-            location.clone(),
-        );
-        self.current_extended_context_mut().insert_path_origin(deref_path, deref_origin);
-
+        let deref_name = if in_place || self.is_trivially_copy(&element_type) { "deref" } else { ".*" };
         let function_type = Type::Function(Shared::new(FunctionType {
+            once: Type::MANY,
             parameters: vec![ParameterType::explicit(original_type)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: element_type,
             effects: Type::pure(),
         }));
-        let func_expr = self.push_expr(cst::Expr::Variable(deref_path), function_type, location);
+        let func_expr = self.prelude_variable(deref_name, function_type, location);
         cst::Expr::Call(cst::Call { function: func_expr, arguments: vec![cst::Argument::explicit(arg_id)] })
     }
 
@@ -1159,15 +1514,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let original_expr = self.current_extended_context()[expr].clone();
         let rhs = self.push_expr(original_expr, element_type, location);
         self.copy_expr_metadata(expr, rhs);
+        self.request_temporary_impls(rhs, false);
         cst::Expr::Reference(cst::Reference { kind, rhs, implicit: false })
     }
 
     /// Copy everything recorded about the expression `from` onto `to`, which it was moved to
     fn copy_expr_metadata(&mut self, from: ExprId, to: ExprId) {
         self.current_extended_context_mut().copy_expr_metadata(from, to);
-        if let Some(witness) = self.item.copy_witnesses.get(&from).copied() {
-            self.item.copy_witnesses.insert(to, witness);
-        }
+        self.copy_value_impls(value_impls::OwnedRoot::Value(from), value_impls::OwnedRoot::Value(to));
         let item = self.current_item.expect("expressions are within an item");
         if let Some(pending) = self.pending_dictionary_coercions.get(&(item, from)).cloned() {
             self.pending_dictionary_coercions.insert((item, to), pending);
@@ -1260,6 +1614,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.subtype(&a_param.typ, &b_param.typ, variance.flip(), RowMode::Exact, new_bindings)?;
                 }
 
+                self.subtype(&a_fn.once, &b_fn.once, Variance::Invariant, RowMode::Exact, new_bindings)?;
                 self.subtype(&a_fn.environment, &b_fn.environment, Variance::Invariant, RowMode::Exact, new_bindings)?;
                 self.subtype(&a_fn.return_type, &b_fn.return_type, variance, RowMode::Exact, new_bindings)?;
                 self.subtype(&a_fn.effects, &b_fn.effects, variance, row_mode, new_bindings)
@@ -1498,7 +1853,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             },
             Type::Function(function_type) => {
-                function_type.parameters.iter().any(|param| self.occurs(&param.typ, variable, new_bindings))
+                self.occurs(&function_type.once, variable, new_bindings)
+                    || function_type.parameters.iter().any(|param| self.occurs(&param.typ, variable, new_bindings))
                     || self.occurs(&function_type.environment, variable, new_bindings)
                     || self.occurs(&function_type.return_type, variable, new_bindings)
                     || self.occurs(&function_type.effects, variable, new_bindings)
@@ -1552,10 +1908,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, typ: &cst::Type, expected: kinds::Kind, allow_implicit_type_vars: bool,
         open_effects_by_default: bool, local_kinds: &mut LocalKinds,
     ) -> Type {
-        self.with_next_id(|next_id| {
+        let converted = self.with_next_id(|next_id| {
             Type::from_cst_type_with_kind(
                 typ,
-                expected,
+                expected.clone(),
                 self.current_resolve(),
                 self.compiler,
                 next_id,
@@ -1564,7 +1920,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 open_effects_by_default,
                 Omissions::Fresh,
             )
-        })
+        });
+        self.record_kinds(&converted, &expected);
+        converted
     }
 
     /// Like [Self::from_cst_type_with_local_kinds] but for types within a type definition, where
@@ -1573,7 +1931,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn from_cst_type_in_type_definition(
         &mut self, typ: &cst::Type, allow_implicit_type_vars: bool, local_kinds: &mut LocalKinds,
     ) -> Type {
-        self.with_next_id(|next_id| {
+        let converted = self.with_next_id(|next_id| {
             Type::from_cst_type_with_kind(
                 typ,
                 kinds::Kind::Type,
@@ -1585,14 +1943,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 false,
                 Omissions::Error,
             )
-        })
+        });
+        self.record_kinds(&converted, &kinds::Kind::Type);
+        converted
     }
 
     /// See [Type::from_cst_constructor_type]
     fn from_cst_constructor_type(&mut self, typ: &cst::Type) -> Type {
-        self.with_next_id(|next_id| {
+        let converted = self.with_next_id(|next_id| {
             Type::from_cst_constructor_type(typ, self.current_resolve(), self.compiler, next_id)
-        })
+        });
+        self.record_kinds(&converted, &kinds::Kind::Type);
+        converted
     }
 
     /// Try to retrieve the types of each field of the given type.
@@ -1617,6 +1979,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         (None, arguments[0].clone())
                     };
                     let inner_fields = self.get_field_types(&inner, None);
+
+                    // A reference to a reference reads through to the inner reference, and these
+                    // are already its fields. They can only be mutated if both references allow it.
+                    if inner.reference_or_pointer_element(&self.bindings).is_some() {
+                        let none = TypeBindings::default();
+                        let read_only = lifetime
+                            .as_ref()
+                            .is_some_and(|places| self.places_mutability(places, &none) != Mutability::Mutable);
+                        return inner_fields
+                            .into_iter()
+                            .map(|(name, (field_type, index))| {
+                                let field_type = match field_type.reference_element(&self.bindings) {
+                                    Some((places, element)) if read_only => {
+                                        self.reference_type(cst::ReferenceKind::Read, places, element)
+                                    },
+                                    _ => field_type,
+                                };
+                                (name, (field_type, index))
+                            })
+                            .collect();
+                    }
                     return inner_fields
                         .into_iter()
                         .map(|(name, (field_type, index))| {
@@ -1699,7 +2082,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Type::Generic(Generic::Elided(self.next_type_variable_id()))
             } else if all_places.contains(generic) {
                 let none = TypeBindings::default();
-                Type::places(&[self.next_type_variable()], &none, &none)
+                Type::places(&[self.next_variable(kinds::Kind::Place)], &none, &none)
             } else {
                 self.next_type_variable()
             }
@@ -1736,17 +2119,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return;
         }
 
-        let context = self.current_context();
-        let cst::Pattern::Variable(name) = context[pattern] else { return };
-        if context[name].as_str() != "main" {
+        let cst::Pattern::Variable(name) = *self.pattern_of(pattern) else { return };
+        if self.current_extended_context()[name].as_str() != "main" {
             return;
         }
 
         self.default_unshared_effects_to_pure(typ, typ);
 
-        let main_effects = self.next_type_variable();
+        let main_effects = self.next_variable(kinds::Kind::Effect);
 
         let expected = Type::Function(Shared::new(FunctionType {
+            once: Type::MANY,
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: Type::UNIT,

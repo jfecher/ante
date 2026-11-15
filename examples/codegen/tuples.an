@@ -1,4 +1,4 @@
-foo (a, (b: t), _) {Display t e} =
+foo (a, (b: t), (_rest: r)) {Display t e} {Drop t pure} {Drop r pure} =
     _: String = a
     println b
 

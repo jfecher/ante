@@ -8,7 +8,7 @@ import Std.Math.CheckedNum, checked_add, checked_sub, checked_mul
 import Std.Math.checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i64, checked_num_isz
 import Std.Math.checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz
 import Std.Fail.Fail, fail, fail_if, assert
-import Std.Mem.transmute, null, offset, offset_bytes, offset_negative, deref_ptr, ptr_store, array_insert
+import Std.Mem.transmute, null, offset, offset_bytes, offset_negative, deref_ptr, ptr_store, array_insert, forget
 import Std.Array.array_get_unchecked
 import Std.Bitwise.band, bitwise_u64
 
@@ -131,9 +131,9 @@ String.reverse (var s: String): String =
 ///
 /// For example `split "foo bar  baz "` will emit all of:
 /// ["foo", "bar", "", "baz", ""]
-String.split (s: String) (c: Char) = fn () can Emit String ->
-    var subend = 0usz
-    var substart = 0usz
+String.split (s: String) (c: Char) = move fn () can Emit String ->
+    var subend = 0
+    var substart = 0
     while U32 subend < s.length do
         ch: Char = s.data.[Usz subend]
         if ch == c then
@@ -143,7 +143,7 @@ String.split (s: String) (c: Char) = fn () can Emit String ->
 
     emit (s.substr substart subend)
 
-String.split_str (s: String) (separator: String) = fn () can Emit String ->
+String.split_str (s: String) (separator: String) = move fn () can Emit String ->
     separator_len = Usz separator.length
     len = Usz s.length
     var start = 0usz
@@ -178,7 +178,9 @@ String.substr (var s: String) (begin: Usz) (end: Usz): String =
 
     buf = offset_bytes s.data begin
     len = U32 end - U32 begin
-    String buf s.refcount len (s.offset + U32 begin)
+    substring = String buf s.refcount len (s.offset + U32 begin)
+    forget s
+    substring
 
 /// Collect each character from the given stream into a String
 ///
@@ -190,7 +192,7 @@ String.string_of (stream: s) {Stream s Char e}: String can Panic, Fail, e =
     result = String.from_parts (chars.data) (U32 chars.len)
 
     // Leak the Vec, it has been transferred to the String.
-    chars.data := null ()
+    forget chars
     result
 
 /// Join each string from the stream into one string.
@@ -201,7 +203,7 @@ join (stream: s) {Stream s String e}: String can e =
     foldl stream "" (++)
 
 /// Emits each byte in this string
-String.bytes (s: String) = fn () can Emit U8 ->
+String.bytes (s: String) = move fn () can Emit U8 ->
     var data = transmute s.data : Usz
     for i in 0 .. s.length do
         ptr = data + Usz i
@@ -443,7 +445,7 @@ impl clone_string: Clone String with
         deref s
 
 impl drop_string: Drop String pure with
-    drop (s: mut String) =
+    drop (s: String) =
         if s.refcount != null () then
             count = deref_ptr s.refcount
             if count == 1u32 then

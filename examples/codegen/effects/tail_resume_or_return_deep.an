@@ -1,0 +1,46 @@
+// A handler which either resumes in tail position or returns without resuming handles any
+// number of effects without the stack growing, as `take_while`, `any`, `all` and `find` rely on.
+import Std.Stream.iota, take_while, any, all, find, nth, stream_fn
+
+effect Tick =
+    tick: fn Usz -> Unit
+
+count_to (limit: Usz): Unit can Tick =
+    var i = 0usz
+    while i < limit do
+        tick i
+        i += 1
+
+/// The number of ticks before the first which is not below `stop`
+ticks_below (stop: Usz) (f: once fn Unit => Unit can Tick): Usz =
+    var seen = 0usz
+    handle f ()
+    | tick n ->
+        if n < stop then
+            seen += 1
+            resume ()
+    seen
+
+main () =
+    print_to_stdout do
+    println (ticks_below 2000000 fn () -> count_to 1000000)
+    println (ticks_below 700000 fn () -> count_to 1000000)
+
+    var total = 0usz
+    iota 1000000 |> take_while (fn (x: ref Usz) -> x.* < 900000) |> iter fn x ->
+        total := total + x
+    println total
+    println (iota 1000000 |> any (fn x -> x == 1000000))
+    println (iota 1000000 |> all (fn x -> x < 1000000))
+    println (try do iota 1000000 |> find (fn (x: ref Usz) -> x.* == 999999))
+    println (try do iota 1000000 |> nth 999998)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1000000
+// 700000
+// 404999550000
+// false
+// true
+// Some 999999
+// Some 999998

@@ -12,6 +12,9 @@ bad_constructor () =
 
 main () = ()
 
+impl drop_holder: Drop (Holder 'a) pure with
+    drop _ = ()
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:

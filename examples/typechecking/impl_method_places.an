@@ -42,6 +42,9 @@ escape_method (): ref I32 =
     local = Holder 1
     keep (ref local)
 
+impl drop_holder: Drop Holder pure with
+    drop _ = ()
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:

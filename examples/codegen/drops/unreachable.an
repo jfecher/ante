@@ -1,0 +1,53 @@
+// Nothing is dropped where control never arrives: after a `return`, a jump, or a call which
+// never returns.
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop (r: R) = println "drop ${r.x}"
+
+after_return (b: Bool): I32 can Print =
+    _r = R 1
+    if b then return 1
+    return 2
+    println "unreachable"
+    0
+
+after_panic (): I32 can Print, Panic =
+    _r = R 3
+    panic "unreachable"
+    println "unreachable"
+    0
+
+main () = print_to_stdout do
+    println (after_return true)
+    println (after_return false)
+
+    closure = move fn (b: Bool) ->
+        _r = R 4
+        if b then return 1
+        return 2
+        println "unreachable"
+        return 3
+    println (closure true)
+
+    var i = 0
+    while i < 2 do
+        _r = R (5 + i)
+        i += 1
+        continue
+        println "unreachable"
+    _never_called = after_panic
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// drop 1
+// 1
+// drop 1
+// 2
+// drop 4
+// 1
+// drop 5
+// drop 6
+// end
+

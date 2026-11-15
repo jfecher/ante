@@ -1,0 +1,98 @@
+// Only a `once fn` may move what it captures, and calling one moves it
+make (): String = "captured" ++ "!"
+
+consume (_s: String): Unit = ()
+
+called_twice () =
+    s = make ()
+    f = move fn () -> consume s
+    f ()
+    f ()
+
+used_as_fn () =
+    s = make ()
+    f: fn Unit => Unit = move fn () -> consume s
+    f ()
+
+never_dropped (f: fn Unit => Unit): Unit = f ()
+
+once_twice (f: once fn Unit => Unit): Unit =
+    f ()
+    f ()
+
+// Calling a `once fn` moves it, so it must be held by something it can be moved out of
+type Holder env = action: once fn Unit [env] -> Unit
+
+through_reference (holder: ref (Holder env)): Unit =
+    holder.action ()
+
+make_action () =
+    s = make ()
+    move fn () -> consume s
+
+global_action = make_action ()
+
+from_global () = global_action ()
+
+// These are fine
+owned_field (holder: Holder env): Unit =
+    holder.action ()
+
+run_once (f: once fn Unit => Unit): Unit = f ()
+
+twice (f: fn Unit [env] -> Unit) {Drop env pure}: Unit =
+    f ()
+    f ()
+
+reads () =
+    s = make ()
+    f = move fn () -> println s
+    f ()
+    f ()
+    run_once f
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/drops/once_closures.an:10:5
+//  8 |     f = move fn () -> consume s
+//  9 |     f ()	// note: f was previously moved here
+//    |     -
+// 10 |     f ()	// error: Use of moved value f
+//    |     ^
+// 
+// examples/typechecking/drops/once_closures.an:14:48
+// 13 |     s = make ()
+//    |     // error: Cannot move s out of this closure because it is used as a fn, which may be called more than once. Only a once fn may move what it captures
+// 14 |     f: fn Unit => Unit = move fn () -> consume s
+//    |                                                ^
+// 15 |     f ()
+// 
+// examples/typechecking/drops/once_closures.an:17:16
+//    | // error: f goes out of scope without being moved, but its type fn Unit => Unit can _ does not implement Drop
+//    | // note: A function is dropped by dropping what it captured. Name its environment and add a `Drop` constraint for it as in `(f: fn a [env] -> b) {Drop env e}`, or make it a `once fn` if it is called exactly once
+// 17 | never_dropped (f: fn Unit => Unit): Unit = f ()
+//    |                ^
+// 
+// examples/typechecking/drops/once_closures.an:21:5
+// 19 | once_twice (f: once fn Unit => Unit): Unit =
+// 20 |     f ()	// note: f was previously moved here
+//    |     -
+// 21 |     f ()	// error: Use of moved value f
+//    |     ^
+// 
+// examples/typechecking/drops/once_closures.an:27:11
+// 26 | through_reference (holder: ref (Holder env)): Unit =
+//    |     // error: Calling a once fn moves it, but it is behind a reference so it cannot be moved
+// 27 |     holder.action ()
+//    |           ^^^^^^^
+// 
+// examples/typechecking/drops/once_closures.an:35:18
+//    | // error: Calling a once fn moves it, but it is a global so it cannot be moved
+// 35 | from_global () = global_action ()
+//    |                  ^^^^^^^^^^^^^
+// 
+// Found 6 errors and 0 warnings
+

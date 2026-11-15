@@ -41,6 +41,13 @@ main () =
 //     ()
 
 // expected stderr:
+// examples/typechecking/type_annotations.an:8:8
+//  7 | bar: fn a a -> I32 =
+//    |     // error: _ goes out of scope without being moved, but its type a does not implement Drop
+//    |     // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+//  8 |     fn _ b -> b
+//    |        ^
+// 
 // examples/typechecking/type_annotations.an:8:15
 //  7 | bar: fn a a -> I32 =
 //    |     // error: The body of this function has type a but it is expected to return I32
@@ -52,5 +59,5 @@ main () =
 //    |           ^^^^^^
 // 18 |     puts2
 // 
-// Found 2 errors and 0 warnings
+// Found 3 errors and 0 warnings
 

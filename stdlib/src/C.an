@@ -1,9 +1,9 @@
-import Std.Mem.transmute, deref_ptr
+import Std.Mem.transmute, deref_ptr, offset, ptr_store
 export String, copy_cstring, String.new, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,
     fgetc, fgets, fread, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
-    FilePos, Clock, clock_gettime, nanosleep, VoidPtr
+    FilePos, Clock, copy_clock, clock_gettime, nanosleep, VoidPtr
 
 /// A C string is a pointer to a null-terminated character array.
 /// This is meant to be used qualified as `C.String`
@@ -13,7 +13,11 @@ impl copy_cstring: Copy String with (.*) = deref
 /// Copy a prelude string, append a '\0', and return it as a new C.String
 // TODO: Fail if the string already contains any '\0' bytes
 String.new (s: Std.Prelude.String): String =
-    String (s ++ "\0").data
+    length = Usz s.length
+    buffer: Ptr Char = malloc (length + 1)
+    memcpy buffer s.data length
+    ptr_store (offset buffer length) '\0'
+    String buffer
 
 /// A convenience type for translating C APIs
 type VoidPtr = Ptr U8
@@ -85,6 +89,8 @@ ferror = extern "ferror": fn File -> I32 can Fs
 type Clock =
     sec: I64
     nsec: I64
+
+impl copy_clock: Copy Clock with (.*) = deref
 
 // TODO: More narrow Clock effects
 clock_gettime = extern "clock_gettime": fn I32 (Ptr Clock) -> I32 can Fs

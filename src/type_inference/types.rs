@@ -67,7 +67,7 @@ pub enum Type {
     /// A polytype such as `forall a. fn a -> a`.
     /// During unification the ordering of the type variables matters.
     /// `forall a b. (a, b)` will not unify with `forall b a. (a, b)`
-    Forall(Shared<Vec<Generic>>, Shared<Type>),
+    Forall(Shared<ForallGenerics>, Shared<Type>),
 
     /// This is an internal type only created when handling closure environments.
     /// Most tuple types in source code refer to the `,` type defined in the prelude. While they
@@ -98,8 +98,37 @@ pub enum Type {
     PlaceProjection(Shared<Type>, Shared<Vec<PlaceSegment>>, Option<PlaceMode>),
 }
 
+/// The generics bound by a [Type::Forall], along with the kind of each.
+/// Instantiating the type replaces each generic with a type variable of the same kind.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ForallGenerics {
+    generics: Vec<Generic>,
+    kinds: Vec<Kind>,
+}
+
+impl ForallGenerics {
+    /// The kind of each generic, in the same order as the generics
+    pub fn kinds(&self) -> &[Kind] {
+        &self.kinds
+    }
+}
+
+impl std::ops::Deref for ForallGenerics {
+    type Target = [Generic];
+
+    fn deref(&self) -> &[Generic] {
+        &self.generics
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FunctionType {
+    /// [Type::ONCE] for a `once fn`: calling it moves it, so its body may move what it captures.
+    /// [Type::MANY] for any other function, which is only borrowed by each call. For lambdas this
+    /// is a type variable until the lambda is borrow checked, which decides it based on whether
+    /// the body moves a capture.
+    pub once: Type,
+
     pub parameters: Vec<ParameterType>,
 
     /// Closures and functions are unified by all having an environment type.
@@ -160,6 +189,12 @@ pub enum PrimitiveType {
     /// The environment of a handler's `resume`, which is a pointer to its coroutine.
     ResumeEnv,
 
+    /// The value of [FunctionType::once] for a `once fn`
+    Once,
+
+    /// The value of [FunctionType::once] for functions which may be called any number of times
+    Many,
+
     /// The unique tag on each `impl`. It is a struct containing each of the impl's
     /// captures. Writing an impl's name in a type position refers to this type.
     ImplData(TopLevelName),
@@ -197,6 +232,8 @@ impl Type {
     pub const ARRAY: Type = Type::Primitive(PrimitiveType::Array);
 
     pub const NO_CLOSURE_ENV: Type = Type::Primitive(PrimitiveType::NoClosureEnv);
+    pub const ONCE: Type = Type::Primitive(PrimitiveType::Once);
+    pub const MANY: Type = Type::Primitive(PrimitiveType::Many);
 
     /// If this is an `App (UserDefined id) args`, return `App (UserDefined new_name) args`,
     /// otherwise return `UserDefined new_name`
@@ -343,7 +380,8 @@ impl Type {
             | Type::Places(_)
             | Type::PlaceProjection(..) => false,
             Type::Function(function) => {
-                function.parameters.iter().any(|param| param.typ.has_unbound_type_variables(bindings))
+                function.once.has_unbound_type_variables(bindings)
+                    || function.parameters.iter().any(|param| param.typ.has_unbound_type_variables(bindings))
                     || function.environment.has_unbound_type_variables(bindings)
                     || function.return_type.has_unbound_type_variables(bindings)
             },
@@ -383,14 +421,21 @@ impl Type {
                         .map(|typ| ParameterType::new(typ, param.is_implicit))
                 });
 
+                let once = function.once.follow_all_opt(bindings, more_bindings);
                 let environment = function.environment.follow_all_opt(bindings, more_bindings);
                 let return_type = function.return_type.follow_all_opt(bindings, more_bindings);
                 let effects = function.effects.follow_all_opt(bindings, more_bindings);
-                if parameters.is_none() && environment.is_none() && return_type.is_none() && effects.is_none() {
+                if once.is_none()
+                    && parameters.is_none()
+                    && environment.is_none()
+                    && return_type.is_none()
+                    && effects.is_none()
+                {
                     return None;
                 }
 
                 Some(Type::Function(Shared::new(FunctionType {
+                    once: once.unwrap_or_else(|| function.once.clone()),
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
@@ -475,7 +520,9 @@ impl Type {
                 let environment = function.environment.substitute_opt(bindings_to_substitute, bindings_in_scope);
                 let return_type = function.return_type.substitute_opt(bindings_to_substitute, bindings_in_scope);
                 let effects = function.effects.substitute_opt(bindings_to_substitute, bindings_in_scope);
-                if parameters.is_none()
+                let once = function.once.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                if once.is_none()
+                    && parameters.is_none()
                     && environment.is_none()
                     && return_type.is_none()
                     && effects.is_none()
@@ -484,6 +531,7 @@ impl Type {
                     return None;
                 }
                 Some(Type::Function(Shared::new(FunctionType {
+                    once: once.unwrap_or_else(|| function.once.clone()),
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
@@ -593,15 +641,6 @@ impl Type {
         }
     }
 
-    /// If this type is `Type::Forall(_, typ)`, return `typ` while avoiding cloning if possible.
-    /// Otherwise, return the non-forall type as is.
-    fn remove_forall(self) -> Type {
-        match self {
-            Type::Forall(_, typ) => Shared::unwrap_or_clone(typ),
-            other => other,
-        }
-    }
-
     /// Convert an ast type to a Type as closely as possible.
     ///
     /// Issues error(s) if:
@@ -657,7 +696,7 @@ impl Type {
             // fast track - if no type variables were created, we have nothing to replace
             typ
         } else {
-            typ.generalize(&TypeBindings::default()).remove_forall()
+            typ.generalize_body(&TypeBindings::default()).1
         }
     }
 
@@ -927,7 +966,10 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     crate::parser::cst::TypeKind::Reference(kind) => PlaceMode::of_reference(*kind),
                     _ => None,
                 };
-                let (f, f_kind) = self.convert(f, None);
+                // A type variable applied to arguments, like the `f` in `f a`, must be a type constructor
+                let constructor = Kind::from_args(vec![Kind::Type; args.len()]);
+                let expected = matches!(f.kind, crate::parser::cst::TypeKind::Variable(_)).then_some(&constructor);
+                let (f, f_kind) = self.convert(f, expected);
                 let (typ, kind) = self.convert_application(f, f_kind, args, &typ.location);
                 match (reference_mode, typ) {
                     // `mut 'p t` is `ref (mut 'p) t`
@@ -1153,7 +1195,8 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         let effects = self.with_elided_place(ElidedPlace::Infer, |this| {
             this.convert_effects_clause(function.effects.as_deref(), implicit_effects)
         });
-        Type::Function(Shared::new(FunctionType { parameters, environment, return_type, effects }))
+        let once = if function.once { Type::ONCE } else { Type::MANY };
+        Type::Function(Shared::new(FunctionType { once, parameters, environment, return_type, effects }))
     }
 
     /// Convert `typ` with `place` for its elided places
@@ -1387,32 +1430,49 @@ impl Type {
         }
     }
 
-    /// Generalize a type, making it generic. Any holes in the type become generic types.
-    pub fn generalize(&self, bindings: &TypeBindings) -> Type {
-        let free_vars = self.free_vars(bindings);
+    /// Returns `forall generics. body`. Each generic's kind is taken from where it is used within
+    /// `body`, see [Self::for_each_kinded_variable].
+    pub(crate) fn forall(generics: Vec<Generic>, body: Type, db: &DbHandle) -> Type {
+        let mut kinds = vec![Kind::Type; generics.len()];
+        body.for_each_kinded_variable(&Kind::Type, &TypeBindings::default(), db, &mut |generic, kind| {
+            if let Type::Generic(generic) = generic
+                && *kind != Kind::Type
+                && let Some(index) = generics.iter().position(|other| other == generic)
+            {
+                kinds[index] = kind.clone();
+            }
+        });
+        Type::Forall(Shared::new(ForallGenerics { generics, kinds }), Shared::new(body))
+    }
 
+    /// Generalize a type, making it generic. Any holes in the type become generic types.
+    pub fn generalize(&self, bindings: &TypeBindings, db: &DbHandle) -> Type {
+        let (free_vars, typ) = self.generalize_body(bindings);
+        if free_vars.is_empty() { typ } else { Type::forall(free_vars, typ, db) }
+    }
+
+    /// Returns this type with each of its holes replaced by a new generic, along with those generics
+    fn generalize_body(&self, bindings: &TypeBindings) -> (Vec<Generic>, Type) {
+        let free_vars = self.free_vars(bindings);
         if free_vars.is_empty() {
-            self.clone()
-        } else {
-            let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(*var))).collect();
-            let typ = self.substitute(&substitutions, bindings);
-            Type::Forall(Shared::new(free_vars), Shared::new(typ))
+            return (free_vars, self.clone());
         }
+        let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(*var))).collect();
+        let typ = self.substitute(&substitutions, bindings);
+        (free_vars, typ)
     }
 
     /// Instantiates only `Generic::Inferred` generics with fresh type variables.
     /// Also returns a forall-wrapped type with each new type variable.
     pub(crate) fn open_inferred_generics(&self, next_id: &mut u32) -> (Type, Type) {
         let (generics, body) = match self {
-            Type::Forall(generics, body) => (generics.as_slice(), body.as_ref()),
+            Type::Forall(generics, body) => (generics.as_ref(), body.as_ref()),
             other => return (other.clone(), other.clone()),
         };
-
-        let place_kinded = body.place_kinded_generics();
         let mut new_generics = Vec::with_capacity(generics.len());
         let mut seed_substitutions = GenericSubstitutions::default();
         let mut declared_substitutions = GenericSubstitutions::default();
-        for generic in generics.iter() {
+        for (generic, kind) in generics.iter().zip(generics.kinds()) {
             match generic {
                 Generic::Named(_) => new_generics.push(*generic),
                 // Elided generics stay rigid but are renumbered since each signature numbers them
@@ -1429,7 +1489,7 @@ impl Type {
                     *next_id += 1;
                     let new_generic = Generic::Inferred(id);
                     new_generics.push(new_generic);
-                    let seed = if place_kinded.contains(generic) {
+                    let seed = if *kind == Kind::Place {
                         Type::places(&[Type::Variable(id)], &TypeBindings::default(), &TypeBindings::default())
                     } else {
                         Type::Variable(id)
@@ -1450,56 +1510,9 @@ impl Type {
         } else {
             body.substitute(&declared_substitutions, &TypeBindings::default())
         };
+        // Each new generic replaces an old one so it keeps the same kind
+        let new_generics = ForallGenerics { generics: new_generics, kinds: generics.kinds().to_vec() };
         (seeded, Type::Forall(Shared::new(new_generics), Shared::new(declared_body)))
-    }
-
-    /// Collect each [Type::Generic] with [Kind::Place].
-    /// FIXME: This is approximate until we track the kind of type variables
-    pub(crate) fn place_kinded_generics(&self) -> FxHashSet<Generic> {
-        let mut out = FxHashSet::default();
-        self.collect_place_kinded_generics(&mut out);
-        out
-    }
-
-    fn collect_place_kinded_generics(&self, out: &mut FxHashSet<Generic>) {
-        match self {
-            Type::Application(constructor, args) => {
-                if constructor.is_reference_constructor(&TypeBindings::default()) {
-                    let place = match args.first() {
-                        Some(Type::PlaceProjection(base, ..)) => Some(base.as_ref()),
-                        other => other,
-                    };
-                    if let Some(Type::Generic(g)) = place {
-                        out.insert(*g);
-                    }
-                }
-                for arg in args.iter() {
-                    arg.collect_place_kinded_generics(out);
-                }
-            },
-            Type::Tuple(elements) => {
-                for element in elements.iter() {
-                    element.collect_place_kinded_generics(out);
-                }
-            },
-            Type::Function(f) => {
-                for parameter in &f.parameters {
-                    parameter.typ.collect_place_kinded_generics(out);
-                }
-                f.environment.collect_place_kinded_generics(out);
-                f.return_type.collect_place_kinded_generics(out);
-            },
-            Type::Forall(_, body) => body.collect_place_kinded_generics(out),
-            Type::Primitive(_)
-            | Type::Generic(_)
-            | Type::Variable(_)
-            | Type::UserDefined(_)
-            | Type::U32(_)
-            | Type::Effects(_)
-            | Type::Place(..)
-            | Type::Places(_)
-            | Type::PlaceProjection(..) => (),
-        }
     }
 
     /// Collect each generic used as the place of a reference in a method of the trait constructor
@@ -1558,49 +1571,143 @@ impl Type {
         }
     }
 
-    /// Collect all unbound effects in every effect row within this type.
-    pub(crate) fn unbound_effect_entries(&self, bindings: &TypeBindings) -> Vec<TypeVariableId> {
-        fn go(typ: &Type, bindings: &TypeBindings, ends: &mut Vec<TypeVariableId>) {
-            let followed = typ.follow(bindings);
-            match followed {
-                Type::Effects(_) => {
-                    for effect in followed.effect_entries() {
-                        match effect.follow(bindings) {
-                            Type::Variable(id) => ends.push(*id),
-                            nested => go(nested, bindings, ends),
-                        }
-                    }
-                },
-                Type::Function(function) => {
-                    for parameter in &function.parameters {
-                        go(&parameter.typ, bindings, ends);
-                    }
-                    go(&function.return_type, bindings, ends);
-                    go(&function.effects, bindings, ends);
-                },
-                Type::Application(constructor, args) => {
-                    go(constructor, bindings, ends);
-                    for arg in args.iter() {
-                        go(arg, bindings, ends);
-                    }
-                },
-                Type::Tuple(elements) => {
-                    for element in elements.iter() {
-                        go(element, bindings, ends);
-                    }
-                },
-                Type::Forall(_, inner) => go(inner, bindings, ends),
-                _ => (),
-            }
-        }
+    /// Call `f` on each generic and unbound type variable within this type, along with its kind.
+    /// The kind depends on where the variable is used: a function's effects are effects, the first
+    /// argument of a reference is a place, arguments of a user-defined type are whatever that type
+    /// declares, etc. `expected` is the kind of this type itself.
+    ///
+    /// A generic or variable applied to arguments, such as the `f` in `f a`, is a type
+    /// constructor over them.
+    pub(crate) fn for_each_kinded_variable(
+        &self, expected: &Kind, bindings: &TypeBindings, db: &DbHandle, f: &mut impl FnMut(&Type, &Kind),
+    ) {
+        let typ = self.follow(bindings);
+        match typ {
+            Type::Generic(_) | Type::Variable(_) => f(typ, expected),
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(..) => (),
+            Type::Function(function) => {
+                function.once.for_each_kinded_variable(&Kind::Type, bindings, db, f);
+                for parameter in &function.parameters {
+                    parameter.typ.for_each_kinded_variable(&Kind::Type, bindings, db, f);
+                }
+                function.environment.for_each_kinded_variable(&Kind::Type, bindings, db, f);
+                function.return_type.for_each_kinded_variable(&Kind::Type, bindings, db, f);
+                function.effects.for_each_kinded_variable(&Kind::Effect, bindings, db, f);
+            },
+            Type::Application(constructor, args) => {
+                let constructor = constructor.follow(bindings);
+                let is_variable = |typ: &Type| matches!(typ.follow(bindings), Type::Generic(_) | Type::Variable(_));
 
-        let mut ends = Vec::new();
-        go(self, bindings, &mut ends);
-        ends
+                // The kind of an argument only matters if the argument is itself a variable
+                let parameters = match constructor {
+                    Type::Generic(_) | Type::Variable(_) => {
+                        f(constructor, &Kind::from_args_with_result(vec![Kind::Type; args.len()], expected.clone()));
+                        None
+                    },
+                    _ if args.iter().any(is_variable) => constructor.constructor_kind(db),
+                    _ => None,
+                };
+                for (index, arg) in args.iter().enumerate() {
+                    let kind = match &parameters {
+                        Some(Kind::TypeConstructorComplex { params, .. }) => params.get(index).cloned(),
+                        _ => None,
+                    };
+                    arg.for_each_kinded_variable(&kind.unwrap_or(Kind::Type), bindings, db, f);
+                }
+            },
+            Type::Forall(_, body) => body.for_each_kinded_variable(expected, bindings, db, f),
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    element.for_each_kinded_variable(&Kind::Type, bindings, db, f);
+                }
+            },
+            Type::Effects(_) => {
+                for effect in typ.effect_entries() {
+                    effect.for_each_kinded_variable(&Kind::Effect, bindings, db, f);
+                }
+            },
+            Type::Places(places) => {
+                for place in places.iter().flat_map(|places| places.iter()) {
+                    place.for_each_kinded_variable(&Kind::Place, bindings, db, f);
+                }
+            },
+            Type::PlaceProjection(base, ..) => base.for_each_kinded_variable(&Kind::Place, bindings, db, f),
+        }
+    }
+
+    /// Returns the kind of this type constructor, or None if all of its parameters are [Kind::Type]
+    pub(crate) fn constructor_kind(&self, db: &DbHandle) -> Option<Kind> {
+        match self {
+            Type::Primitive(PrimitiveType::Reference) => Some(Kind::from_args(vec![Kind::Place, Kind::Type])),
+            Type::Primitive(PrimitiveType::Array) => Some(Kind::from_args(vec![Kind::U32, Kind::Type])),
+            Type::UserDefined(Origin::TopLevelDefinition(name)) => {
+                let (item, _) = GetItem(name.top_level_item).get(db);
+                let kinded = |generics: &[cst::GenericParam]| generics.iter().any(|generic| generic.kind.is_some());
+                match &item.kind {
+                    cst::TopLevelItemKind::TypeDefinition(definition) if kinded(&definition.generics) => {
+                        Some(crate::definition_collection::kind_of_type_definition(definition))
+                    },
+                    cst::TopLevelItemKind::TraitDefinition(definition)
+                    | cst::TopLevelItemKind::EffectDefinition(definition)
+                        if kinded(&definition.generics) =>
+                    {
+                        let kinds = definition.generics.iter().map(crate::definition_collection::kind_of_generic_param);
+                        Some(Kind::from_args(kinds.collect()))
+                    },
+                    _ => None,
+                }
+            },
+            _ => None,
+        }
+    }
+
+    /// True if any part of this type is the error type
+    pub(crate) fn contains_error(&self, bindings: &TypeBindings) -> bool {
+        let mut found = false;
+        self.for_each_subterm(bindings, &mut |typ, _| found |= typ.is_error());
+        found
+    }
+
+    /// Collect each generic and unbound type variable within this type that a value held inside a
+    /// value of this type may have as its type. Values in a function's environment are left out,
+    /// as are type arguments left to be inferred (such as the impl of a trait dictionary) since
+    /// those aren't the types of any values.
+    pub(crate) fn owned_type_atoms(&self, bindings: &TypeBindings, db: &DbHandle, atoms: &mut Vec<Type>) {
+        match self.follow(bindings) {
+            atom @ (Type::Generic(_) | Type::Variable(_)) => atoms.push(atom.clone()),
+            Type::Application(constructor, args) => {
+                constructor.owned_type_atoms(bindings, db, atoms);
+                let is_variable = |typ: &Type| matches!(typ.follow(bindings), Type::Variable(_));
+                let definition = match constructor.follow(bindings) {
+                    Type::UserDefined(Origin::TopLevelDefinition(name)) if args.iter().any(is_variable) => {
+                        Some(GetItem(name.top_level_item).get(db).0)
+                    },
+                    _ => None,
+                };
+                let generics = definition.as_ref().and_then(|item| match &item.kind {
+                    cst::TopLevelItemKind::TypeDefinition(definition) => Some(&definition.generics),
+                    _ => None,
+                });
+                for (index, arg) in args.iter().enumerate() {
+                    let inferred = generics
+                        .and_then(|generics| generics.get(index))
+                        .is_some_and(|generic| generic.defaults_to_hole());
+                    if !inferred {
+                        arg.owned_type_atoms(bindings, db, atoms);
+                    }
+                }
+            },
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    element.owned_type_atoms(bindings, db, atoms);
+                }
+            },
+            _ => (),
+        }
     }
 
     /// Walk every subterm of this type, although does not recur into [Type::Forall].
-    fn for_each_subterm(&self, bindings: &TypeBindings, f: &mut impl FnMut(&Type, &TypeBindings)) {
+    pub(crate) fn for_each_subterm(&self, bindings: &TypeBindings, f: &mut impl FnMut(&Type, &TypeBindings)) {
         let typ = self.follow(bindings);
         f(typ, bindings);
         match typ {
@@ -1611,6 +1718,7 @@ impl Type {
             | Type::U32(_)
             | Type::Place(..) => (),
             Type::Function(function) => {
+                function.once.for_each_subterm(bindings, f);
                 for parameter in &function.parameters {
                     parameter.typ.for_each_subterm(bindings, f);
                 }
@@ -1681,6 +1789,20 @@ impl Type {
 
         go(self, bindings, &mut free_vars);
         free_vars
+    }
+
+    /// True if an unbound type variable occurs anywhere within this type, effect rows included
+    pub fn contains_unbound_variable(&self, bindings: &TypeBindings) -> bool {
+        fn go(typ: &Type, bindings: &TypeBindings, found: &mut bool) {
+            typ.for_each_subterm(bindings, &mut |typ, bindings| match typ {
+                Type::Variable(_) => *found = true,
+                Type::Forall(_, inner) => go(inner, bindings, found),
+                _ => (),
+            });
+        }
+        let mut found = false;
+        go(self, bindings, &mut found);
+        found
     }
 
     /// Return the list of unbound type variables within this type.
@@ -1995,6 +2117,9 @@ where
                 }
             },
             Type::Function(function) => try_parenthesize(parenthesize, f, |f| {
+                if *function.once.follow(self.bindings) == Type::ONCE {
+                    write!(f, "once ")?;
+                }
                 write!(f, "fn")?;
                 for parameter in &function.parameters {
                     write!(f, " ")?;
@@ -2250,6 +2375,8 @@ impl std::fmt::Display for PrimitiveType {
             PrimitiveType::Array => write!(f, "Array"),
             PrimitiveType::NoClosureEnv => write!(f, "{NO_CLOSURE_ENV_STRING}"),
             PrimitiveType::ResumeEnv => write!(f, "ResumeEnv"),
+            PrimitiveType::Once => write!(f, "once"),
+            PrimitiveType::Many => write!(f, "many"),
             PrimitiveType::ImplData(_) => write!(f, "(impl)"),
         }
     }

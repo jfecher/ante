@@ -1,6 +1,6 @@
 type Resource = id: I32
 type Pair = a: Resource, b: Resource
-consume _ = ()
+consume x = Std.Mem.forget x
 
 scrutinee_moved_by_match () =
     r = Resource 1
@@ -50,6 +50,7 @@ capture_inner_then_whole () =
     | whole @ Pair first _ ->
         _f = move fn () -> consume first
         consume whole
+        consume _f
 
 main () = ()
 
@@ -98,6 +99,7 @@ main () = ()
 //    |              ---------------------------
 // 52 |         consume whole	// error: Use of moved value whole
 //    |                 ^^^^^
+// 53 |         consume _f
 // 
 // Found 6 errors and 0 warnings
 

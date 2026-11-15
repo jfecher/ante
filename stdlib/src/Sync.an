@@ -1,5 +1,5 @@
 import Std.C.malloc, free, VoidPtr
-import Std.Mem.Type, MkType, size_of, transmute, null, deref_ptr, ptr_store, ptr_to_ref
+import Std.Mem.Type, MkType, size_of, transmute, null, deref_ptr, ptr_store, ptr_to_ref, forget
 
 export
     Thread, Thread.spawn, Thread.join, Thread.detach,
@@ -7,7 +7,7 @@ export
     Condvar, Condvar.wait, Condvar.signal, Condvar.broadcast,
     Atomic, Atomic.load, Atomic.store, Atomic.swap, Atomic.compare_and_swap,
     Atomic.fetch_add, Atomic.fetch_sub, Atomic.fetch_and, Atomic.fetch_or, Atomic.fetch_xor,
-    Arc, Arc.as_ref, clone_arc, drop_arc, drop_mutex
+    Arc, Arc.as_ref, clone_arc, drop_arc, drop_mutex, drop_condvar, drop_atomic
 
 pthread_create: fn VoidPtr VoidPtr (fn VoidPtr -> VoidPtr) VoidPtr -> I32 = extern "pthread_create"
 pthread_join: fn VoidPtr (Ptr VoidPtr) -> I32 = extern "pthread_join"
@@ -50,6 +50,9 @@ type Atomic t = value: t
 Atomic.of (value: t): Atomic t =
     Atomic value
 
+impl drop_atomic {Drop t e}: Drop (Atomic t) e with
+    drop _ = ()
+
 Atomic.load (a: ref Atomic t): t =
     atomic_ptr_load a.value
 
@@ -88,7 +91,7 @@ Mutex.of (value: t): Mutex t =
 /// lock, returning the result of `f`.
 ///
 /// This may deadlock 
-Mutex.with_lock (m: ref Mutex t) (f: fn (mut t) => r): r =
+Mutex.with_lock (m: ref Mutex t) (f: once fn (mut t) => r): r =
     pthread_mutex_lock m.raw
 
     // We have to use an unsafe conversion for the internal mutability here
@@ -99,7 +102,7 @@ Mutex.with_lock (m: ref Mutex t) (f: fn (mut t) => r): r =
     result
 
 impl drop_mutex {Drop t e}: Drop (Mutex t) e with
-    drop (m: mut Mutex t) =
+    drop (m: Mutex t) =
         pthread_mutex_destroy m.raw
         free m.raw
         drop m.value
@@ -143,17 +146,17 @@ impl drop_condvar: Drop Condvar pure with
 type Thread a = raw: VoidPtr
 
 /// Spawn a new OS thread running `f`. The returned thread must be joined or detached.
-Thread.spawn (f: fn Unit [e] -> a is pure): Thread a =
+Thread.spawn (f: once fn Unit [e] -> a is pure): Thread a =
     // `run` can't be a closure function for `thread_entry` to be able to call it
     run: fn VoidPtr -> VoidPtr is pure = fn payload ->
-        pair = transmute payload : Ptr (fn VoidPtr -> VoidPtr is pure, fn Unit [e] -> a is pure)
+        pair = transmute payload : Ptr (fn VoidPtr -> VoidPtr is pure, once fn Unit [e] -> a is pure)
         _, thunk = deref_ptr pair
         free pair
         out = malloc (size_of (MkType: Type a))
         ptr_store out (thunk ())
         transmute out
 
-    pair = malloc (size_of (MkType: Type (fn VoidPtr -> VoidPtr is pure, fn Unit [e] -> a is pure)))
+    pair = malloc (size_of (MkType: Type (fn VoidPtr -> VoidPtr is pure, once fn Unit [e] -> a is pure)))
     ptr_store pair (run, f)
     raw = malloc pthread_t_size
     pthread_create raw (null ()) thread_entry (transmute pair)
@@ -174,6 +177,7 @@ Thread.join (t: Thread a): a =
     result = deref_ptr ret
     free ret
     free t.raw
+    forget t
     result
 
 /// Detach the thread so its resources are reclaimed automatically on exit.
@@ -182,6 +186,7 @@ Thread.detach (t: Thread a): Unit =
     tid = deref_ptr (transmute t.raw : Ptr VoidPtr)
     pthread_detach tid
     free t.raw
+    forget t
 
 // ================================================
 // Arc
@@ -209,9 +214,9 @@ impl clone_arc: Clone (Arc t) with
         deref a
 
 impl drop_arc {Drop t e}: Drop (Arc t) e with
-    drop (a: mut Arc t) =
+    drop (a: Arc t) =
         inner = ptr_to_ref a.ptr
         previous = inner.count.fetch_sub 1
         if previous == 1 then
-            drop inner.value
+            drop (deref inner.value)
             free a.ptr

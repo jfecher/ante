@@ -5,7 +5,7 @@ trait Named t =
 impl named_i32: Named I32 with
     name _ = "i32"
 
-impl named_pair {Named a} (suffix: Char): Named (a, a) with
+impl named_pair {Named a} {Drop a pure} (suffix: Char): Named (a, a) with
     name p = name p.first ++ cast suffix
 
 use_name {d: Named t} (x: t): String =
@@ -14,7 +14,7 @@ use_name {d: Named t} (x: t): String =
 use_ref (d: ref Named t) (x: t): String =
     d.name x
 
-apply (f: fn I32 => String) (x: I32): String = f x
+apply (f: once fn I32 => String) (x: I32): String = f x
 
 // `Num` stores other trait dictionaries, naming which impl each one is from
 sum_squares (x: t) (y: t) {n: Num t} {Copy t}: t =

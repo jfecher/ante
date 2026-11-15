@@ -27,6 +27,9 @@ main () =
     concrete = BoxI32 with value = 5
     println concrete.value
 
+impl drop_box {Drop a d}: Drop (Box a) d with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 1

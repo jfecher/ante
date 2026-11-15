@@ -15,6 +15,9 @@ main () =
         println x
     | None -> println "s = None"
 
+impl drop_t: Drop T pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // t = 1, one

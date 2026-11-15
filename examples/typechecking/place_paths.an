@@ -56,6 +56,18 @@ main () =
     _g = rc_get (ref rc)
     _h = holder (L (get (ref xs) 0))
 
+impl drop_l: Drop (L 'q t) pure with
+    drop x = Std.Mem.forget x
+
+impl drop_myvec: Drop (MyVec t) pure with
+    drop x = Std.Mem.forget x
+
+impl drop_pair: Drop Pair pure with
+    drop x = Std.Mem.forget x
+
+impl drop_rc: Drop (Rc 'p t) pure with
+    drop x = Std.Mem.forget x
+
 // args: -e ast-t --no-color
 // expected stdout:
 // import Std.Mem.transmute, offset
@@ -115,7 +127,19 @@ main () =
 //     (_k: ref 'xs! I32) = (elided: fn (ref 'xs! I32) -> ref 'xs! I32 is pure) ((get: fn (ref 'xs (MyVec I32)) Usz -> ref 'xs! I32 is pure) (ref (xs: MyVec I32)) 0)
 //     (pair: Pair) = (Pair: fn I32 I32 -> Pair is pure) 1 2
 //     (_p: ref 'pair.first I32) = (first: fn (ref 'pair Pair) -> ref 'pair.first I32 is pure) (ref (pair: Pair))
-//     (rc: Rc _ _) = (Rc: fn (Ptr _) -> Rc _ _ is pure) ((transmute: fn I32 -> Ptr _ is pure) 0)
-//     (_g: ref 'rc! _) = (rc_get: fn (ref 'rc (Rc _ _)) -> ref 'rc! _ is pure) (ref (rc: Rc _ _))
+//     (rc: Rc _ Unit) = (Rc: fn (Ptr Unit) -> Rc _ Unit is pure) ((transmute: fn I32 -> Ptr Unit is pure) 0)
+//     (_g: ref 'rc! Unit) = (rc_get: fn (ref 'rc (Rc _ Unit)) -> ref 'rc! Unit is pure) (ref (rc: Rc _ Unit))
 //     (_h: ref 'xs! I32) = (holder: fn (L 'xs! I32) -> ref 'xs! I32 is pure) ((L: fn (ref 'xs! I32) -> L 'xs! I32 is pure) ((get: fn (ref 'xs (MyVec I32)) Usz -> ref 'xs! I32 is pure) (ref (xs: MyVec I32)) 0))
+// 
+// implicit (drop_l: Drop (L 'q t) pure drop_l) = Drop (L 'q t) pure with
+//     (drop: fn (L 'q t) -> Unit is pure) = fn (x: L 'q t) -> (Std.Mem.forget: fn (L 'q t) -> Unit is pure) (x: L 'q t)
+// 
+// implicit (drop_myvec: Drop (MyVec t) pure drop_myvec) = Drop (MyVec t) pure with
+//     (drop: fn (MyVec t) -> Unit is pure) = fn (x: MyVec t) -> (Std.Mem.forget: fn (MyVec t) -> Unit is pure) (x: MyVec t)
+// 
+// implicit (drop_pair: Drop Pair pure drop_pair) = Drop Pair pure with
+//     (drop: fn Pair -> Unit is pure) = fn (x: Pair) -> (Std.Mem.forget: fn Pair -> Unit is pure) (x: Pair)
+// 
+// implicit (drop_rc: Drop (Rc 'p t) pure drop_rc) = Drop (Rc 'p t) pure with
+//     (drop: fn (Rc 'p t) -> Unit is pure) = fn (x: Rc 'p t) -> (Std.Mem.forget: fn (Rc 'p t) -> Unit is pure) (x: Rc 'p t)
 

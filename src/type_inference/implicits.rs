@@ -5,6 +5,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashSet;
 
 use crate::{
+    definition_collection::kind_of_generic_param,
     diagnostics::{Diagnostic, ImportSuggestion, Location},
     incremental::{ExportedDefinitions, GetCrateGraph, GetItem, VisibleImplicits},
     iterator_extensions::mapvec,
@@ -12,12 +13,16 @@ use crate::{
     name_resolution::{Origin, namespace::CrateId},
     parser::{
         cst::{self, Name, Pattern, TopLevelItemKind},
-        ids::{ExprId, NameId, PatternId},
+        get_item::TraitDefinition,
+        ids::{ExprId, NameId, PatternId, TopLevelName},
     },
     shared_arc::Shared,
     type_inference::{
         Locateable, TypeChecker,
         errors::TypeErrorKind,
+        free_variables::PendingImplicit,
+        fresh_expr::BuiltinDictionary,
+        kinds::Kind,
         places::ScopeDepth,
         types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
@@ -33,6 +38,32 @@ struct DeferredClosureCheck {
     environment: Type,
     self_name: Option<NameId>,
     is_move: bool,
+
+    /// The implicits in scope where the lambda is defined. We need these since the check may run
+    /// after some have gone out of scope, and whether a capture is `Copy` may depend on them.
+    implicits_in_scope: Vec<NameId>,
+
+    /// Implicits to find once the check has decided the lambda's environment
+    dependents: Vec<Dependent>,
+}
+
+/// An implicit whose type mentions the environment of a closure which isn't decided yet.
+/// It can't be resolved until that environment is.
+#[derive(Clone)]
+struct Dependent {
+    implicit: DelayedImplicit,
+    /// The implicits in scope where the implicit is requested
+    implicits_in_scope: Vec<NameId>,
+    /// The error to report if it is still not found
+    error: Diagnostic,
+}
+
+/// An impl the compiler provides, see [TypeChecker::builtin_impl]
+enum BuiltinImpl {
+    Copy,
+    DropNothing,
+    /// Drops a function by dropping its environment. The type here is the environment's type.
+    DropEnvironment(Type),
 }
 
 #[derive(Default, Clone)]
@@ -58,13 +89,26 @@ pub(super) struct ImplicitsContext {
     /// This is a tuple of (the integer's value, the integer type variable, location to use for errors)
     integer_type_variables: Vec<(Integer, TypeVariableId, Location)>,
 
-    /// Any type variables created for the type of an effect row entry.
-    /// If not bound by the end of a scope they will be defaulted to `pure`.
-    effect_type_variables: Vec<(TypeVariableId, Location)>,
-
     /// Similar to polymorphic integers, we track polymorphic floats as well. Their value is not stored
     /// since we do not check if the float value fits in the resulting type.
     float_type_variables: Vec<(TypeVariableId, Location)>,
+
+    /// Target types of required implicits that were found as soon as they were requested.
+    /// We still return these so the call requesting them can close any effect rows their impls
+    /// left open, the same as for implicits found later. See [TypeChecker::resolve_new_delayed_implicits].
+    found_immediately: Vec<Type>,
+
+    /// Values created in this scope. Their impls are searched for using the implicits in scope
+    /// at the end of the scope, see [super::value_impls]
+    pub(super) value_impls: Vec<super::value_impls::Owned>,
+}
+
+/// The implicits requested so far in a scope, see [TypeChecker::implicits_mark]
+#[derive(Copy, Clone, Default)]
+pub(super) struct ImplicitsMark {
+    delayed: usize,
+    found_immediately: usize,
+    closure_checks: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -98,8 +142,11 @@ impl DelayedImplicit {
 impl ImplicitsContext {
     pub(super) fn push_deferred_closure_check(
         &mut self, lambda: ExprId, environment: Type, self_name: Option<NameId>, is_move: bool,
+        implicits_in_scope: Vec<NameId>,
     ) {
-        self.deferred_closure_checks.push(DeferredClosureCheck { lambda, environment, self_name, is_move })
+        let dependents = Vec::new();
+        let check = DeferredClosureCheck { lambda, environment, self_name, is_move, implicits_in_scope, dependents };
+        self.deferred_closure_checks.push(check)
     }
 
     fn extend(&mut self, other: ImplicitsContext) {
@@ -108,7 +155,6 @@ impl ImplicitsContext {
         self.deferred_closure_checks.extend(other.deferred_closure_checks);
         self.integer_type_variables.extend(other.integer_type_variables);
         self.float_type_variables.extend(other.float_type_variables);
-        self.effect_type_variables.extend(other.effect_type_variables);
     }
 }
 
@@ -177,6 +223,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         if call.is_some() {
             let new_fn = Type::Function(Shared::new(FunctionType {
+                once: expected.once.clone(),
                 parameters: new_expected,
                 environment: expected.environment.clone(),
                 return_type: expected.return_type.clone(),
@@ -282,6 +329,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - Runs any deferred closure free variable checks after adding implicit arguments
     /// Returns `true` if the scope was delayed (extended into the parent) rather than resolved now.
     pub(super) fn pop_implicits_scope(&mut self) -> bool {
+        self.end_value_impls_scope();
         self.scope_depth -= 1;
         let mut scope = self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
 
@@ -342,19 +390,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let floats = std::mem::take(&mut scope.float_type_variables);
             let (keep_floats, bubble_floats) = self.partition_by_target_tvar(floats, &kept_vars, |(tvar, _)| *tvar);
 
-            let effects = std::mem::take(&mut scope.effect_type_variables);
-            let (keep_effects, bubble_effects) = self.partition_by_target_tvar(effects, &kept_vars, |(tvar, _)| *tvar);
-
-            any_bubbled = !bubbles_up.is_empty()
-                || !bubble_ints.is_empty()
-                || !bubble_floats.is_empty()
-                || !bubble_effects.is_empty();
+            any_bubbled = !bubbles_up.is_empty() || !bubble_ints.is_empty() || !bubble_floats.is_empty();
 
             let parent = self.implicits.last_mut().unwrap();
             parent.delayed_implicits.extend(bubbles_up);
             parent.integer_type_variables.extend(bubble_ints);
             parent.float_type_variables.extend(bubble_floats);
-            parent.effect_type_variables.extend(bubble_effects);
             if any_bubbled {
                 parent.deferred_closure_checks.append(&mut scope.deferred_closure_checks);
             }
@@ -362,7 +403,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             scope.delayed_implicits = stays_here;
             scope.integer_type_variables = keep_ints;
             scope.float_type_variables = keep_floats;
-            scope.effect_type_variables = keep_effects;
         }
 
         self.resolve_scope(scope);
@@ -380,8 +420,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let mut i = 0;
             while i < candidates_to_bubble.len() {
                 let implicit = candidates_to_bubble[i];
-                let target = self.expr_types[&implicit.destination].clone().follow_all(&self.bindings);
-                let free_vars = target.free_unification_vars(&self.bindings);
+                let free_vars = self.implicit_target_vars(&implicit);
 
                 if free_vars.iter().any(|tv| vars_to_keep.contains(tv)) {
                     vars_to_keep.extend(free_vars);
@@ -420,7 +459,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let closures = std::mem::take(&mut scope.deferred_closure_checks);
         let integers = std::mem::take(&mut scope.integer_type_variables);
         let floats = std::mem::take(&mut scope.float_type_variables);
-        let effect_variables = std::mem::take(&mut scope.effect_type_variables);
 
         // Implicits resolved early have already been inserted
         implicits.retain(|implicit| self.item.resolved_early_implicits.remove(&implicit.destination).is_none());
@@ -458,34 +496,74 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.try_default_float_to_f64(type_variable, location);
         }
 
-        for (type_variable, location) in effect_variables {
-            self.try_default_effect_to_pure(type_variable, location);
-        }
-
         // Phase 2: retry phase 1 failures now that ints & floats are defaulted
-        for (implicit, mut original_error) in failed_implicits {
-            if self.find_implicit_value(implicit, &implicits_in_scope).is_err() && !implicit.optional {
-                self.try_attach_import_suggestions(&implicit, &mut original_error);
-                self.compiler.accumulate(original_error);
+        let mut closures = closures;
+        for (implicit, original_error) in failed_implicits {
+            if self.find_implicit_value(implicit, &implicits_in_scope).is_ok() {
+                continue;
+            }
+            // Impls for closures, such as `Copy` or `Drop`, depend on the closure's environment.
+            // If the environment isn't decided yet we wait until it is to resolve this implicit.
+            let dependent =
+                Dependent { implicit, error: original_error, implicits_in_scope: implicits_in_scope.clone() };
+            if let Some(dependent) = self.wait_for_closure_environment(dependent, &mut closures) {
+                self.report_missing_implicit(dependent);
             }
         }
 
         // Run deferred closure checks after all implicits (including retries) are resolved
         // so that free-variable analysis sees the fully-resolved implicit arguments.
+        let dependents = closures.iter().flat_map(|check| &check.dependents);
+        let pending = mapvec(dependents, |dependent| PendingImplicit {
+            source: dependent.implicit.source,
+            implicits_in_scope: dependent.implicits_in_scope.clone(),
+        });
         for check in closures {
-            self.check_for_closure(check.lambda, &check.environment, check.self_name, check.is_move);
+            self.run_closure_check(check, &pending);
         }
 
         self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
     }
 
+    /// Returns each unbound type variable in the target type of `implicit`
+    fn implicit_target_vars(&self, implicit: &DelayedImplicit) -> FxHashSet<TypeVariableId> {
+        self.expr_types[&implicit.destination].free_unification_vars(&self.bindings)
+    }
+
+    /// If the target type of `dependent` mentions the environment of a closure whose check is
+    /// deferred (either in `closures` or in an enclosing scope), queue it to be resolved once that
+    /// check decides the environment. Otherwise `dependent` is returned unchanged.
+    fn wait_for_closure_environment(
+        &mut self, dependent: Dependent, closures: &mut [DeferredClosureCheck],
+    ) -> Option<Dependent> {
+        let unbound = self.implicit_target_vars(&dependent.implicit);
+        let bindings = &self.bindings;
+        let waits_for = |check: &&mut DeferredClosureCheck| match check.environment.follow(bindings) {
+            Type::Variable(id) => unbound.contains(id),
+            _ => false,
+        };
+        let enclosing = self.implicits.iter_mut().rev().flat_map(|scope| scope.deferred_closure_checks.iter_mut());
+        match closures.iter_mut().chain(enclosing).find(waits_for) {
+            Some(check) => {
+                check.dependents.push(dependent);
+                None
+            },
+            None => Some(dependent),
+        }
+    }
+
+    /// Report that no value was found for the implicit of `dependent`, unless it is optional
+    fn report_missing_implicit(&mut self, dependent: Dependent) {
+        let Dependent { implicit, mut error, .. } = dependent;
+        if !implicit.optional {
+            self.try_attach_import_suggestions(&implicit, &mut error);
+            self.compiler.accumulate(error);
+        }
+    }
+
     pub(super) fn push_inferred_int(&mut self, value: Integer, type_variable: TypeVariableId, location: Location) {
         self.integer_literal_vars.insert(type_variable);
         self.implicits.last_mut().unwrap().integer_type_variables.push((value, type_variable, location));
-    }
-
-    pub(super) fn push_inferred_effect(&mut self, type_variable: TypeVariableId, location: Location) {
-        self.implicits.last_mut().unwrap().effect_type_variables.push((type_variable, location));
     }
 
     pub(super) fn try_default_effect_to_pure(&mut self, type_variable: TypeVariableId, location: Location) {
@@ -494,6 +572,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return;
         }
         self.unify(&typ, &Type::pure(), TypeErrorKind::Effects, location);
+    }
+
+    /// Default each effect row we left open for the borrow checker to pure
+    pub(super) fn default_deferred_effects_to_pure(&mut self) {
+        for type_variable in std::mem::take(&mut self.deferred_effect_defaults) {
+            self.bind_if_unbound(&Type::Variable(type_variable), Type::pure());
+        }
     }
 
     pub(super) fn push_inferred_float(&mut self, type_variable: TypeVariableId, location: Location) {
@@ -552,9 +637,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Resolving immediately slows down type inference but can help it in some cases.
     fn try_or_delay(&mut self, delayed: DelayedImplicit) -> bool {
         let in_scope = self.collect_implicits_in_scope();
+        // Grab the target first since finding the implicit replaces its destination's type
+        let target = (!delayed.optional).then(|| self.expr_types[&delayed.destination].clone());
         let found = self.find_implicit_value(delayed, &in_scope).is_ok();
+        let scope = self.implicits.last_mut().unwrap();
         if !found {
-            self.implicits.last_mut().unwrap().delayed_implicits.push(delayed);
+            scope.delayed_implicits.push(delayed);
+        } else if let Some(target) = target {
+            scope.found_immediately.push(target);
         }
         found
     }
@@ -566,19 +656,35 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         DelayedImplicit { optional: true, ..DelayedImplicit::new(destination, destination, 0) }
     }
 
-    /// Request an optional implicit value of `target_type`.
-    /// Returns the destination expr which holds the value once it is found.
-    pub(super) fn request_optional_implicit(&mut self, target_type: Type, location: Location) -> ExprId {
-        let delayed = self.new_optional_implicit(target_type, location);
-        self.try_or_delay(delayed);
-        delayed.destination
+    /// Search for one of a value's impls, of type `target`, using `implicits_in_scope`. This never
+    /// reports an error. If this impl was searched for before, its previous `destination` is
+    /// reused. Returns the destination, which holds the value once found.
+    ///
+    /// Unless `final_types` is set, we skip targets that still have unbound type variables since
+    /// the impl found could decide them.
+    pub(super) fn search_value_impl(
+        &mut self, destination: Option<ExprId>, target: Type, location: Location, implicits_in_scope: &[NameId],
+        final_types: bool,
+    ) -> (ExprId, Result<(), ImplicitError>) {
+        let destination = match destination {
+            Some(destination) => {
+                self.expr_types.insert(destination, target);
+                destination
+            },
+            None => self.push_expr(cst::Expr::Error, target, location),
+        };
+        // A drop calls the dictionary's method directly, so it is never coerced to wider effects
+        let optional = !final_types;
+        let implicit =
+            DelayedImplicit { optional, method_dictionary: true, ..DelayedImplicit::new(destination, destination, 0) };
+        (destination, self.find_implicit_value(implicit, implicits_in_scope))
     }
 
-    /// Whether an implicit value of `target_type` can be found right now, without queueing a search for later.
-    pub(super) fn implicit_exists_now(&mut self, target_type: Type, location: Location) -> bool {
+    /// True if an implicit of `target_type` can be found right now with `in_scope`.
+    /// Unlike other searches, this is never delayed until later.
+    pub(super) fn implicit_exists_now(&mut self, target_type: Type, location: Location, in_scope: &[NameId]) -> bool {
         let delayed = self.new_optional_implicit(target_type, location);
-        let in_scope = self.collect_implicits_in_scope();
-        self.find_implicit_value(delayed, &in_scope).is_ok()
+        self.find_implicit_value(delayed, in_scope).is_ok()
     }
 
     /// Whether any implicit in scope could match `target_type`. Does not recursively check
@@ -662,42 +768,118 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Collect all implicits in scope into a single Vec
     pub(super) fn collect_implicits_in_scope(&self) -> Vec<NameId> {
-        self.implicits.iter().flat_map(|scope| &scope.implicits_in_scope).copied().collect()
+        self.implicits_in_scope().collect()
     }
 
-    /// The current number of delayed implicits. Used with [Self::resolve_new_delayed_implicits] later
-    /// on to resolve a subset of implicits since a given point.
-    pub(super) fn delayed_implicits_count(&self) -> usize {
-        self.implicits.last().map(|scope| scope.delayed_implicits.len()).unwrap_or_default()
+    /// Each local implicit in scope, outermost first
+    pub(super) fn implicits_in_scope(&self) -> impl Iterator<Item = NameId> + '_ {
+        self.implicits.iter().flat_map(|scope| &scope.implicits_in_scope).copied()
+    }
+
+    /// Returns how many implicits the innermost scope has requested so far. This is passed to
+    /// [Self::resolve_new_delayed_implicits] later on to resolve only those requested since.
+    pub(super) fn implicits_mark(&self) -> ImplicitsMark {
+        let mark = |scope: &ImplicitsContext| ImplicitsMark {
+            delayed: scope.delayed_implicits.len(),
+            found_immediately: scope.found_immediately.len(),
+            closure_checks: scope.deferred_closure_checks.len(),
+        };
+        self.implicits.last().map(mark).unwrap_or_default()
     }
 
     /// Eagerly resolve the delayed implicits registered in the innermost scope since `previous`
     /// was snapshotted. Implicits that do not resolve to a unique impl now are left to be solved
     /// again on scope's end. No diagnostics are emitted.
     ///
-    /// Returns the target types of the implicits that were resolved.
-    pub(super) fn resolve_new_delayed_implicits(&mut self, previous_length: usize) -> Vec<Type> {
+    /// Returns the target types of the implicits that were resolved. Optional implicits are left
+    /// out since they only check whether a value exists and their target isn't an argument of the call.
+    pub(super) fn resolve_new_delayed_implicits(&mut self, previous: ImplicitsMark) -> Vec<Type> {
         // TODO: See if we can remove this method when we add eager solving of implicits
-        let all = match self.implicits.last_mut() {
-            Some(scope) => &mut scope.delayed_implicits,
-            None => return Vec::new(),
-        };
-        let to_resolve = all.drain(previous_length..).collect::<Vec<_>>();
+        let Some(scope) = self.implicits.last_mut() else { return Vec::new() };
+        let found_immediately = previous.found_immediately.min(scope.found_immediately.len());
+        let mut resolved: Vec<Type> = scope.found_immediately.drain(found_immediately..).collect();
+
+        let delayed = previous.delayed.min(scope.delayed_implicits.len());
+        let to_resolve = scope.delayed_implicits.drain(delayed..).collect::<Vec<_>>();
         if to_resolve.is_empty() {
-            return Vec::new();
+            return resolved;
         }
         let implicits_in_scope = self.collect_implicits_in_scope();
-        let mut resolved = Vec::new();
+        let mut unresolved = Vec::new();
         for implicit in to_resolve {
-            if let Some(target) = self.item.resolved_early_implicits.remove(&implicit.destination) {
-                resolved.push(target);
-            } else if let Some(target) = self.try_resolve_implicit(implicit, &implicits_in_scope) {
-                resolved.push(target);
-            } else {
-                self.implicits.last_mut().unwrap().delayed_implicits.push(implicit);
+            let early = self.item.resolved_early_implicits.remove(&implicit.destination);
+            match early.or_else(|| self.try_resolve_implicit(implicit, &implicits_in_scope)) {
+                Some(target) if !implicit.optional => resolved.push(target),
+                Some(_) => (),
+                None => unresolved.push(implicit),
             }
         }
+
+        // Impls for closures depend on their environment. If the remaining implicits are only
+        // waiting on closure environments, we can decide those now since every closure checked
+        // since `previous` has had all of its own implicits resolved.
+        if !unresolved.is_empty() && self.decide_new_closure_environments(previous, &unresolved) {
+            unresolved.retain(|implicit| match self.try_resolve_implicit(*implicit, &implicits_in_scope) {
+                Some(target) => {
+                    if !implicit.optional {
+                        resolved.push(target);
+                    }
+                    false
+                },
+                None => true,
+            });
+        }
+        self.implicits.last_mut().unwrap().delayed_implicits.extend(unresolved);
         resolved
+    }
+
+    /// Run each closure check deferred in the innermost scope since `previous`, but only if every
+    /// implicit in `unresolved` is waiting on the environment of one of those closures.
+    /// Returns true if the checks were run.
+    fn decide_new_closure_environments(&mut self, previous: ImplicitsMark, unresolved: &[DelayedImplicit]) -> bool {
+        let Some(scope) = self.implicits.last() else { return false };
+        let start = previous.closure_checks.min(scope.deferred_closure_checks.len());
+        let mut undecided = FxHashSet::default();
+        for check in &scope.deferred_closure_checks[start..] {
+            if let Type::Variable(id) = check.environment.follow(&self.bindings) {
+                undecided.insert(*id);
+            }
+        }
+        let waits =
+            |implicit: &DelayedImplicit| self.implicit_target_vars(implicit).iter().any(|id| undecided.contains(id));
+        if undecided.is_empty() || !unresolved.iter().all(waits) {
+            return false;
+        }
+
+        let implicits_in_scope = self.collect_implicits_in_scope();
+        let pending = mapvec(unresolved, |implicit| PendingImplicit {
+            source: implicit.source,
+            implicits_in_scope: implicits_in_scope.clone(),
+        });
+        let scope = self.implicits.last_mut().expect("checked above");
+        let checks: Vec<_> = scope.deferred_closure_checks.drain(start..).collect();
+        for check in checks {
+            self.run_closure_check(check, &pending);
+        }
+        true
+    }
+
+    /// Decide the environment of a closure whose check was deferred, then resolve each implicit
+    /// that was waiting on it. `pending` holds every implicit waiting on a closure environment,
+    /// not just this closure's.
+    fn run_closure_check(&mut self, check: DeferredClosureCheck, pending: &[PendingImplicit]) {
+        let visible = self.collect_implicits_in_scope();
+        let mut implicits_in_scope = check.implicits_in_scope;
+        implicits_in_scope.retain(|name| !visible.contains(name));
+        self.implicits.push(ImplicitsContext { implicits_in_scope, ..Default::default() });
+        self.check_for_closure(check.lambda, &check.environment, check.self_name, check.is_move, pending);
+        self.implicits.pop();
+
+        for dependent in check.dependents {
+            if self.find_implicit_value(dependent.implicit, &dependent.implicits_in_scope).is_err() {
+                self.report_missing_implicit(dependent);
+            }
+        }
     }
 
     /// Try to resolve `implicit`, returning its target type from before resolution on success.
@@ -720,7 +902,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Try to resolve every delayed implicit in every scope, using only the implicits visible in that
     /// scope. Unlike [Self::resolve_new_delayed_implicits], resolved implicits are left in their scope
-    /// (tracked by `resolved_early_implicits`) so callers holding a [Self::delayed_implicits_count]
+    /// (tracked by `resolved_early_implicits`) so callers holding a [Self::implicits_mark]
     /// still see the same implicits after it. No diagnostics are emitted.
     fn resolve_delayed_implicits_early(&mut self) {
         let mut implicits_in_scope = Vec::new();
@@ -735,6 +917,29 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 if let Some(target) = self.try_resolve_implicit(implicit, &implicits_in_scope) {
                     self.item.resolved_early_implicits.insert(implicit.destination, target);
                 }
+            }
+        }
+    }
+
+    /// Try to resolve the delayed implicits the innermost scope requested since `previous`, leaving
+    /// them in place like [Self::resolve_delayed_implicits_early]. We do this before checking a
+    /// call's function argument since an implicit such as `{Stream s a e}` decided by an earlier
+    /// argument can fix the type of the function's parameter. Otherwise checking the function
+    /// would guess that type first (auto-ref of an unbound place pins it to a non-reference).
+    pub(super) fn resolve_call_implicits_early(&mut self, previous: ImplicitsMark) {
+        let Some(scope) = self.implicits.last() else { return };
+        let start = previous.delayed.min(scope.delayed_implicits.len());
+        if start == scope.delayed_implicits.len() {
+            return;
+        }
+        let implicits_in_scope = self.collect_implicits_in_scope();
+        for index in start..self.implicits.last().unwrap().delayed_implicits.len() {
+            let implicit = self.implicits.last().unwrap().delayed_implicits[index];
+            if implicit.optional || self.item.resolved_early_implicits.contains_key(&implicit.destination) {
+                continue;
+            }
+            if let Some(target) = self.try_resolve_implicit(implicit, &implicits_in_scope) {
+                self.item.resolved_early_implicits.insert(implicit.destination, target);
             }
         }
     }
@@ -808,6 +1013,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // so detect this and end early with a helpful error if there is >1 implicit.
         let unbound = Self::type_args_all_unbound(&target_type);
 
+        // Some types, such as functions, can't have impls written for them so the compiler
+        // provides one instead
+        if let Some(builtin) = self.builtin_impl(&target_type, function, implicits_in_local_scope) {
+            *cacheable = false;
+            return self.provide_builtin_dictionary(
+                builtin,
+                target_type,
+                implicit,
+                implicits_in_local_scope,
+                type_bindings,
+                cacheable,
+                fuel,
+            );
+        }
+
         // Each matching implicit candidate we find. We're hoping this will be exactly 1 item
         let mut candidates = Vec::new();
 
@@ -848,7 +1068,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return Err(ImplicitError::Ambiguous(target_type));
             }
 
-            visible_implicits.iter_possibly_matching_impls(&target_type, |name, name_id| {
+            let rigid_subject = self.subject_is_rigid_type(&target_type);
+            let mut try_candidate = |name: &Name, name_id: &TopLevelName| {
                 if candidates.len() > MULTIPLE_MATCHING_IMPLS_CUTOFF {
                     // Multiple matching impls, don't waste time looking for more.
                     // There are many Eq impls we could waste time on for example.
@@ -858,6 +1079,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // Types of items in this SCC aren't generalized yet and may still be refined
                 if self.item_types.contains_key(name_id) {
                     *cacheable = false;
+                    self.item.scc_candidates_tried += 1;
                 }
                 let (name_type, impl_bindings) = self.type_and_bindings_of_top_level_name(name_id);
 
@@ -877,7 +1099,34 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     fuel,
                 );
                 false
-            });
+            };
+            if rigid_subject {
+                visible_implicits.iter_impls_of_any_type(&target_type, &mut try_candidate);
+            } else {
+                visible_implicits.iter_possibly_matching_impls(&target_type, &mut try_candidate);
+            }
+        }
+
+        // Impls for both `fn` and `once fn` match a closure that isn't decided to be either yet.
+        // We can always make it a `once fn` since that only gives up calling it more than once.
+        if candidates.len() > 1 && self.decide_once(&target_type) {
+            return self.find_implicit_value_inner(implicit, implicits_in_local_scope, type_bindings, cacheable, fuel);
+        }
+
+        // No impl was written for this type, but it may not need one
+        if candidates.is_empty()
+            && let Some(builtin) = self.fallback_impl(&target_type, function, implicits_in_local_scope)
+        {
+            *cacheable = false;
+            return self.provide_builtin_dictionary(
+                builtin,
+                target_type,
+                implicit,
+                implicits_in_local_scope,
+                type_bindings,
+                cacheable,
+                fuel,
+            );
         }
 
         if candidates.is_empty() {
@@ -892,14 +1141,169 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// Returns the first argument of `target` if it is an application of the trait `trait_`
+    pub(super) fn trait_subject(&self, target: &Type, trait_: TopLevelName) -> Option<Type> {
+        let (name, args) = target.definition_head(&self.bindings)?;
+        if name != trait_ {
+            return None;
+        }
+        args?.first().cloned()
+    }
+
+    /// Make each function type within `typ` a `once fn` if it isn't already decided to be one
+    /// or not. Returns false if there were none.
+    fn decide_once(&mut self, typ: &Type) -> bool {
+        let mut undecided = Vec::new();
+        typ.for_each_subterm(&self.bindings, &mut |typ, bindings| {
+            if let Type::Function(function) = typ
+                && let Type::Variable(id) = function.once.follow(bindings)
+            {
+                undecided.push(*id);
+            }
+        });
+        for id in &undecided {
+            self.bindings.insert(*id, Type::ONCE);
+        }
+        !undecided.is_empty()
+    }
+
+    /// Returns the impl the compiler provides for `target` if it can be decided from the type's
+    /// head alone, before searching for any impls.
+    ///
+    /// For functions, which can't have impls written for them:
+    /// - `Copy f` if the environment of `f` is `Copy`
+    /// - `Drop f e`, which drops `f` by dropping its environment, or does nothing if that is `Copy`
+    ///
+    /// For number literals without a type yet, which would otherwise unify with every impl:
+    /// - `Drop t e`, since whichever number type it is given is `Copy` and owns nothing
+    fn builtin_impl(&mut self, target: &Type, locator: ExprId, in_scope: &[NameId]) -> Option<BuiltinImpl> {
+        let (is_copy, subject) = self.copy_or_drop_subject(target)?;
+        if !is_copy && self.is_unresolved_literal(&subject) {
+            return Some(BuiltinImpl::DropNothing);
+        }
+        // Otherwise an environment of references would be dropped with one `drop_pair` per
+        // capture. Each is a dictionary LLVM has to see through just to find it drops nothing.
+        if !is_copy && self.is_trivially_copy_environment_pair(&subject) {
+            return Some(BuiltinImpl::DropNothing);
+        }
+        let Type::Function(function) = self.follow_type(&subject).clone() else { return None };
+        match (is_copy, self.type_is_copy_in(&subject, locator.locate(self), in_scope)) {
+            (true, true) => Some(BuiltinImpl::Copy),
+            (true, false) => None,
+            (false, true) => Some(BuiltinImpl::DropNothing),
+            (false, false) => Some(BuiltinImpl::DropEnvironment(function.environment.clone())),
+        }
+    }
+
+    /// Returns the impl the compiler provides when no impl was found for `target`:
+    /// - `Copy t` where `t` is copied bit for bit, see [Self::is_trivially_copy]
+    /// - `Drop t e` where `t` is `Copy`, so owns nothing to drop
+    fn fallback_impl(&mut self, target: &Type, locator: ExprId, in_scope: &[NameId]) -> Option<BuiltinImpl> {
+        match self.copy_or_drop_subject(target)? {
+            (true, subject) => self.is_trivially_copy(&subject).then_some(BuiltinImpl::Copy),
+            (false, subject) => {
+                self.type_is_copy_in(&subject, locator.locate(self), in_scope).then_some(BuiltinImpl::DropNothing)
+            },
+        }
+    }
+
+    /// If `target` is `Copy t` or `Drop t e`, returns whether it is `Copy` along with `t`
+    pub(super) fn copy_or_drop_subject(&mut self, target: &Type) -> Option<(bool, Type)> {
+        let copy = self.copy_trait().0;
+        if let Some(subject) = self.trait_subject(target, copy) {
+            return Some((true, subject));
+        }
+        let drop = self.drop_trait().0;
+        self.trait_subject(target, drop).map(|subject| (false, subject))
+    }
+
+    /// True if the first argument of the trait `target` is a generic of kind type, in which case
+    /// no impl for a type with a known head can match it. Generics of effect rows are excluded
+    /// since they may still unify with an effect.
+    fn subject_is_rigid_type(&mut self, target: &Type) -> bool {
+        let Some((trait_, Some(args))) = target.definition_head(&self.bindings) else { return false };
+        if !args.first().is_some_and(|subject| matches!(self.follow_type(subject), Type::Generic(_))) {
+            return false;
+        }
+        let compiler = self.compiler;
+        *self.type_subject_traits.entry(trait_).or_insert_with(|| {
+            TraitDefinition::get(trait_, compiler).is_some_and(|trait_| {
+                trait_.definition().generics.first().is_some_and(|generic| kind_of_generic_param(generic) == Kind::Type)
+            })
+        })
+    }
+
+    /// Fill in `implicit`, of the trait type `target`, with the compiler-provided dictionary `builtin`
+    fn provide_builtin_dictionary(
+        &mut self, builtin: BuiltinImpl, target: Type, implicit: DelayedImplicit, implicits_in_local_scope: &[NameId],
+        type_bindings: &TypeBindings, cacheable: &mut bool, fuel: u32,
+    ) -> Result<(), ImplicitError> {
+        let destination = implicit.destination;
+        let location = destination.locate(self);
+        let Some(impl_index) = self.trait_definition(&target).map(|definition| definition.impl_generic_index()) else {
+            return Err(ImplicitError::NotFound(target));
+        };
+
+        let (impl_data, expr, builtin) = match builtin {
+            BuiltinImpl::Copy => (Type::UNIT, cst::Expr::Literal(cst::Literal::Unit), BuiltinDictionary::Copy),
+            BuiltinImpl::DropNothing => {
+                (Type::UNIT, cst::Expr::Literal(cst::Literal::Unit), BuiltinDictionary::DropNothing)
+            },
+            BuiltinImpl::DropEnvironment(environment) => {
+                // The same trait but for the function's environment, with an impl we have yet to find
+                let environment =
+                    target.with_arg(0, environment).and_then(|typ| typ.with_arg(impl_index, self.next_type_variable()));
+                let Some(environment_type) = environment else { return Err(ImplicitError::NotFound(target)) };
+                let environment = self.push_expr(cst::Expr::Error, environment_type.clone(), location.clone());
+                let requirement = DelayedImplicit::new(implicit.source, environment, implicit.parameter_index);
+                if fuel == 0
+                    || self
+                        .find_implicit_value_inner(
+                            requirement,
+                            implicits_in_local_scope,
+                            type_bindings,
+                            cacheable,
+                            fuel - 1,
+                        )
+                        .is_err()
+                {
+                    return Err(ImplicitError::NotFound(target));
+                }
+                // The dictionary found may be coerced to the type asked for, making that the type
+                // of the impl data rather than the dictionary's own type. We keep it in the tree as
+                // the only statement of a sequence so anything it refers to is still captured.
+                let item = cst::SequenceItem { comments: Vec::new(), expr: environment };
+                (environment_type, cst::Expr::Sequence(vec![item]), BuiltinDictionary::DropEnvironment(environment))
+            },
+        };
+
+        // The impl of a dictionary is whatever its impl data is
+        if let Type::Application(_, args) = &target
+            && let Some(arg) = args.get(impl_index)
+        {
+            self.bind_if_unbound(arg, impl_data);
+        }
+        let context = self.current_extended_context_mut();
+        context.insert_expr(destination, expr);
+        context.insert_builtin_dictionary(destination, builtin);
+        self.expr_types.insert(destination, target);
+        Ok(())
+    }
+
     /// Like [Type::has_unbound_type_variables] but ignores the impl data argument of a trait type,
     /// which is expected to be unbound until an impl is found.
     fn has_unbound_type_variables_besides_impl(&self, target: &Type) -> bool {
         match target.trait_application(&self.bindings, self.compiler) {
             Some((trait_, Some(args))) => {
+                // The impl found decides the trait's effect args, the same as it does the impl arg
                 let impl_index = trait_.impl_generic_index();
+                let effects = trait_.effect_generics();
                 let mut args = args.iter().enumerate();
-                args.any(|(i, arg)| i != impl_index && arg.has_unbound_type_variables(&self.bindings))
+                args.any(|(i, arg)| {
+                    i != impl_index
+                        && !effects.get(i).unwrap_or(false)
+                        && arg.has_unbound_type_variables(&self.bindings)
+                })
             },
             _ => target.has_unbound_type_variables(&self.bindings),
         }
@@ -1060,20 +1464,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// to avoid unnecessary work if the initial error is later fixed by defaulting
     /// integer/float type variables.
     fn try_attach_import_suggestions(&mut self, implicit: &DelayedImplicit, error: &mut Diagnostic) {
-        let Diagnostic::NoImplicitFound { suggestions, .. } = error else { return };
+        let (Diagnostic::NoImplicitFound { suggestions, .. } | Diagnostic::MissingDrop { suggestions, .. }) = error
+        else {
+            return;
+        };
         let target = self.expr_types[&implicit.destination].clone();
-        let target = target.follow_all_two(&self.bindings, &TypeBindings::default());
         *suggestions = self.collect_import_suggestions(&target);
     }
 
     /// Search out-of-scope implicits for "did you mean to import X.Y?" hints.
     ///
     /// Excludes unrelated user crates to limit the search space.
-    fn collect_import_suggestions(&mut self, target_type: &Type) -> Vec<ImportSuggestion> {
+    pub(super) fn collect_import_suggestions(&mut self, target_type: &Type) -> Vec<ImportSuggestion> {
         // TODO: Is the `or N more` at the end of the note message useful?
         const SUGGESTION_CAP: usize = 5;
 
         let Some(item) = self.current_item else { return Vec::new() };
+        // Follow the bindings first since we collect crates from the type's structure, which
+        // bound variables would hide
+        let target_type = &target_type.follow_all(&self.bindings);
 
         // Skip names already visible in the current file so we don't suggest imports the user already has.
         let visible = VisibleImplicits(item.source_file).get(self.compiler);
@@ -1082,7 +1491,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             skip.insert(*top_level_name);
             false
         });
-
         // Candidate crates: stdlib + crates that define types referenced by target_type.
         let mut candidate_crates = BTreeSet::new();
         candidate_crates.insert(CrateId::STDLIB);
@@ -1228,7 +1636,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let body = cst::Expr::Call(cst::Call { function, arguments });
         let body = self.push_expr(body, Type::ERROR, location);
 
-        cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false, effects: None })
+        // The wrapper stands in for the function so it must own the function rather than a reference to it
+        cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: true, effects: None })
     }
 
     /// Creates a new expression referring to the given implicit value.

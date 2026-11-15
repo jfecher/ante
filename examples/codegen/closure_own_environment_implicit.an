@@ -1,0 +1,25 @@
+// An impl for a closure can only be found once the closure's environment is decided. One
+// requested within the closure itself may then need a local implicit, which the closure
+// captures ahead of time.
+trait Label t =
+    label: fn (ref t) -> String
+
+impl label_fn {Label a}: Label (fn Unit [(ref a, b)] -> String can e) with
+    label _ = "fn"
+
+impl label_i32: Label I32 with
+    label _ = "i32"
+
+ignore (_: ref t) = ()
+
+run (x: t) {Label t} {Copy t}: Unit can Print =
+    go (): String =
+        ignore x
+        if false then "x" else label go
+    println (go ())
+
+main () = print_to_stdout do
+    run 3i32
+
+// args: --delete-binary --no-color
+// expected stdout: fn

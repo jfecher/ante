@@ -4,8 +4,9 @@ use crate::shared_arc::Shared;
 
 use crate::type_inference::{
     TypeChecker, Variance,
+    kinds::Kind,
     places::{join_entries, same_place},
-    types::{Type, TypeBindings},
+    types::{Type, TypeBindings, TypeVariableId},
 };
 
 pub type Row<T> = Option<Shared<Vec<T>>>;
@@ -38,6 +39,14 @@ pub(super) enum RowKind {
 }
 
 impl RowKind {
+    /// The kind of each entry or open end variable in a row of this kind
+    fn variable_kind(self) -> Kind {
+        match self {
+            RowKind::Effects => Kind::Effect,
+            RowKind::Places => Kind::Place,
+        }
+    }
+
     /// The sort-grouping key for an already-followed leaf type, if concrete (else `None`)
     fn head(self, typ: &Type) -> Option<Type> {
         match self {
@@ -233,7 +242,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Some(_) if a_leftover.is_empty() && a_open.is_empty() => Ok(()),
             Some(b_end) => {
                 a_leftover.extend(a_open);
-                a_leftover.push(self.next_type_variable());
+                a_leftover.push(self.next_variable(kind.variable_kind()));
                 self.bind_end(kind, b_end, &a_leftover, sides.1, new_bindings)
             },
             None if !a_leftover.is_empty() => Err(()),
@@ -282,7 +291,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             (Some(a_end), Some(b_end)) => {
                 // Each end absorbs what the other side has that it lacks, sharing a fresh end
-                let fresh = self.next_type_variable();
+                let fresh = self.next_variable(kind.variable_kind());
                 a_leftover.push(fresh.clone());
                 b_leftover.push(fresh);
                 self.bind_end(kind, a_end, &b_leftover, sides.0, new_bindings)?;
@@ -311,8 +320,61 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn bind_row_end(
         &self, kind: RowKind, end: &Type, entries: &[Type], new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
+        if kind == RowKind::Effects {
+            self.check_effect_bound(end, entries, new_bindings)?;
+        }
         let binding = construct_row(kind, entries, &self.bindings, new_bindings);
         self.subtype(end, &binding, Variance::Invariant, RowMode::Exact, new_bindings)
+    }
+
+    /// Checks that each of `entries` is allowed by the bound on `end`, if any, before `end` is
+    /// bound to them. An open end bounded by a row (see [TypeChecker::effect_bounds]) may only
+    /// be bound to effects from that row. Entries that are open ends themselves are skipped
+    /// since they inherit the same bound, see [Self::effect_bounds_of].
+    fn check_effect_bound(&self, end: &Type, entries: &[Type], new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let Type::Variable(id) = end.follow_two(&self.bindings, new_bindings) else { return Ok(()) };
+        for bound in self.effect_bounds_of(id, new_bindings) {
+            let allowed = self.collect_effects(&bound, new_bindings);
+
+            for entry in entries {
+                if let Type::Variable(_) = entry.follow_two(&self.bindings, new_bindings) {
+                    continue;
+                }
+                let matches = allowed.iter().any(|effect| {
+                    let mut trial = new_bindings.clone();
+                    let matches = self.subtype(entry, effect, Variance::Invariant, RowMode::Exact, &mut trial).is_ok();
+                    if matches {
+                        *new_bindings = trial;
+                    }
+                    matches
+                });
+                if !matches {
+                    return Err(());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns every row bounding the open end `id`. This includes its own bound along with the
+    /// bound of any other open end whose binding now ends in `id`. We derive these from the
+    /// bindings rather than recording them when an end is bound so that if a failed unification
+    /// discards a binding, its bound is discarded with it.
+    fn effect_bounds_of(&self, id: TypeVariableId, new_bindings: &TypeBindings) -> Vec<Type> {
+        let mut entries = Vec::new();
+        let mut bounds = Vec::new();
+        for (bounded, bound) in &self.effect_bounds {
+            let end = Type::Variable(*bounded);
+            let bounds_id = *bounded == id || {
+                entries.clear();
+                flatten_row_into(RowKind::Effects, &[end], &mut entries, &self.bindings, new_bindings);
+                entries.contains(&Type::Variable(id))
+            };
+            if bounds_id {
+                bounds.push(bound.clone());
+            }
+        }
+        bounds
     }
 
     /// True if both entries are exactly equal after following type variables

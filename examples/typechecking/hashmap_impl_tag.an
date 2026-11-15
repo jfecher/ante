@@ -3,7 +3,7 @@ import Std.Hash.Hash, hash_u8
 
 // A second way to hash U8 keys
 impl hash_u8_alt: Hash U8 with
-    hash x = cast x * 31
+    hash x = cast x.* * 31
 
 main () =
     print_to_stdout do

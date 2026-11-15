@@ -1,8 +1,10 @@
-import Std.C.Clock, clock_gettime, nanosleep
+import Std.C.Clock, copy_clock, clock_gettime, nanosleep
 import Std.Mem.transmute, null
 
 /// A duration in nanoseconds
 type Duration = nanos: I64
+
+impl copy_duration: Copy Duration with (.*) = deref
 
 Duration.from_secs (s: I64): Duration = Duration (s * 1_000_000_000)
 Duration.from_millis (ms: I64): Duration = Duration (ms * 1_000_000)
@@ -17,6 +19,8 @@ Duration.as_nanos (d: Duration): I64 = d.nanos
 /// A monotonic time point in nanoseconds since an arbitrary epoch.
 /// Only meaningful relative to another `Instant`.
 type Instant = nanos: I64
+
+impl copy_instant: Copy Instant with (.*) = deref
 
 // TODO: None of this is platform agnostic
 Instant.now (): Instant can Fs =

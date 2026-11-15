@@ -21,6 +21,9 @@ main () =
     println (get_nested vv 1).*
     println (holder (Holder (get v 2))).*
 
+impl drop_holder: Drop (Holder 'p) pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 2

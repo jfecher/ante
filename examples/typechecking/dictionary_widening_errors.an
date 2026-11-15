@@ -42,7 +42,7 @@ impl gen_i32: Gen I32 pure with
     gen x = x
     thunk = Thunk five
 
-both (x: t) {g: Gen t e} (h: fn Unit => Unit can e): I32 can e =
+both (x: t) {g: Gen t e} (h: once fn Unit => Unit can e): I32 can e =
     h ()
     g.thunk.call () + Gen.gen x
 
@@ -57,11 +57,11 @@ widen_field () =
 print_thrown (f: a can Throw t, e) {Display t e2}: a can Fs, e, e2 =
     handle f ()
     | throw error ->
-        print_to_stderr do println error
+        print_to_stderr fn () -> println error
         Std.C.exit 1
 
 // Giving the impl explicitly is the same
-print_explicit (x: t) {d: Display t e2}: Unit can Print, Fs, e2 =
+print_explicit (x: ref t) {d: Display t e2}: Unit can Print, Fs, e2 =
     println x {d}
 
 // args: --check --no-color

@@ -1,10 +1,10 @@
-foo x =
-    y = fn _ -> x
+foo (x: a) {Copy a} =
+    y = move fn () -> x
     y
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (foo: fn _ -> (fn _ [_] -> _ is pure) is pure) (x: _) =
-//     (y: fn _ [_] -> _ is pure) (_: _) [(x: _)] = (x: _)
-//     (y: fn _ [_] -> _ is pure)
+// (foo: fn a {Copy a} -> (fn Unit [a] -> a is pure) is pure) (x: a) {(_: Copy a)} =
+//     (y: fn Unit [a] -> a is pure) () [(x: a)] = (x: a)
+//     (y: fn Unit [a] -> a is pure)
 

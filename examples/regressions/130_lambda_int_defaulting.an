@@ -9,7 +9,7 @@ type TakeWhile i a =
     iter: i
     pred: fn a -> Bool
 
-impl iter_take_while {Iterator i a e} {Copy a}: Iterator (TakeWhile i a) a e with
+impl iter_take_while {Iterator i a e} {Copy a} {Copy i}: Iterator (TakeWhile i a) a e with
     next tw =
         match Iterator.next tw.iter
         | Some (iter, new) ->
@@ -22,6 +22,9 @@ main () =
     print_to_stdout do
     i = TakeWhile 8 (_ >= 5)
     iterate i println
+
+impl drop_takewhile {Drop i d} {Drop a d}: Drop (TakeWhile i a) d with
+    drop _ = ()
 
 // args: --delete-binary --no-color
 // expected stdout:

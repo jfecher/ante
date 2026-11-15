@@ -11,6 +11,9 @@ main () =
     pure_box: Boxed pure = Boxed (do ())
     needs_fail pure_box
 
+impl drop_boxed: Drop (Boxed e) pure with
+    drop _ = ()
+
 // args: --no-color
 // expected exit status: 1
 // expected stderr:

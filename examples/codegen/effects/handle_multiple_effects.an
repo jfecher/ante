@@ -5,7 +5,7 @@ effect MyFail =
 effect Read a =
     get_input: fn Unit -> a
 
-read_or_none (f: fn Unit => U32 can MyFail, Read U32): Maybe U32 =
+read_or_none (f: once fn Unit => U32 can MyFail, Read U32): Maybe U32 =
     handle
         handle Some (f ())
         | get_input () -> resume 5u32

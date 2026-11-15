@@ -1,5 +1,7 @@
 type Type t = | MkType
 
+impl copy_type: Copy (Type t) with (.*) = deref
+
 size_of (v: Type t): Usz = intrinsic "SizeOf" v
 
 offset (ptr: Ptr t) (index: Usz): Ptr t =
@@ -19,8 +21,7 @@ deref_ptr (p: Ptr t): t =
     deref (transmute p)
 
 ptr_store (p: Ptr a) (value: a): Unit =
-    addr = ptr_to_ref p
-    addr := value
+    intrinsic "Write" p value
 
 array_insert (p: Ptr a) (index: Usz) (value: a): Unit =
     offset p index |> ptr_store value
@@ -29,6 +30,9 @@ ptr_to_ref: fn (Ptr a) -> ref a = transmute
 ref_to_ptr: fn (ref a) -> Ptr a = transmute
 
 null (): Ptr a = transmute 0usz
+
+forget (x: a): Unit =
+    intrinsic "Forget" x
 
 transmute (x: a): b =
     intrinsic "Transmute" x

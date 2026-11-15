@@ -10,6 +10,9 @@ main () =
     counter.increment ()
     println counter.value
 
+impl drop_counter: Drop Counter pure with
+    drop _ = ()
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:

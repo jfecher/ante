@@ -77,6 +77,7 @@ fn is_pure(instruction: &Instruction) -> bool {
             | Instruction::MakeEvidence { .. }
             | Instruction::LookupEvidence { .. }
             | Instruction::PackClosure { .. }
+            | Instruction::ClosureEnvironment(_)
             | Instruction::Instantiate(..)
             | Instruction::Capability
     )

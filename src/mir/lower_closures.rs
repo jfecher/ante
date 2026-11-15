@@ -148,6 +148,12 @@ fn eliminate_redundant_closures(definition: &mut Definition, definition_types: &
                     *instruction = Instruction::Id(*function);
                 }
             },
+            // A plain function has nothing in its environment
+            Instruction::ClosureEnvironment(_)
+                if is_no_closure_env(&definition.instruction_result_types[instruction_id]) =>
+            {
+                *instruction = Instruction::Id(Value::Unit);
+            },
             _ => (),
         }
     }
@@ -156,8 +162,15 @@ fn eliminate_redundant_closures(definition: &mut Definition, definition_types: &
 /// Remove references to `NoClosureEnv` entry block parameters from argument lists
 /// in `Call` / `CallClosure` / `MakeTuple` instructions.
 fn remove_no_closure_env_parameter_references(definition: &mut Definition) {
+    // Only remove the environment parameter, which comes after the function's own parameters.
+    // Any other parameter of this type is a generic value that happened to be instantiated with a
+    // plain function's environment, so it still needs to be passed.
+    let own_parameters = match &definition.typ {
+        Type::Function(function) => function.parameters.len(),
+        _ => return,
+    };
     let mut to_remove = Vec::new();
-    for (i, parameter_type) in definition.entry_block().parameter_types.iter().enumerate() {
+    for (i, parameter_type) in definition.entry_block().parameter_types.iter().enumerate().skip(own_parameters) {
         if *parameter_type == Type::NO_CLOSURE_ENV {
             to_remove.push(Value::Parameter(BlockId::ENTRY_BLOCK, i as u32));
         }
@@ -180,6 +193,9 @@ fn remove_no_closure_env_parameter_references(definition: &mut Definition) {
 /// Rewrite closure types into: `Tuple(fn, env)`
 fn rewrite_value_type(typ: &Type) -> Type {
     match typ {
+        // A plain function's environment, which can still appear as a value in code that is generic
+        // over environments
+        Type::Primitive(PrimitiveType::NoClosureEnv) => Type::UNIT,
         Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => typ.clone(),
         Type::Evidence(_) => unreachable!("evidence is lowered before closures"),
         Type::Tuple(fields) => Type::Tuple(Arc::new(fields.iter().map(rewrite_value_type).collect())),
@@ -193,7 +209,7 @@ fn rewrite_value_type(typ: &Type) -> Type {
             let parameters: Vec<Type> = f.parameters.iter().map(rewrite_value_type).collect();
 
             if is_no_closure_env(&f.environment) {
-                Type::Function(Arc::new(FunctionType { parameters, environment: env_type, return_type }))
+                Type::Function(Arc::new(FunctionType { parameters, environment: Type::NO_CLOSURE_ENV, return_type }))
             } else {
                 let folded_parameters =
                     parameters.into_iter().chain(std::iter::once(env_type.clone())).collect::<Vec<_>>();
@@ -294,10 +310,14 @@ fn lower_closure_instructions(mir: &mut Mir) {
 
     for definition in mir.definitions.values_mut() {
         for (_, instr) in definition.instructions.iter_mut() {
-            if let Instruction::PackClosure { function, environment } = instr {
-                let function = *function;
-                let environment = *environment;
-                *instr = Instruction::MakeTuple(vec![function, environment]);
+            match instr {
+                Instruction::PackClosure { function, environment } => {
+                    *instr = Instruction::MakeTuple(vec![*function, *environment]);
+                },
+                Instruction::ClosureEnvironment(closure) => {
+                    *instr = Instruction::IndexTuple { tuple: *closure, index: 1 };
+                },
+                _ => (),
             }
         }
     }

@@ -29,6 +29,9 @@ main () =
         println "tick"
         resume ()
 
+impl drop_counter: Drop Counter pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // tick

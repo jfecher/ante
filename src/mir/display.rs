@@ -351,6 +351,7 @@ fn fmt_instruction(
         mir::Instruction::PackClosure { function, environment } => {
             write!(f, "pack-closure {}, {}", function, environment)?;
         },
+        mir::Instruction::ClosureEnvironment(closure) => write!(f, "closure-environment {}", v(closure))?,
         mir::Instruction::IndexTuple { tuple, index } => write!(f, "{}.{index}", v(tuple))?,
         mir::Instruction::MakeTuple(fields) => write!(f, "({})", comma_separated(fields, mir))?,
         mir::Instruction::MakeArray(elements) => write!(f, "[{}]", comma_separated(elements, mir))?,

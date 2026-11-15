@@ -23,6 +23,9 @@ main () =
     println (size_of (MkType: Type Unit))
     println (size_of (MkType: Type MyType))
 
+impl drop_mytype: Drop MyType pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 1, true

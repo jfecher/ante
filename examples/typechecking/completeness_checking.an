@@ -32,30 +32,30 @@ main () =
 // expected exit status: 1
 // expected stdout:
 // (main: fn Unit -> Unit is pure) () =
-//     (match_var27: (error)) = (Maybe.None: Maybe _)
-//     switch (match_var27: Maybe _)
+//     (match_var27: (error)) = (Maybe.None: Maybe Unit)
+//     switch (match_var27: Maybe Unit)
 //     | 0 -> 1
-//     | 1, (match_var28: _) -> #missing_case
-//     (match_var29: (error)) = 2 (,: fn I32 (Maybe _) -> I32, (Maybe _) is pure) (Maybe.None: Maybe _)
-//     switch (match_var29: I32, (Maybe _))
-//     | 0, (match_var30: I32), (match_var31: Maybe _) -> switch (match_var31: Maybe _)
+//     | 1, (match_var28: Unit) -> #missing_case
+//     (match_var29: (error)) = 2 (,: fn I32 (Maybe Unit) -> I32, (Maybe Unit) is pure) (Maybe.None: Maybe Unit)
+//     switch (match_var29: I32, (Maybe Unit))
+//     | 0, (match_var30: I32), (match_var31: Maybe Unit) -> switch (match_var31: Maybe Unit)
 //         | 0 -> switch (match_var30: I32)
 //             | 0 -> ()
 //             | _ -> #missing_case
-//         | 1, (match_var32: _) -> 
-//                 (_: _) = (match_var32: _)
+//         | 1, (match_var32: Unit) -> 
+//                 (_: Unit) = (match_var32: Unit)
 //                 
 //                     (_: I32) = (match_var30: I32)
 //                     ()
-//     (match_var33: (error)) = (Maybe.None: Maybe (Maybe _))
-//     switch (match_var33: Maybe (Maybe _))
+//     (match_var33: (error)) = (Maybe.None: Maybe (Maybe Unit))
+//     switch (match_var33: Maybe (Maybe Unit))
 //     | 0 -> 2
-//     | 1, (match_var34: Maybe _) -> switch (match_var34: Maybe _)
+//     | 1, (match_var34: Maybe Unit) -> switch (match_var34: Maybe Unit)
 //         | 0 -> 
-//                 (_: Maybe _) = (match_var34: Maybe _)
+//                 (_: Maybe Unit) = (match_var34: Maybe Unit)
 //                 1
-//         | 1, (match_var35: _) -> 
-//                 (_: _) = (match_var35: _)
+//         | 1, (match_var35: Unit) -> 
+//                 (_: Unit) = (match_var35: Unit)
 //                 0
 //     (match_var36: (error)) = 1 (,: fn I32 I32 -> I32, I32 is pure) 2
 //     switch (match_var36: I32, I32)

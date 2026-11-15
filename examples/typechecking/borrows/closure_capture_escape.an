@@ -7,8 +7,8 @@ bad_returns_ref () =
     x = 5
     fn () -> ref x
 
-// FIXME: Immutable locals get copied currently instead of referenced as they should
-copy_capture () =
+// An immutable local is captured by reference as well, even one which is `Copy`
+immutable_capture () =
     v = 5
     fn () -> v
 
@@ -32,5 +32,12 @@ main () = ()
 //  8 |     fn () -> ref x	// error: This reference to x outlives its scope
 //    |     ^^^^^^^^^^^^^^
 // 
-// Found 2 errors and 0 warnings
+// examples/typechecking/borrows/closure_capture_escape.an:13:5
+// 11 | immutable_capture () =
+// 12 |     v = 5	// note: v is only valid until the end of this scope
+//    |     -
+// 13 |     fn () -> v	// error: This reference to v outlives its scope
+//    |     ^^^^^^^^^^
+// 
+// Found 3 errors and 0 warnings
 

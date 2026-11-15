@@ -670,6 +670,8 @@ pub enum Instruction {
         function: Value,
         environment: Value,
     },
+    /// Returns the environment a closure value was packed with by [Instruction::PackClosure]
+    ClosureEnvironment(Value),
     IndexTuple {
         tuple: Value,
         index: u32,
@@ -872,6 +874,7 @@ macro_rules! for_each_instruction_value {
                 rest.$iter().for_each(&mut f);
             },
             Instruction::PackClosure { function, environment } => two(function, environment),
+            Instruction::ClosureEnvironment(closure) => f(closure),
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
             Instruction::MakeBytes(_) => (),
             Instruction::MakeTuple(elements) => elements.$iter().for_each(f),

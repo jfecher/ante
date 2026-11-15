@@ -14,7 +14,8 @@ main () =
     println first.x
 
     alias = mut first
-    alias := Thing 3
+    third = mut Thing 3
+    alias := third
     println first.x
 
     var current = mut first
@@ -36,6 +37,9 @@ main () =
     println a
     println b
 
+impl drop_thing: Drop Thing pure with
+    drop _ = ()
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
@@ -46,24 +50,18 @@ main () =
 //    |             ^^^^^^
 // 13 |     println temp.x
 // 
-// examples/codegen/var_reference_reassign.an:23:23
-// 22 |     while i < 3 do
-//    |         // error: Argument 1 has type mut 'first (mut '(_5, _114) Thing) but mut Thing was expected
-// 23 |         if maybe_next current is Some next then
+// examples/codegen/var_reference_reassign.an:24:23
+// 23 |     while i < 3 do
+//    |         // error: Argument 1 has type mut 'first (mut '(_5, _32) Thing) but mut Thing was expected
+// 24 |         if maybe_next current is Some next then
 //    |                       ^^^^^^^
-// 24 |             current := next
+// 25 |             current := next
 // 
-// examples/codegen/var_reference_reassign.an:24:24
-// 23 |         if maybe_next current is Some next then
-//    |             // error: Cannot assign a value of type mut Thing to a target of type mut 'first (mut '(_5, _114) Thing)
-// 24 |             current := next
+// examples/codegen/var_reference_reassign.an:25:24
+// 24 |         if maybe_next current is Some next then
+//    |             // error: Cannot assign a value of type mut Thing to a target of type mut 'first (mut '(_5, _32) Thing)
+// 25 |             current := next
 //    |                        ^^^^
 // 
-// examples/codegen/var_reference_reassign.an:26:22
-//    |         // error: Cannot assign a value of type I32 to a target of type mut '(_5.x, _114.x) I32
-// 26 |         current.x := 1
-//    |                      ^
-// 27 |         i += 1
-// 
-// Found 4 errors and 0 warnings
+// Found 3 errors and 0 warnings
 

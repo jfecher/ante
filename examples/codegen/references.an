@@ -54,6 +54,9 @@ main () =
     struct_ref_assign ()
     field_ref_mutate ()
 
+impl drop_point: Drop Point pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 42

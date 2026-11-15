@@ -70,7 +70,9 @@ pub fn codegen_c_for_mir(
 
     // And link it into a binary
     if status.success() {
-        time_phase("Linking", show_time, || super::link_with_cc(&[o_file_name.clone()], binary_name, link_options, true));
+        time_phase("Linking", show_time, || {
+            super::link_with_cc(&[o_file_name.clone()], binary_name, link_options, true)
+        });
         std::fs::remove_file(&c_file_name).unwrap();
     }
 }
@@ -738,7 +740,8 @@ impl Builder {
                 self.write("switch (");
                 self.write_value(int_value, mir);
                 self.write(") { ");
-                let mir::Type::Primitive(mir::PrimitiveType::Int(kind)) = mir.type_of_value(int_value, definition) else {
+                let mir::Type::Primitive(mir::PrimitiveType::Int(kind)) = mir.type_of_value(int_value, definition)
+                else {
                     unreachable!("Switch value type is not an integer")
                 };
                 for (tag, target) in cases {
@@ -1264,7 +1267,9 @@ impl Builder {
             mir::Instruction::LookupEvidence { .. } | mir::Instruction::MakeEvidence { .. } => {
                 unreachable!("evidence instruction remaining in C codegen")
             },
-            mir::Instruction::PackClosure { .. } => unreachable!("Instruction::PackClosure remaining in C codegen"),
+            mir::Instruction::PackClosure { .. } | mir::Instruction::ClosureEnvironment(_) => {
+                unreachable!("closure instruction remaining in C codegen")
+            },
             mir::Instruction::Instantiate(..) => unreachable!("Instruction::Instantiate remaining in C codegen"),
             mir::Instruction::SizeOf(_) => todo!("SizeOf should be removed by monomorphization"),
             mir::Instruction::ArrayLen(_) => todo!("ArrayLen should be removed by monomorphization"),

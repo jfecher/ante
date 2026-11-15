@@ -213,7 +213,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return false;
         };
         let mut args = trait_.effect_generics().into_iter().zip(actual_args.iter().zip(expected_args));
-        args.any(|(is_effect, (actual_arg, expected_arg))| is_effect && !self.effect_rows_identical(actual_arg, expected_arg))
+        args.any(|(is_effect, (actual_arg, expected_arg))| {
+            is_effect && !self.effect_rows_identical(actual_arg, expected_arg)
+        })
     }
 
     /// Decide how to adapt a dictionary of type `actual` to the type `expected` with wider effect args.

@@ -1,0 +1,64 @@
+import Std.Mem.forget
+
+// A value must be moved, dropped, or forgotten before it goes out of scope
+type Resource = id: I32
+
+concrete () =
+    _resource = Resource 1
+
+generic (_value: t): Unit = ()
+
+unused_result (make: fn Unit -> Resource): Unit =
+    make ()
+    ()
+
+overwritten (): Unit =
+    var resource = Resource 1
+    resource := Resource 2
+    forget resource
+
+// These are all fine
+constrained (_value: t) {Drop t e}: Unit can e = ()
+
+moved (value: t): t = value
+
+forgotten (value: t): Unit = forget value
+
+copied (_value: t) {Copy t}: Unit = ()
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/drops/missing_drop.an:7:5
+// 6 | concrete () =
+//   |     // error: _resource goes out of scope without being moved, but its type Resource does not implement Drop
+//   |     // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+// 7 |     _resource = Resource 1
+//   |     ^^^^^^^^^
+// 
+// examples/typechecking/drops/missing_drop.an:9:10
+//    | // error: _value goes out of scope without being moved, but its type t does not implement Drop
+//    | // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+//  9 | generic (_value: t): Unit = ()
+//    |          ^^^^^^
+// 
+// examples/typechecking/drops/missing_drop.an:12:5
+// 11 | unused_result (make: fn Unit -> Resource): Unit =
+//    |     // error: This value goes out of scope without being moved, but its type Resource does not implement Drop
+//    |     // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+// 12 |     make ()
+//    |     ^^^^^^^
+// 13 |     ()
+// 
+// examples/typechecking/drops/missing_drop.an:17:5
+// 16 |     var resource = Resource 1
+//    |     // error: The value assigned over goes out of scope without being moved, but its type Resource does not implement Drop
+//    |     // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+// 17 |     resource := Resource 2
+//    |     ^^^^^^^^
+// 18 |     forget resource
+// 
+// Found 4 errors and 0 warnings
+

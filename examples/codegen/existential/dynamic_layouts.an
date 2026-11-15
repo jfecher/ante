@@ -10,19 +10,19 @@ type Pair a b =
     second: b
 
 // Variants of different sizes, chosen at runtime
-choose (flag: Bool) (x: a) (y: b): Either a b =
+choose (flag: Bool) (x: a) (y: b) {Drop a d} {Drop b d}: Either a b can d =
     if flag then Left x else Right y
 
-describe (e: Either a b) (show_a: fn a => String) (show_b: fn b => String): String =
+describe (e: Either a b) (show_a: fn a [env1] -> String) (show_b: fn b [env2] -> String) {Drop env1 pure} {Drop env2 pure}: String =
     match e
     | Left a -> "Left ${show_a a}"
     | Right b -> "Right ${show_b b}"
 
 // A branch merging two generic values, then a loop carrying one
-pick (flag: Bool) (x: a) (y: a): a =
+pick (flag: Bool) (x: a) (y: a) {Drop a d}: a can d =
     if flag then x else y
 
-swap_n (n: U32) (x: a) (y: a): a =
+swap_n (n: U32) (x: a) (y: a) {Drop a d}: a can d =
     var current = x
     var other = y
     var i = 0
@@ -34,7 +34,7 @@ swap_n (n: U32) (x: a) (y: a): a =
     current
 
 // Writing through a reference to a field whose offset depends on the size of `a`
-set_second (p: mut Pair a b) (value: b): Unit can Mutate 'p =
+set_second (p: mut Pair a b) (value: b) {Drop b d}: Unit can d, Mutate 'p =
     p.second := value
 
 main () =
@@ -56,6 +56,9 @@ main () =
     var p2 = Pair (1u8, 2u8, 3u8) "before"
     set_second (mut p2) "after"
     println p2.second
+
+impl drop_pair {Drop a d} {Drop b d}: Drop (Pair a b) d with
+    drop _ = ()
 
 // args: --delete-binary --no-color
 // expected stdout:

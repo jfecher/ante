@@ -1,0 +1,49 @@
+import Std.Fail.Fail, fail
+
+// The body and branches of a `handle` run as part of the function they are in. A value
+// moved by a branch which does not resume is dropped at the end of the body instead
+// when the body completes.
+type Tag = id: U32
+
+impl drop_tag: Drop Tag Print with
+    drop tag =
+        print "drop "
+        println tag.id
+
+or_default (default: Tag) (f: once fn Unit => Tag can Fail, Print): Tag can Print =
+    handle f ()
+    | fail () -> default
+
+fails (): Tag can Fail, Print =
+    // A value on the stack of a computation which is not resumed is leaked
+    _leaked = Tag 1
+    fail ()
+
+main () =
+    print_to_stdout do
+    succeeded = or_default (Tag 2) (fn () -> Tag 3)
+    println "succeeded"
+    failed = or_default (Tag 4) fails
+    println "failed"
+
+    // The handled body may move a value declared outside of it
+    moved = Tag 5
+    handle
+        ignore moved
+        println "body"
+    | fail () -> println "unreachable"
+    println "end"
+    ignore failed
+    ignore succeeded
+
+// args: --delete-binary --no-color
+// expected stdout:
+// drop 2
+// succeeded
+// failed
+// drop 5
+// body
+// end
+// drop 4
+// drop 3
+

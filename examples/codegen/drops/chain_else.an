@@ -1,0 +1,42 @@
+// Every condition of an `and` chain which fails runs the same `else`, having first dropped
+// whatever the chain owned by then: nothing yet, `a` itself, or the `x` it was moved into.
+type Loud = id: I32
+
+impl drop_loud: Drop Loud Print with
+    drop loud = println "drop ${loud.id}"
+
+wrap (loud: Loud): Maybe Loud can Print =
+    if loud.id > 0 then Some loud else None
+
+pick (first: Bool) (a: Loud) (b: Loud): Unit can Print =
+    if first and wrap a is Some x and x.id > 100 then
+        println "then ${x.id}"
+    else
+        println "else"
+    println "end ${b.id}"
+
+main () =
+    print_to_stdout do
+    pick false (Loud 1) (Loud 2)
+    pick true (Loud 3) (Loud 4)
+    pick true (Loud (0 - 5)) (Loud 6)
+    pick true (Loud 107) (Loud 8)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// drop 1
+// else
+// end 2
+// drop 2
+// drop 3
+// else
+// end 4
+// drop 4
+// drop -5
+// else
+// end 6
+// drop 6
+// then 107
+// drop 107
+// end 8
+// drop 8

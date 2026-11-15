@@ -6,7 +6,7 @@ foo (): Unit can Count =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count (f: fn Unit => Unit can Count) =
+handle_count (f: once fn Unit => Unit can Count) =
     handle
         f ()
         0

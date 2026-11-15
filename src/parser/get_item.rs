@@ -332,7 +332,8 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
             collect_expressions_to_desugar(fo.end, context, to_desugar);
             collect_expressions_to_desugar(fo.body, context, to_desugar);
         },
-        Expr::Break | Expr::Continue => (),
+        Expr::Break | Expr::Continue | Expr::Fallthrough => (),
+        Expr::Chain(_) => unreachable!("Expr::Chain is only created by desugaring"),
         Expr::Assignment(assignment) => {
             let rhs = assignment.rhs;
             collect_expressions_to_desugar(assignment.lhs, context, to_desugar);
@@ -501,6 +502,11 @@ enum ExprDesugar {
         call: ExprId,
     },
 
+    /// `a; b` desugars to the sequence of `a` then `b`
+    Semicolon {
+        call: ExprId,
+    },
+
     /// `do body` desugars to `fn {arg} -> <body>`
     Do(ExprId),
 
@@ -557,6 +563,7 @@ fn classify_call(call: &cst::Call, expr: ExprId, context: &DesugarContext) -> Op
         "or" => Some(ExprDesugar::LogicalOperator { call: expr, is_or: true }),
         "and" => Some(ExprDesugar::LogicalOperator { call: expr, is_or: false }),
         "~>" => Some(ExprDesugar::TildeArrow { call: expr }),
+        ";" => Some(ExprDesugar::Semicolon { call: expr }),
         _ => None,
     }
 }
@@ -590,6 +597,7 @@ impl ExprDesugar {
             ExprDesugar::Pipe { call, pipe_right } => desugar_pipeline(call, context, pipe_right),
             ExprDesugar::LogicalOperator { call, is_or } => desugar_logical_operators(call, context, is_or),
             ExprDesugar::TildeArrow { call } => desugar_tilde_arrow(call, context),
+            ExprDesugar::Semicolon { call } => desugar_semicolon(call, context),
             ExprDesugar::Do(expr) => desugar_do(expr, context),
             ExprDesugar::TypeCast { call, target_type } => desugar_type_cast(call, target_type, context),
             ExprDesugar::Loop(expr) => desugar_loop(expr, context),
@@ -703,6 +711,14 @@ fn desugar_pipeline(expr: ExprId, context: &mut DesugarContext, is_pipe_right: b
         let new_call = cst::Call { function: inner_call.function, arguments: new_args };
         context.set_expr(expr, Expr::Call(new_call));
     }
+}
+
+/// Desugars `a; b` into a sequence so that `b` stays in tail position. Left as a call to `;`,
+/// `b` would be an argument instead and a trailing `resume` would no longer be a tail call.
+fn desugar_semicolon(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::Call(call) = &context[expr] else { unreachable!() };
+    let items = mapvec(&call.arguments, |argument| SequenceItem { expr: argument.expr, comments: Vec::new() });
+    context.set_expr(expr, Expr::Sequence(items));
 }
 
 /// Desugars:
@@ -855,11 +871,30 @@ fn build_match_from_is(
 /// iff every element succeeds (with each `Is`'s bindings in scope for every
 /// element after it), else `else_expr`.
 ///
-/// `else_expr` is shared across all fallthrough positions. Only one fallthrough
-/// ever runs, so side effects are executed at most once.
+/// Since a chain of several elements can fail in several places, each failure is an
+/// [Expr::Fallthrough] to the single `else_expr` of an [Expr::Chain].
 fn compile_chain(parts: &[ChainElement], then_expr: ExprId, else_expr: ExprId, context: &mut DesugarContext) -> ExprId {
+    if parts.len() <= 1 {
+        return compile_chain_rest(parts, then_expr, else_expr, false, context);
+    }
+    let location = context.expr_location(else_expr).clone();
+    let body = compile_chain_rest(parts, then_expr, else_expr, true, context);
+    context.push_expr(Expr::Chain(cst::Chain { body, else_: else_expr }), location)
+}
+
+/// If `fallthrough` is true, each failing element falls through to the chain's else rather than
+/// evaluating `else_expr` itself.
+fn compile_chain_rest(
+    parts: &[ChainElement], then_expr: ExprId, else_expr: ExprId, fallthrough: bool, context: &mut DesugarContext,
+) -> ExprId {
     let Some((head, tail)) = parts.split_first() else { return then_expr };
-    let inner = compile_chain(tail, then_expr, else_expr, context);
+    let inner = compile_chain_rest(tail, then_expr, else_expr, fallthrough, context);
+    let else_expr = if fallthrough {
+        let location = context.expr_location(else_expr).clone();
+        context.push_expr(Expr::Fallthrough, location)
+    } else {
+        else_expr
+    };
     match head {
         ChainElement::Is(is_) => {
             let location = context.expr_location(is_.lhs).clone();

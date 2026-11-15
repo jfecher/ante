@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     definition_collection::{
         self,
-        visible_implicits::{Implicits, visible_implicits_impl},
+        visible_implicits::{ImplicitKey, Implicits, implicit_key_impl, visible_implicits_impl},
     },
     diagnostics::{Diagnostic, Location, check_all},
     find_files::CrateGraph,
@@ -73,6 +73,7 @@ pub struct DbStorage {
     visible_definitions: HashMapStorage<VisibleDefinitions>,
     visible_types: HashMapStorage<VisibleTypes>,
     visible_implicits: HashMapStorage<VisibleImplicits>,
+    implicit_keys: HashMapStorage<GetImplicitKey>,
     all_definitions: HashMapStorage<AllDefinitions>,
     all_types: HashMapStorage<AllTypes>,
     exported_definitions: HashMapStorage<ExportedDefinitions>,
@@ -267,6 +268,12 @@ define_intermediate!(600, VisibleTypes -> Arc<TypeDefinitions>, DbStorage, defin
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VisibleImplicits(pub SourceFileId);
 define_intermediate!(700, VisibleImplicits -> Arc<Implicits>, DbStorage, visible_implicits_impl);
+
+/// The [ImplicitKey] a top-level implicit is registered under. This is the same in every file
+/// the implicit is visible in, so it only needs to be computed once.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GetImplicitKey(pub TopLevelName);
+define_intermediate!(710, GetImplicitKey -> ImplicitKey, DbStorage, implicit_key_impl);
 
 /// We iterate over collected definitions within `visible_definitions_impl`. Since
 /// collecting these can error, we need a stable iteration order, otherwise the order

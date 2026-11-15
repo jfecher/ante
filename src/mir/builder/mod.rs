@@ -26,7 +26,7 @@ use crate::{
         self,
         dependency_graph::TypeCheckResult,
         dictionary_coercions::{CoercionSource, DictionaryCoercion, MemberCoercion},
-        fresh_expr::ExtendedTopLevelContext,
+        fresh_expr::{BuiltinDictionary, DropSlot, ExtendedTopLevelContext},
         patterns::{Case, Constructor, DecisionTree},
         types::Type as TCType,
     },
@@ -176,10 +176,11 @@ enum AdaptedCallee {
 /// Saved/restored around building a definition in isolation. See [Context::take_scope].
 struct SavedScope {
     local_variables: FxHashMap<NameId, Value>,
-    mutable_locals: rustc_hash::FxHashSet<NameId>,
+    slot_locals: rustc_hash::FxHashSet<NameId>,
     capabilities: Vec<(EffectKey, Value)>,
     own_evidence: Option<Value>,
     loop_targets: Vec<(BlockId, BlockId)>,
+    chain_targets: Vec<BlockId>,
 }
 
 /// The per-[TopLevelId] context. Intended for each top-level item convert to MIR in parallel.
@@ -197,12 +198,25 @@ struct Context<'local, Db> {
     global_variables: FxHashMap<Origin, Value>,
     local_variables: FxHashMap<NameId, Value>,
 
-    /// Names of local mutable variables. These have a StackAlloc'd pointer as their MIR value.
-    mutable_locals: rustc_hash::FxHashSet<NameId>,
+    /// Locals stored in a stack slot, so their MIR value is a pointer to the slot rather than the
+    /// value itself. This includes each `var`, each variable captured by reference in a closure,
+    /// and each temporary that had a reference taken of it.
+    slot_locals: rustc_hash::FxHashSet<NameId>,
 
     /// Stack of `(continue_target, break_target)` for each enclosing `while`/`for` loop.
     /// Innermost loop is last. Swapped out across lambda boundaries.
     loop_targets: Vec<(BlockId, BlockId)>,
+
+    /// Stack of `else` blocks for each enclosing [cst::Chain]. Innermost chain is last.
+    chain_targets: Vec<BlockId>,
+
+    /// Cache of methods already built for each [BuiltinDictionary]. These are keyed on the method
+    /// type, impl data type, and number of generics in scope since each combination needs its own method.
+    builtin_methods: FxHashMap<(std::mem::Discriminant<BuiltinDictionary>, Type, Type, u32), DefinitionId>,
+
+    /// Every local captured by reference in some closure. This is computed lazily the first time
+    /// a local is bound.
+    reference_captures: std::cell::OnceCell<rustc_hash::FxHashSet<NameId>>,
 
     finished_functions: FxHashMap<DefinitionId, Definition>,
     name_to_id: &'local SharedIdsMap,
@@ -233,8 +247,11 @@ impl<'local, Db> Context<'local, Db> {
             generics_in_scope: Default::default(),
             global_variables: FxHashMap::default(),
             local_variables: FxHashMap::default(),
-            mutable_locals: Default::default(),
+            slot_locals: Default::default(),
             loop_targets: Vec::new(),
+            chain_targets: Vec::new(),
+            builtin_methods: Default::default(),
+            reference_captures: Default::default(),
             current_block: BlockId::ENTRY_BLOCK,
             current_function: None,
             finished_functions: Default::default(),
@@ -338,9 +355,28 @@ where
 
     fn define_variable(&mut self, origin: Origin, value: Value) {
         match origin {
-            Origin::Local(name) => self.local_variables.insert(name, value),
-            other => self.global_variables.insert(other, value),
-        };
+            Origin::Local(name) => {
+                self.local_variables.insert(name, value);
+                // Variables captured by reference are given a slot up front so that each closure
+                // capturing them points to the same variable
+                let captured = self.reference_captures.get_or_init(|| self.context().names_captured_by_reference());
+                if captured.contains(&name) {
+                    self.give_slot(name);
+                }
+            },
+            other => {
+                self.global_variables.insert(other, value);
+            },
+        }
+    }
+
+    /// Move the local `name` into a stack slot if it isn't in one already
+    fn give_slot(&mut self, name: NameId) {
+        if self.slot_locals.insert(name) {
+            let value = *self.local_variables.get(&name).expect("a local is bound before it is given a slot");
+            let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
+            self.local_variables.insert(name, slot);
+        }
     }
 
     /// Retrieves the corresponding [DefinitionId] for a particular [TopLevelName].
@@ -376,6 +412,36 @@ where
     }
 
     fn expression(&mut self, expr: ExprId) -> Value {
+        let value = self.expression_without_drops(expr);
+        self.bind_temporary(expr, value);
+        self.run_drops_at(DropSlot::After(expr));
+        value
+    }
+
+    /// If the borrow checker named the temporary `expr`, bind that name to `value`
+    fn bind_temporary(&mut self, expr: ExprId, value: Value) {
+        if let Some(name) = self.context().drops().temporary(expr) {
+            self.local_variables.insert(name, value);
+        }
+    }
+
+    fn run_drops_at(&mut self, slot: DropSlot) {
+        self.run_drops(self.context().drops().get(slot));
+    }
+
+    /// Evaluate each of `drops`. The borrow checker only records drops in reachable code, so the
+    /// current block should never be terminated here.
+    fn run_drops(&mut self, drops: &[ExprId]) {
+        for drop in drops {
+            assert!(self.current_block().terminator.is_none(), "a drop was recorded after its block ended");
+            self.expression(*drop);
+        }
+    }
+
+    fn expression_without_drops(&mut self, expr: ExprId) -> Value {
+        if let Some(builtin) = self.context().builtin_dictionary(expr) {
+            return self.builtin_dictionary(expr, builtin);
+        }
         let value = self.expression_inner(expr);
         if let Some(expected) = self.types.result.context.get_function_coercion(expr) {
             let target = self.convert_type(expected, None);
@@ -411,10 +477,12 @@ where
             cst::Expr::Loop(_) => unreachable!("Loops should be desugared before MIR generation"),
             cst::Expr::While(while_) => self.while_(while_),
             cst::Expr::For(for_) => self.for_(for_),
-            cst::Expr::Break => self.break_(),
-            cst::Expr::Continue => self.continue_(),
-            cst::Expr::Return(return_) => self.return_(return_.expression),
-            cst::Expr::Assignment(assignment) => self.assignment(assignment),
+            cst::Expr::Break => self.break_(expr),
+            cst::Expr::Chain(chain) => self.chain(chain, expr),
+            cst::Expr::Fallthrough => self.fallthrough(expr),
+            cst::Expr::Continue => self.continue_(expr),
+            cst::Expr::Return(return_) => self.return_(return_.expression, expr),
+            cst::Expr::Assignment(assignment) => self.assignment(assignment, expr),
             cst::Expr::Extern(extern_) => self.extern_(extern_, expr),
             cst::Expr::InterpolatedString(_) => {
                 unreachable!("InterpolatedString should be desugared before MIR generation")
@@ -530,7 +598,7 @@ where
                     let ptr = *self.local_variables.get(&name).unwrap_or_else(|| {
                         panic!("No cached variable for {} with name {name}", self.context()[path_id])
                     });
-                    if self.mutable_locals.contains(&name) {
+                    if self.slot_locals.contains(&name) {
                         // Mutable locals are StackAlloc'd pointers; auto-deref to load the value.
                         let val_type = self.convert_path_type(path_id);
                         self.push_instruction(Instruction::Deref(ptr), val_type)
@@ -610,10 +678,7 @@ where
             let mut names = Vec::new();
             self.collect_pattern_names(definition.pattern, &mut names);
             for name in names {
-                let raw = *self.local_variables.get(&name).expect("var binding missing local after bind_pattern");
-                let alloc = self.push_instruction(Instruction::StackAlloc(raw), Type::POINTER);
-                self.local_variables.insert(name, alloc);
-                self.mutable_locals.insert(name);
+                self.give_slot(name);
             }
         }
 
@@ -639,6 +704,7 @@ where
 
         if let Some(element) = reference_element {
             let struct_ptr = self.expression(object_expr);
+            let (element, struct_ptr) = self.innermost_referent(element, struct_ptr);
             let (struct_ptr, struct_type) = self.field_access_target(&element, struct_ptr);
             self.field_pointer(struct_ptr, &struct_type, index)
         } else {
@@ -684,6 +750,8 @@ where
             return Value::Unit;
         }
 
+        // A handler resuming in tail position needs to drop what it owns before resuming
+        self.run_drops_at(DropSlot::BeforeCall(id));
         let value = self.emit_callee_call(call.function, callee, arguments, result_type);
         if diverges {
             self.terminate_block(TerminatorInstruction::Unreachable);
@@ -991,6 +1059,70 @@ where
             }
         });
         self.push_instruction(Instruction::MakeTuple(fields), target)
+    }
+
+    /// Builds the compiler-provided dictionary for `expr`, used where there is no impl to point
+    /// to. See [BuiltinDictionary].
+    fn builtin_dictionary(&mut self, expr: ExprId, builtin: BuiltinDictionary) -> Value {
+        let target = self.convert_type(&self.types.result.maps.expr_types[&expr], None);
+        let method_type = Self::tuple_field_type(&target, 0);
+        let Type::Function(method) = &method_type else {
+            panic!("the only member of the builtin dictionary `{target}` is not a method")
+        };
+        let parameters = method.parameters.clone();
+        let return_type = method.return_type.clone();
+        let environment_type = method.environment().cloned();
+
+        let impl_data = match builtin {
+            BuiltinDictionary::DropEnvironment(dictionary) => self.expression(dictionary),
+            BuiltinDictionary::Copy | BuiltinDictionary::DropNothing => Value::Unit,
+        };
+        let impl_data_type = self.type_of_value(&impl_data);
+
+        let name = Arc::new("builtin_method".to_string());
+        let generics_count = self.generics_in_scope.len() as u32;
+
+        // The method depends on its own type and the impl data's type, so we cache one for each
+        let key = (std::mem::discriminant(&builtin), method_type.clone(), impl_data_type.clone(), generics_count);
+        if let Some(id) = self.builtin_methods.get(&key).copied() {
+            let method = self.instantiate_in_scope(id, name, method_type);
+            return self.push_instruction(Instruction::MakeTuple(vec![method, impl_data]), target);
+        }
+        let id = next_definition_id();
+        self.builtin_methods.insert(key, id);
+        self.new_isolated_definition(id, name.clone(), generics_count, method_type.clone(), |this| {
+            // Parameters are a pointer to the impl data, the method's own parameter, then its evidence
+            let params = this.push_capability_parameters(&parameters);
+            if let Some(environment_type) = environment_type {
+                this.push_capability_parameter(environment_type);
+            }
+            let result = match builtin {
+                BuiltinDictionary::Copy => this.push_instruction(Instruction::Deref(params[1]), return_type),
+                BuiltinDictionary::DropNothing => Value::Unit,
+                BuiltinDictionary::DropEnvironment(_) => {
+                    let Type::Function(function) = &parameters[1] else {
+                        panic!("`{}` is dropped as a function", parameters[1])
+                    };
+                    let environment = Instruction::ClosureEnvironment(params[1]);
+                    let environment = this.push_instruction(environment, function.environment.clone());
+
+                    // The impl data here is the dictionary used to drop the environment
+                    let drop_type = Self::tuple_field_type(&impl_data_type, 0);
+                    let is_closure = matches!(&drop_type, Type::Function(drop) if drop.is_closure());
+                    let (drop, data) = this.method_through_pointer(params[0], &impl_data_type, 0, drop_type);
+                    let mut arguments = vec![data, environment];
+                    arguments.extend_from_slice(&params[2..]);
+                    let call = match is_closure {
+                        true => Instruction::CallClosure { closure: drop, arguments },
+                        false => Instruction::Call { function: drop, arguments },
+                    };
+                    this.push_instruction(call, return_type)
+                },
+            };
+            this.terminate_block(TerminatorInstruction::Return(result));
+        });
+        let method = self.instantiate_in_scope(id, name, method_type);
+        self.push_instruction(Instruction::MakeTuple(vec![method, impl_data]), target)
     }
 
     /// Builds a function of the wider `target` type calling `callee`, a method of the type
@@ -1346,20 +1478,22 @@ where
     fn take_scope(&mut self) -> SavedScope {
         SavedScope {
             local_variables: std::mem::take(&mut self.local_variables),
-            mutable_locals: std::mem::take(&mut self.mutable_locals),
+            slot_locals: std::mem::take(&mut self.slot_locals),
             capabilities: std::mem::take(&mut self.capabilities),
             own_evidence: self.own_evidence.take(),
             loop_targets: std::mem::take(&mut self.loop_targets),
+            chain_targets: std::mem::take(&mut self.chain_targets),
         }
     }
 
     /// Restores local scope state previously taken by [Self::take_scope].
     fn restore_scope(&mut self, saved: SavedScope) {
         self.local_variables = saved.local_variables;
-        self.mutable_locals = saved.mutable_locals;
+        self.slot_locals = saved.slot_locals;
         self.capabilities = saved.capabilities;
         self.own_evidence = saved.own_evidence;
         self.loop_targets = saved.loop_targets;
+        self.chain_targets = saved.chain_targets;
     }
 
     /// The id of a new definition for the given name, or a fresh id if there is no name
@@ -1436,20 +1570,21 @@ where
         let full_type = self.extend_environment_with_fields(full_type, forwarded_evidence_type.clone());
         let Type::Function(function_type) = &full_type else { unreachable!("Lambda does not have a function type") };
 
-        let is_move = self.context().is_move_closure(expr);
-
-        let mutable_captures: rustc_hash::FxHashSet<NameId> =
-            if let Some(free_vars) = self.context().get_closure_environment(expr) {
-                free_vars.iter().filter(|v| self.mutable_locals.contains(v)).copied().collect()
-            } else {
-                Default::default()
-            };
-
         // Lambdas aren't really generic but they may capture generics from their containing
         // function. Marking them as generic here effectively hoists out the generic parameters.
         // It also means we have to instantiate lambdas when they're used with the current generic
         // parameters.
         let generics_count = self.generics_in_scope.len() as u32;
+
+        // A `move` closure holds its own copy of each variable it captures. If the original
+        // variable has a slot, the copy needs one too since it may be assigned to or captured by
+        // reference in a nested closure.
+        let by_reference = !self.context().is_move_closure(expr);
+        let reference_captures = self.reference_captures.get_or_init(|| self.context().names_captured_by_reference());
+        let needs_slot = |name: &NameId| self.slot_locals.contains(name) || reference_captures.contains(name);
+        let copied = self.context().get_closure_environment(expr).filter(|_| !by_reference).into_iter().flatten();
+        let copied_slots: Vec<NameId> = copied.filter(|name| needs_slot(name)).copied().collect();
+
         let saved_scope = self.take_scope();
 
         let mut captured_values = needed_capability_values.clone();
@@ -1480,15 +1615,15 @@ where
                     &needed_capabilities,
                     forwarded_evidence_type.as_ref(),
                     environment,
+                    !suppress_capabilities,
                 );
 
-                // For regular closures, mutable captures are pointers (by reference).
-                if !is_move {
-                    for var in free_vars.iter() {
-                        if mutable_captures.contains(var) {
-                            this.mutable_locals.insert(*var);
-                        }
-                    }
+                // Variables captured by reference are pointers to the original variable
+                if by_reference {
+                    this.slot_locals.extend(free_vars.iter().copied());
+                }
+                for var in &copied_slots {
+                    this.give_slot(*var);
                 }
             }
 
@@ -1535,31 +1670,47 @@ where
         let free_vars = self.context().get_closure_environment(expr).cloned();
         if free_vars.is_some() || !captured_values.is_empty() {
             let free_vars = free_vars.unwrap_or_default();
-            let environment = self.pack_closure_environment(&free_vars, &captured_values, is_move);
+            let environment = self.pack_closure_environment(expr, &free_vars, &captured_values, !suppress_capabilities);
             value = self.push_instruction(Instruction::PackClosure { function: value, environment }, full_type);
         }
         value
     }
 
     /// Packs each given variable, plus any needed capability values, into a closure environment tuple.
+    ///
+    /// If `nested` is set, this is a closure's environment rather than that of a `handle` body or
+    /// branch. These are laid out to match their type: either the single capture, or a pair of the
+    /// first capture and the environment of the remaining captures.
     fn pack_closure_environment(
-        &mut self, free_vars: &BTreeSet<NameId>, capability_values: &[Value], is_move: bool,
+        &mut self, closure: ExprId, free_vars: &BTreeSet<NameId>, capability_values: &[Value], nested: bool,
     ) -> Value {
         assert!(!free_vars.is_empty() || !capability_values.is_empty());
 
+        let by_reference = !self.context().is_move_closure(closure);
         let mut values = mapvec(free_vars, |var| {
             let value = *self.local_variables.get(var).unwrap();
+            let has_slot = self.slot_locals.contains(var);
 
-            if is_move && self.mutable_locals.contains(var) {
-                // `move` closures capture mutable variables by value: dereference the
-                // StackAlloc pointer to load the current value into the environment.
-                let tc_type = &self.types.result.maps.name_types[var];
-                let val_type = self.convert_type(tc_type, None);
-                self.push_instruction(Instruction::Deref(value), val_type)
-            } else {
-                value
+            match (by_reference, has_slot) {
+                (true, true) | (false, false) => value,
+                // This only happens for variables bound without a pattern, such as a `for` loop variable,
+                // which won't have a slot yet. We give it one here, but the variable still owns the value
+                // since the closure only reads it.
+                (true, false) => self.push_instruction(Instruction::StackAlloc(value), Type::POINTER),
+                // Captured by value: load the variable's current value from its slot
+                (false, true) => {
+                    let tc_type = &self.types.result.maps.name_types[var];
+                    let val_type = self.convert_type(tc_type, None);
+                    self.push_instruction(Instruction::Deref(value), val_type)
+                },
             }
         });
+        if nested {
+            assert!(capability_values.is_empty(), "only a `handle` captures capabilities");
+            let mut values = values.into_iter().rev();
+            let last = values.next().expect("a closure captures at least one value");
+            return values.fold(last, |rest, value| self.make_tuple(vec![value, rest]));
+        }
         values.extend_from_slice(capability_values);
         self.make_tuple(values)
     }
@@ -1568,9 +1719,27 @@ where
     /// forwarded evidence to its value. Each unpacked capability is pushed onto `self.capabilities` in order.
     fn unpack_closure_environment(
         &mut self, free_vars: impl ExactSizeIterator<Item = NameId>, capabilities: &[(EffectKey, Value)],
-        forwarded_evidence: Option<&Type>, env_value: Value,
+        forwarded_evidence: Option<&Type>, env_value: Value, nested: bool,
     ) {
         let free_vars_len = free_vars.len();
+        if nested {
+            // See [Self::pack_closure_environment]
+            let mut rest = env_value;
+            for (i, var) in free_vars.enumerate() {
+                let value = if i + 1 == free_vars_len {
+                    rest
+                } else {
+                    let Type::Tuple(pair) = self.type_of_value(&rest) else { unreachable!() };
+                    let first =
+                        self.push_instruction(Instruction::IndexTuple { tuple: rest, index: 0 }, pair[0].clone());
+                    rest = self.push_instruction(Instruction::IndexTuple { tuple: rest, index: 1 }, pair[1].clone());
+                    first
+                };
+                let existing = self.local_variables.insert(var, value);
+                assert!(existing.is_none(), "Closure is overwriting values from the outer scope");
+            }
+            return;
+        }
         let Type::Tuple(env_fields) = self.type_of_value(&env_value) else { unreachable!() };
         let expected_len = free_vars_len + capabilities.len() + forwarded_evidence.is_some() as usize;
         assert_eq!(env_fields.len(), expected_len);
@@ -1660,24 +1829,32 @@ where
         Value::Unit
     }
 
-    fn break_(&mut self) -> Value {
+    fn break_(&mut self, expr: ExprId) -> Value {
         let exit = self.loop_targets.last().expect("`break` outside of a loop").1;
-        self.terminate_block(TerminatorInstruction::jmp_no_args(exit));
-        Value::Error
+        self.jump_after_drops(expr, exit)
     }
 
-    fn continue_(&mut self) -> Value {
+    fn continue_(&mut self, expr: ExprId) -> Value {
         let cont = self.loop_targets.last().expect("`continue` outside of a loop").0;
-        self.terminate_block(TerminatorInstruction::jmp_no_args(cont));
+        self.jump_after_drops(expr, cont)
+    }
+
+    /// Run the drops recorded before the jump `expr`, then jump to `target`
+    fn jump_after_drops(&mut self, expr: ExprId, target: BlockId) -> Value {
+        self.run_drops_at(DropSlot::BeforeJump(expr));
+        self.terminate_block(TerminatorInstruction::jmp_no_args(target));
         Value::Error
     }
 
     fn if_(&mut self, if_: &cst::If, expr: ExprId) -> Value {
         let condition = self.expression(if_.condition);
 
+        // Without an `else` we still may need to run drops on the implicit else branch, so we
+        // always create an else block and have both branches join after it
+        let otherwise = self.context().drops().get(DropSlot::Otherwise(expr));
         let then = self.push_block_no_params();
         let else_ = self.push_block_no_params();
-        let end = if if_.else_.is_some() { self.push_block_no_params() } else { else_ };
+        let end = if if_.else_.is_some() || !otherwise.is_empty() { self.push_block_no_params() } else { else_ };
         self.terminate_block(TerminatorInstruction::if_(condition, then, else_, end));
 
         self.switch_to_block(then);
@@ -1695,9 +1872,39 @@ where
             Value::Parameter(end, 0)
         } else {
             self.terminate_block(TerminatorInstruction::jmp_no_args(end));
+            if end != else_ {
+                self.switch_to_block(else_);
+                self.run_drops(otherwise);
+                self.terminate_block(TerminatorInstruction::jmp_no_args(end));
+            }
             self.switch_to_block(end);
             Value::Unit
         }
+    }
+
+    /// Compile a chain. Each [cst::Expr::Fallthrough] within `chain.body` jumps to `chain.else_`.
+    fn chain(&mut self, chain: &cst::Chain, expr: ExprId) -> Value {
+        let else_ = self.push_block_no_params();
+        let end = self.push_block_no_params();
+        let result_type = self.expr_type(expr);
+
+        self.chain_targets.push(else_);
+        let body_value = self.expression(chain.body);
+        self.chain_targets.pop();
+        self.terminate_block(TerminatorInstruction::jmp(end, body_value));
+
+        self.switch_to_block(else_);
+        let else_value = self.expression(chain.else_);
+        self.terminate_block(TerminatorInstruction::jmp(end, else_value));
+
+        self.switch_to_block(end);
+        self.push_parameter(result_type);
+        Value::Parameter(end, 0)
+    }
+
+    fn fallthrough(&mut self, expr: ExprId) -> Value {
+        let else_ = *self.chain_targets.last().expect("`Fallthrough` outside of a chain");
+        self.jump_after_drops(expr, else_)
     }
 
     fn match_(&mut self, expr: ExprId) -> Value {
@@ -2018,13 +2225,21 @@ where
 
         // Not addressable, likely a temporary, so stack-allocate it
         let value = self.expression(rhs);
-        self.push_instruction(Instruction::StackAlloc(value), Type::POINTER)
+        let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
+
+        // The temporary may be mutated through the reference, so we drop it from its slot
+        // rather than dropping the original value
+        if let Some(name) = self.context().drops().temporary(rhs) {
+            self.local_variables.insert(name, slot);
+            self.slot_locals.insert(name);
+        }
+        slot
     }
 
     /// True if `expr` denotes existing addressable storage
     fn is_addressable(&self, expr: ExprId) -> bool {
         match self.classify_lhs(expr) {
-            LhsKind::LocalVar(name) => self.mutable_locals.contains(&name),
+            LhsKind::LocalVar(name) => self.slot_locals.contains(&name),
             LhsKind::Annotation(inner) | LhsKind::FieldAccess(inner, _) => self.is_addressable(inner),
             LhsKind::DerefCall(_) | LhsKind::Other => false,
         }
@@ -2055,6 +2270,19 @@ where
         self.address_of(lhs)
     }
 
+    /// Follow each reference in `element` to find the innermost non-reference type, returning it
+    /// along with a pointer to it. This lets a field access on a reference to a reference reach
+    /// the fields of the innermost value.
+    fn innermost_referent(&mut self, mut element: TCType, mut pointer: Value) -> (TCType, Value) {
+        while let Some(inner) = element.follow(&self.types.bindings).reference_or_pointer_element(&self.types.bindings)
+        {
+            let inner = inner.clone();
+            pointer = self.push_instruction(Instruction::Deref(pointer), Type::POINTER);
+            element = inner;
+        }
+        (element, pointer)
+    }
+
     /// The address of the existing storage `expr` denotes. This never reads through a reference
     /// stored in `expr`, so for a `var` holding a reference it yields the variable's own slot.
     fn address_of(&mut self, expr: ExprId) -> Value {
@@ -2072,8 +2300,8 @@ where
                 let (struct_ptr, struct_type) = if let Some(inner) = self.shared_mut_inner_layout_of(struct_type) {
                     (struct_ptr, inner)
                 } else {
-                    let element = struct_type.reference_or_pointer_element(&self.types.bindings).cloned();
-                    let element = element.unwrap_or_else(|| struct_type.clone());
+                    let element = struct_type.reference_or_pointer_element(&self.types.bindings).unwrap_or(struct_type);
+                    let (element, struct_ptr) = self.innermost_referent(element.clone(), struct_ptr);
                     self.field_access_target(&element, struct_ptr)
                 };
                 self.field_pointer(struct_ptr, &struct_type, index)
@@ -2082,7 +2310,7 @@ where
         }
     }
 
-    fn assignment(&mut self, assignment: &cst::Assignment) -> Value {
+    fn assignment(&mut self, assignment: &cst::Assignment, expr: ExprId) -> Value {
         let pointer = self.lhs_as_pointer(assignment.lhs);
 
         let value = if let Some((_, op_expr)) = assignment.op {
@@ -2104,6 +2332,8 @@ where
             }
         };
 
+        // Drop the old value only after evaluating the new one since the new value may read it
+        self.run_drops_at(DropSlot::BeforeStore(expr));
         self.push_instruction(Instruction::Store { pointer, value }, Type::UNIT);
         Value::Unit
     }
@@ -2300,9 +2530,7 @@ where
         if parameter.is_mutable
             && let Some((_, name_id)) = self.try_find_name(parameter.pattern)
         {
-            let alloc = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
-            self.local_variables.insert(name_id, alloc);
-            self.mutable_locals.insert(name_id);
+            self.give_slot(name_id);
         }
     }
 
@@ -2332,8 +2560,9 @@ where
         unreachable!("Should never convert a Quoted expr to mir")
     }
 
-    fn return_(&mut self, returned_expression: ExprId) -> Value {
+    fn return_(&mut self, returned_expression: ExprId, expr: ExprId) -> Value {
         let value = self.expression(returned_expression);
+        self.run_drops_at(DropSlot::BeforeJump(expr));
         self.terminate_block(TerminatorInstruction::Return(value));
         // TODO: We'll need to try to filter these return blocks from
         // matches & ifs, and potentially check for instructions after returns.

@@ -1,0 +1,47 @@
+// The body and branches of a `handle` run as part of the function they are in, so a drop
+// within one may only perform the effects that function can
+import Std.Fail.Fail, fail
+
+type Noisy = id: I32
+
+impl drop_noisy: Drop Noisy Print with
+    drop noisy = println noisy.id
+
+quiet (): Unit is pure =
+    handle
+        _n = Noisy 1
+        ()
+    | fail () -> ()
+
+quiet_branch (f: once fn Unit => Unit can Fail): Unit is pure =
+    handle f ()
+    | fail () ->
+        _n = Noisy 2
+        ()
+
+loud (f: once fn Unit => Unit can Fail): Unit can Print =
+    handle f ()
+    | fail () ->
+        _n = Noisy 3
+        ()
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/drops/handle_effects.an:12:9
+// 11 |     handle
+//    |         // error: _n is dropped when it goes out of scope, but dropping a Noisy performs Print which this function cannot
+// 12 |         _n = Noisy 1
+//    |         ^^
+// 13 |         ()
+// 
+// examples/typechecking/drops/handle_effects.an:19:9
+// 18 |     | fail () ->
+//    |         // error: _n is dropped when it goes out of scope, but dropping a Noisy performs Print which this function cannot
+// 19 |         _n = Noisy 2
+//    |         ^^
+// 20 |         ()
+// 
+// Found 2 errors and 0 warnings
+

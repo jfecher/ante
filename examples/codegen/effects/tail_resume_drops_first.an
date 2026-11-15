@@ -1,0 +1,54 @@
+// What a handler branch still owns when it resumes last is dropped before resuming rather than
+// once the rest of the handled body has run, so the branch still resumes in tail position.
+type Loud = id: I32
+
+impl drop_loud: Drop Loud Print with
+    drop loud = println "drop ${loud.id}"
+
+effect Give =
+    give: fn Loud -> Unit
+
+giver (): Unit can Give, Print =
+    give (Loud 1)
+    println "between"
+    give (Loud 2)
+    println "end"
+
+/// Resumes last in one branch of an `if`, owning `loud` throughout
+watch (f: once fn Unit => Unit can Give, Print): Unit can Print =
+    handle f ()
+    | give loud ->
+        if loud.id > 5 then println "big"
+        else resume ()
+
+/// Resumes last in a `match` within a block which owns another value
+watch_with_extra (f: once fn Unit => Unit can Give, Print): Unit can Print =
+    handle f ()
+    | give loud ->
+        extra = Loud (loud.id + 10)
+        match loud.id
+        | 1 ->
+            println "one, also holding ${extra.id}"
+            resume ()
+        | _ -> resume ()
+
+main () =
+    print_to_stdout do
+    watch giver
+    println "--"
+    watch_with_extra giver
+
+// args: --delete-binary --no-color
+// expected stdout:
+// drop 1
+// between
+// drop 2
+// end
+// --
+// one, also holding 11
+// drop 11
+// drop 1
+// between
+// drop 12
+// drop 2
+// end
