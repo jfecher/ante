@@ -821,6 +821,9 @@ impl<'a> CstDisplay<'a> {
             return self.fmt_effects_clause(&function_type.effects, context, f);
         }
 
+        if function_type.once {
+            write!(f, "once ")?;
+        }
         write!(f, "fn")?;
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
@@ -857,7 +860,7 @@ impl<'a> CstDisplay<'a> {
         let hole_environment =
             matches!(function_type.environment.as_deref(), Some(env) if matches!(env.kind, TypeKind::RigidHole));
         let has_effects = function_type.effects.as_ref().is_some_and(|effects| !effects.is_empty());
-        unit_parameter && hole_environment && has_effects
+        unit_parameter && hole_environment && has_effects && function_type.once
     }
 
     fn fmt_effects_clause(
@@ -902,6 +905,7 @@ impl<'a> CstDisplay<'a> {
             Expr::While(while_) => self.fmt_while(while_, context, f),
             Expr::For(for_) => self.fmt_for(for_, context, f),
             Expr::Break => write!(f, "break"),
+            Expr::Chain(_) | Expr::Fallthrough => unreachable!("only created by desugaring"),
             Expr::Continue => write!(f, "continue"),
             Expr::Return(return_) => {
                 write!(f, "return ")?;

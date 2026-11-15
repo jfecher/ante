@@ -1,0 +1,21 @@
+// A `fn` which is not a variable is given where a `once fn` is expected by evaluating it once,
+// then wrapping it in a `once fn` which calls and drops it.
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop (r: R) = println "drop ${r.x}"
+
+call_once (f: once fn Unit => Unit can e): Unit can e = f ()
+
+make (r: R) = move fn () -> println "show ${r.x}"
+
+main () = print_to_stdout do
+    call_once (make (R 1))
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// show 1
+// drop 1
+// end
+

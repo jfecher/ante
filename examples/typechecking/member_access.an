@@ -48,6 +48,20 @@ main () =
 //     ()
 
 // expected stderr:
+// examples/typechecking/member_access.an:7:13
+//   | // error: a goes out of scope without being moved, but its type _ does not implement Drop
+//   | // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+// 7 | foo_and_bar a b =
+//   |             ^
+// 8 |     a.foo
+// 
+// examples/typechecking/member_access.an:7:15
+//   | // error: b goes out of scope without being moved, but its type _ does not implement Drop
+//   | // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+// 7 | foo_and_bar a b =
+//   |               ^
+// 8 |     a.foo
+// 
 // examples/typechecking/member_access.an:8:6
 //  7 | foo_and_bar a b =
 //  8 |     a.foo	// error: Object type must be known by this point to access its field
@@ -59,5 +73,5 @@ main () =
 //  9 |     stringify b.bar	// error: Object type must be known by this point to access its field
 //    |                ^^^^
 // 
-// Found 2 errors and 0 warnings
+// Found 4 errors and 0 warnings
 

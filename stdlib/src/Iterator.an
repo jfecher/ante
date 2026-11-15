@@ -1,7 +1,7 @@
 trait Iterator it elem (effects: effect) =
     next: fn it -> Maybe (it, elem) can effects
 
-iterate (iterable: it) f {i: Iterator it elem effects} =
+iterate (iterable: it) (f: fn elem [env] -> Unit can e) {i: Iterator it elem effects} {Drop env e}: Unit can effects, e =
     match i.next iterable
     | None -> ()
     | Some (rest, elem) ->
@@ -9,6 +9,8 @@ iterate (iterable: it) f {i: Iterator it elem effects} =
         iterate rest f
 
 type Range t = start: t, end: t
+
+impl copy_range {Copy t}: Copy (Range t) with (.*) = deref
 
 impl iterator_range: Iterator (Range Usz) Usz pure with
     next range =
@@ -18,10 +20,10 @@ impl iterator_range: Iterator (Range Usz) Usz pure with
             next = Range (range.start + 1) range.end
             Some (next, range.start)
 
-iterate_range (from: Usz) (to: Usz) (f: fn Usz => Unit): Unit =
+iterate_range (from: Usz) (to: Usz) (f: fn Usz [env] -> Unit can e) {Drop env e}: Unit can e =
     iterate (Range from to) f
 
-repeat (count: Usz) (f: fn Usz => Unit): Unit =
+repeat (count: Usz) (f: fn Usz [env] -> Unit can e) {Drop env e}: Unit can e =
     var i = 0
     while i < count do
         f i

@@ -100,6 +100,18 @@ where
             "Truncate" => push_1arg_ins(self, Instruction::Truncate),
 
             "Deref" => push_1arg_ins(self, Instruction::Deref),
+            "Write" => {
+                assert_eq!(args.len(), 2);
+                let pointer = self.expression(args[0].expr);
+                let value = self.expression(args[1].expr);
+                self.push_instruction(Instruction::Store { pointer, value }, super::Type::UNIT);
+                Value::Unit
+            },
+            "Forget" => {
+                assert_eq!(args.len(), 1);
+                self.expression(args[0].expr);
+                Value::Unit
+            },
             "Transmute" => push_1arg_ins(self, Instruction::Transmute),
 
             "SizeOf" => {

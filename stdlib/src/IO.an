@@ -1,8 +1,8 @@
-import Std.C.fclose, fopen, fwrite, fgetc, fread, ungetc, feof, ferror, malloc, realloc, free, getchar, copy_file
+import Std.C.fclose, fopen, fwrite, fgetc, fread, ungetc, feof, ferror, malloc, realloc, free, getchar, copy_file, copy_cstring
 import Std.C
 import Std.Fail.Fail, fail, fail_if
-import Std.Stream.iter, stream_fn, foldl
-import Std.Mem.transmute, null, array_insert, offset
+import Std.Stream.iter, stream_fn, stream_once_fn, foldl
+import Std.Mem.transmute, null, array_insert, offset, forget
 import Std.String.is_valid_utf8_bytes
 import Std.Iterator.Iterator
 
@@ -16,12 +16,16 @@ type File = c_file: C.File
 ///
 /// This function is temporary, mode will eventually become a union, and `path` a proper path type.
 File.open (path: String) (mode: String): File can Fs, Fail =
-    c_file = fopen (C.String.new path) (C.String.new mode)
+    c_path = C.String.new path
+    c_mode = C.String.new mode
+    c_file = fopen c_path c_mode
+    free c_path.ptr
+    free c_mode.ptr
     fail_if (c_file.f == null ())
     File c_file
 
 File.close (file: File): Unit can Fs =
-    fclose file.c_file
+    drop file
 
 impl drop_file: Drop File Fs with
     drop f =
@@ -117,14 +121,20 @@ read_file (path: String): String can Fs, Fail =
     bytes = read_file_bytes path
     fail_if (bytes.len > 0xFFFF_FFFF)
     fail_if (not is_valid_utf8_bytes bytes.data bytes.len)
-    String.from_parts (transmute bytes.data) (U32 bytes.len)
+    string = String.from_parts (transmute bytes.data) (U32 bytes.len)
+    // The Vec's buffer now belongs to the String
+    forget bytes
+    string
 
 create_dir_: fn C.String -> I32 can Fs = extern "ante_create_dir"
 
 /// Create the directory at `path`.
 /// Fails if it cannot be created, unless a directory already exists there.
 create_dir (path: String): Unit can Fs, Fail =
-    fail_if <| create_dir_ (C.String.new path) != 0
+    c_path = C.String.new path
+    result = create_dir_ c_path
+    free c_path.ptr
+    fail_if (result != 0)
 
 /// Create each directory in `path` along with any missing parent directories.
 /// Fails if any of them cannot be created.

@@ -37,6 +37,12 @@ main () =
     pr.n := 3
     println plain.n
 
+impl drop_plain: Drop Plain pure with
+    drop _ = ()
+
+impl drop_q: Drop (Q 'a) pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 0

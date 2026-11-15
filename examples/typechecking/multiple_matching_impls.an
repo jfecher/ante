@@ -16,6 +16,9 @@ impl candidate1: Foo Thing with
 impl candidate2: Foo Thing with
     foo _ = ()
 
+impl drop_thing: Drop Thing pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected exit status: 1
 // expected stderr:

@@ -4,7 +4,7 @@ import Std.Stream.Emit, emit
 import Std.Fail.Fail, fail, try
 import Std.C.VoidPtr
 
-foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
+foldr (gen: once fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b [env] -> b can e) {Drop env e}: b can e =
     handle
         gen ()
         initial

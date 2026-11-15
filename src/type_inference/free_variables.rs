@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
+    iterator_extensions::mapvec,
     name_resolution::Origin,
     parser::{
         cst,
@@ -21,8 +22,14 @@ impl TypeChecker<'_, '_> {
     /// within the lambda. This will unify the given `expected_environment_type` with the actual
     /// environment type found but will not actually perform closure conversion. Closure conversion
     /// is instead done while building the initial `Mir`.
+    ///
+    /// `pending` holds implicits that can only be found once this environment is decided, such as
+    /// an impl for the lambda itself, along with the local implicits visible to each. Since an
+    /// implicit requested within the lambda may resolve to any of those locals, the lambda captures
+    /// them all.
     pub(super) fn check_for_closure(
         &mut self, id: ExprId, expected_environment_type: &Type, self_name: Option<NameId>, is_move: bool,
+        pending: &[PendingImplicit],
     ) {
         let mut context = self.lambda_free_vars_context(id);
         if let Some(name) = self_name {
@@ -30,8 +37,22 @@ impl TypeChecker<'_, '_> {
         }
         context.find_free_variables(id, self);
 
-        let env_type = make_env_type_with_names(&context.free_vars, self, is_move);
-        self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
+        for implicit in pending {
+            if context.exprs.contains(&implicit.source) {
+                for name in &implicit.implicits_in_scope {
+                    context.check_name(*name);
+                }
+            }
+        }
+
+        self.capture_drop_impls(&mut context, is_move);
+
+        // The body or a branch of a `handle` may need to capture more once it is borrow checked, so
+        // we leave its environment to [Self::bind_handle_environment]
+        if !self.item.handle_lambdas.contains(&id) {
+            let env_type = self.environment_type(id, &context.free_vars, is_move);
+            self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
+        }
 
         if !context.free_vars.is_empty() {
             if is_move {
@@ -41,11 +62,87 @@ impl TypeChecker<'_, '_> {
         }
     }
 
+    /// Returns the environment type of the lambda `id` capturing `free_vars`. A `move` closure
+    /// captures everything by value. Other closures capture a `var` by mutable reference and
+    /// everything else by shared reference regardless of type, so that the variable still owns its
+    /// value.
+    ///
+    /// A name captured by reference has the same type inside the closure as outside of it since
+    /// each use reads the value through the reference.
+    fn environment_type(&mut self, id: ExprId, free_vars: &BTreeSet<NameId>, is_move: bool) -> Type {
+        let captures = mapvec(free_vars, |name| {
+            let typ = self.name_types[name].clone();
+            if is_move {
+                return typ;
+            }
+            let kind = match self.item.mutable_definitions.contains(name) {
+                true => cst::ReferenceKind::Mut,
+                false => cst::ReferenceKind::Ref,
+            };
+            let place = self.open_place(self.binding_place(*name));
+            self.reference_type(kind, place, typ)
+        });
+
+        // The body and branches of a `handle` run in place so they are never copied or dropped
+        if self.item.handle_lambdas.contains(&id) {
+            return make_env_type(captures.into_iter());
+        }
+        self.closure_environment_type(captures)
+    }
+
+    /// Returns the environment type of a closure capturing values of the types `captures`. This is
+    /// either the only capture or a pair of the first capture and the environment of the rest. This
+    /// way a closure is `Copy` if its environment has a `Copy` impl, and is dropped by its
+    /// environment's `Drop` impl.
+    fn closure_environment_type(&self, captures: Vec<Type>) -> Type {
+        let mut captures = captures.into_iter().rev();
+        let Some(last) = captures.next() else { return Type::NO_CLOSURE_ENV };
+        let pair = Shared::new(Type::UserDefined(Origin::TopLevelDefinition(self.pair_type())));
+        captures.fold(last, |rest, capture| Type::Application(pair.clone(), Shared::new(vec![capture, rest])))
+    }
+
+    /// Capture each local `drop` refers to in the lambda `id`, which is the lambda, `handle` body,
+    /// or `handle` branch that `drop` was inserted into
+    pub(super) fn capture_for_drop(&mut self, id: ExprId, drop: ExprId) {
+        let mut used = FreeVars::default();
+        used.find_free_variables(drop, self);
+        let context = self.current_extended_context();
+        let mut free_vars = context.get_closure_environment(id).cloned().unwrap_or_default();
+        // Temporaries read by a drop are bound where the drop runs, inside the lambda
+        free_vars.extend(used.free_vars.into_iter().filter(|name| !context.drops().names_temporary(*name)));
+        self.current_extended_context_mut().insert_closure_environment(id, free_vars);
+    }
+
+    /// Decide the environment of the lambda `id` (or `handle` body or branch) now that everything
+    /// it captures is known
+    pub(super) fn bind_handle_environment(&mut self, id: ExprId) {
+        let context = self.current_extended_context();
+        let free_vars = context.get_closure_environment(id).cloned().unwrap_or_default();
+        let is_move = context.is_move_closure(id);
+        let Some(Type::Function(function)) = self.expr_types.get(&id).cloned() else { return };
+        let env_type = self.environment_type(id, &free_vars, is_move);
+        self.unify(&env_type, &function.environment, TypeErrorKind::ClosureEnv, id);
+    }
+
+    /// True if `typ` is the type of a number literal that hasn't been resolved to a number type yet
+    pub(super) fn is_unresolved_literal(&self, typ: &Type) -> bool {
+        match self.follow_type(typ) {
+            Type::Variable(id) => self.is_integer_type_variable(*id) || self.is_float_type_variable(*id),
+            _ => false,
+        }
+    }
+
+    /// True if `lambda` is a method of the impl being checked. These read the impl's parameters
+    /// from its data rather than capturing them.
+    pub(super) fn is_impl_method(&self, lambda: ExprId) -> bool {
+        self.item.impl_.as_ref().is_some_and(|impl_| impl_.methods.contains(&lambda))
+    }
+
     /// An empty [FreeVars] context for finding the free variables of the lambda `id`. An impl's
     /// method reads the impl's parameters from the impl's data instead of capturing them.
     pub(super) fn lambda_free_vars_context(&self, id: ExprId) -> FreeVars {
         let mut context = FreeVars::default();
-        if self.item.impl_.as_ref().is_some_and(|impl_| impl_.methods.contains(&id)) {
+        if self.is_impl_method(id) {
             for parameter in self.current_impl_parameters() {
                 context.declare_pattern(parameter.pattern, self);
             }
@@ -62,6 +159,15 @@ impl TypeChecker<'_, '_> {
     }
 }
 
+/// An implicit that can't be found until a lambda's environment is decided. See
+/// [TypeChecker::check_for_closure]
+pub(super) struct PendingImplicit {
+    /// The expression requesting the implicit
+    pub(super) source: ExprId,
+    /// The local implicits in scope where it is requested
+    pub(super) implicits_in_scope: Vec<NameId>,
+}
+
 #[derive(Default)]
 pub(super) struct FreeVars {
     /// The free variables found
@@ -72,10 +178,14 @@ pub(super) struct FreeVars {
 
     // We don't care about different scopes within the function
     pub(super) defined_in_fn: FxHashSet<NameId>,
+
+    /// Every expression searched
+    pub(super) exprs: Vec<ExprId>,
 }
 
 impl FreeVars {
     pub(super) fn find_free_variables(&mut self, expr: ExprId, checker: &TypeChecker) {
+        self.exprs.push(expr);
         match &checker.current_extended_context()[expr] {
             cst::Expr::Error => (),
             cst::Expr::Literal(_) => (),
@@ -117,6 +227,11 @@ impl FreeVars {
                     self.find_free_variables(*branch, checker);
                 }
             },
+            cst::Expr::Chain(chain) => {
+                self.find_free_variables(chain.body, checker);
+                self.find_free_variables(chain.else_, checker);
+            },
+            cst::Expr::Fallthrough => (),
             cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             cst::Expr::Handle(handle) => {
@@ -218,31 +333,13 @@ impl FreeVars {
     }
 
     /// Returns true if `name` is free
-    fn check_name(&mut self, name: NameId) -> bool {
+    pub(super) fn check_name(&mut self, name: NameId) -> bool {
         let free = !self.defined_in_fn.contains(&name);
         if free {
             self.free_vars.insert(name);
         }
         free
     }
-}
-
-fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker, is_move: bool) -> Type {
-    let free_vars = free_vars.iter().map(|name| {
-        let typ = checker.name_types[name].clone();
-
-        // Closures:
-        // - Capture mutable variables by reference (so we wrap in a Mut ref here)
-        // - Capture immutable variables by value (FIXME)
-        // - Capture everything by move if it is a `move` closure
-        if !is_move && checker.item.mutable_definitions.contains(name) {
-            let place = checker.open_place(checker.binding_place(*name));
-            checker.reference_type(cst::ReferenceKind::Mut, place, typ)
-        } else {
-            typ
-        }
-    });
-    make_env_type(free_vars)
 }
 
 fn make_env_type(free_vars: impl ExactSizeIterator<Item = Type>) -> Type {

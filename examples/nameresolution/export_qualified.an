@@ -7,6 +7,9 @@ Box.get (b: Box) = b.val
 
 main () = ()
 
+impl drop_box: Drop Box pure with
+    drop _ = ()
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:

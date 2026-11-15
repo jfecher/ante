@@ -124,7 +124,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         if !item.generics.is_empty() {
             if instantiate {
-                let fresh_vars = mapvec(&item.generics, |_| self.next_type_variable());
+                let fresh_vars = self.fresh_arguments(&data_type, 0..item.generics.len());
                 substitutions = Self::datatype_generic_substitutions(item, &fresh_vars);
                 data_type = Type::Application(Shared::new(data_type), Shared::new(fresh_vars));
             } else {
@@ -157,11 +157,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Effects are closed by default here which stops `can` clauses from being polymorphic by default.
         mapvec(variant_args, |(_, arg)| {
             let param = self.from_cst_type_in_type_definition(arg, insert_implicit_type_vars, local_kinds);
-            if item.kind.is_trait() {
-                self.without_method_environment(arg, param)
-            } else {
-                param
-            }
+            if item.kind.is_trait() { self.without_method_environment(arg, param) } else { param }
         })
     }
 
@@ -184,6 +180,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if !parameters.is_empty() {
             let parameters = mapvec(parameters, types::ParameterType::explicit);
             result = Type::Function(Shared::new(types::FunctionType {
+                once: Type::MANY,
                 parameters,
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: result,
@@ -192,7 +189,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         if !generics.is_empty() {
-            result = Type::Forall(Shared::new(generics.to_vec()), Shared::new(result));
+            result = Type::forall(generics.to_vec(), result, self.compiler);
         }
 
         // Converting the parameters with effects closed is normally enough to keep types closed,
@@ -221,9 +218,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         let mut combined = Vec::with_capacity(existing.len() + inferred.len());
                         combined.extend(existing.iter().copied());
                         combined.extend(inferred);
-                        Type::Forall(Shared::new(combined), body)
+                        Type::forall(combined, Shared::unwrap_or_clone(body), self.compiler)
                     },
-                    other => Type::Forall(Shared::new(inferred), Shared::new(other)),
+                    other => Type::forall(inferred, other, self.compiler),
                 };
             }
         }

@@ -1,0 +1,64 @@
+// A value which is never bound to a name is dropped at the end of the statement it is in
+type Tag = id: U32
+
+impl drop_tag: Drop Tag Print with
+    drop tag =
+        print "drop "
+        println tag.id
+
+type Two = first: Tag, second: Tag
+
+impl drop_two: Drop Two Print with
+    drop _ = ()
+
+make (id: U32): Tag = Tag id
+
+show (tag: ref Tag): Unit can Print =
+    print "show "
+    println tag.id
+
+keep (tag: Tag): Unit can Print =
+    print "keep "
+    println tag.id
+
+main () =
+    print_to_stdout do
+    // A statement whose value is unused
+    make 1
+    println "after statement"
+
+    // The operand of a reference, here one made to pass an argument by reference
+    show (make 2)
+    println "after reference"
+
+    // A value only part of which is used
+    keep (Two (make 3) (make 4)).first
+    println "after field"
+
+    // A value matched on without binding any of it
+    if (Some (make 5) : Maybe Tag) is Some _ then println "some"
+    println "after match"
+
+    // A temporary a definition borrows lives as long as the definition's name
+    borrowed = ref make 6
+    show borrowed
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// drop 1
+// after statement
+// show 2
+// drop 2
+// after reference
+// keep 3
+// drop 3
+// drop 4
+// after field
+// some
+// drop 5
+// after match
+// show 6
+// end
+// drop 6
+

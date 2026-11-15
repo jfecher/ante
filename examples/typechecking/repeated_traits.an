@@ -1,6 +1,7 @@
 foo a =
     print a
     print a
+    Std.Mem.forget a
 
 // args: -e ast-t --no-color
 // expected exit status: 1
@@ -8,7 +9,7 @@ foo a =
 // (foo: fn _ -> Unit can Print) (a: _) =
 //     (error).print (ref (a: _))
 //     (error).print (ref (a: _))
-
+//     (Std.Mem.forget: fn _ -> Unit is pure) (a: _)
 
 // expected stderr:
 // examples/typechecking/repeated_traits.an:2:5
@@ -23,6 +24,7 @@ foo a =
 //   |     // error: Ambiguous implicit of type Display _ _ required by print, type annotation required
 // 3 |     print a
 //   |     ^^^^^
+// 4 |     Std.Mem.forget a
 // 
 // Found 2 errors and 0 warnings
 

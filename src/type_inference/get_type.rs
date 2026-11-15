@@ -32,7 +32,7 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
         TopLevelItemKind::Definition(definition) => {
             let resolve = Resolve(context.0.top_level_item).get(compiler);
             try_get_generalized_type(definition, item_context.as_ref(), &resolve, compiler)
-                .map(|t| t.generalize(&TypeBindings::default()))
+                .map(|t| t.generalize(&TypeBindings::default(), compiler))
                 .unwrap_or_else(|| {
                     let check = TypeCheck(context.0.top_level_item).get(compiler);
                     check.get_generalized(context.0.local_name_id)
@@ -346,7 +346,7 @@ fn lambda_signature(
     };
 
     let environment = missing.map(Box::new);
-    Some(cst::FunctionType { parameters, environment, return_type: Box::new(return_type), effects })
+    Some(cst::FunctionType { once: false, parameters, environment, return_type: Box::new(return_type), effects })
 }
 
 fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
@@ -373,7 +373,7 @@ pub fn try_get_seeded_and_declared_type(
     next_id: &mut u32,
 ) -> Option<(Type, Type)> {
     let declared = try_get_generalized_type(definition, context, resolve, compiler)?;
-    let declared = declared.generalize(&TypeBindings::default());
+    let declared = declared.generalize(&TypeBindings::default(), compiler);
     let (seeded, declared) = declared.open_inferred_generics(next_id);
     Some((seeded, declared))
 }

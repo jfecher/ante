@@ -44,6 +44,14 @@ impl extract_array: Extract (ref 'a Array n t) Usz (ref 'a t) Panic with
 impl insert_array: Insert (mut 'a Array n t) Usz t (Panic & Mutate 'a) with
     (.[]:=) arr index value = array_set arr index value
 
+impl copy_array {Copy t}: Copy (Array n t) with
+    (.*) = deref
+
+impl drop_array {Drop t e}: Drop (Array n t) e with
+    drop array =
+        for i in 0 .. array_len array do
+            drop (deref (array_get_unchecked array i))
+
 impl cmp_array {Cmp t}: Cmp (Array n t) with
     (<) l r =
         for i in 0 .. array_len l do

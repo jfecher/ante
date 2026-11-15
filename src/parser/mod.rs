@@ -1081,6 +1081,8 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// type: pair_type ('can' effect_list)?
+    ///
+    /// `a can e` is short for `once fn Unit => a can e`
     fn parse_type(&mut self) -> Result<Type> {
         let typ = self.parse_pair_type()?;
 
@@ -1093,7 +1095,8 @@ impl<'tokens> Parser<'tokens> {
         let parameters = vec![ParameterType::explicit(Type::new(TypeKind::Unit, typ.location.clone()))];
         let environment = Some(Box::new(Type::new(TypeKind::RigidHole, typ.location.clone())));
         let return_type = Box::new(typ);
-        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
+        let function = cst::FunctionType { once: true, parameters, environment, return_type, effects };
+        Ok(Type::new(TypeKind::Function(function), location))
     }
 
     fn parse_reference_type(&mut self) -> Result<Type> {
@@ -1208,6 +1211,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_function_type(&mut self) -> Result<Type> {
         let start = self.current_token_location();
 
+        let once = self.accept(Token::Once);
         self.expect(Token::Fn, "`fn` to start this function type")?;
 
         let mut parameters = self.many0(Self::parse_parameter_type);
@@ -1234,7 +1238,8 @@ impl<'tokens> Parser<'tokens> {
         let effects = self.parse_effects_clause()?;
         let location = start.to(&self.previous_token_location());
 
-        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
+        let function = cst::FunctionType { once, parameters, environment, return_type, effects };
+        Ok(Type::new(TypeKind::Function(function), location))
     }
 
     /// effects_clause: 'is' 'pure' | 'can' effect_list
@@ -1288,7 +1293,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_type_no_pair(&mut self) -> Result<Type> {
         match self.current_token() {
-            Token::Fn => self.parse_function_type(),
+            Token::Fn | Token::Once => self.parse_function_type(),
             Token::Ref | Token::Mut | Token::Read => self.parse_reference_type(),
             Token::Forall => self.parse_forall_type(),
             _ => self.parse_effect_union_type(),

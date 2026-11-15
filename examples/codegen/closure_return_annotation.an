@@ -1,6 +1,6 @@
 // A `=>` return type's environment is inferred from the body, not left for each caller to choose
-wrap (x: a): fn Unit => (a, I32) = fn () -> (x, 7)
-outer (x: a) (y: a): fn Unit => ((a, a), I32) = wrap (x, y)
+wrap (x: a) {Copy a}: fn Unit => (a, I32) = move fn () -> (x, 7)
+outer (x: a) (y: a) {Copy a}: fn Unit => ((a, a), I32) = wrap (x, y)
 
 main () =
     print_to_stdout do

@@ -18,7 +18,7 @@ body (): I64 can Ask, Log, Count =
     log s2
     a + b
 
-with_count (f: fn Unit => I64 can Ask, Log, Count): (I64, I64) can Ask, Log =
+with_count (f: once fn Unit => I64 can Ask, Log, Count): (I64, I64) can Ask, Log =
     var counted = 0
     result = handle f ()
     | count () ->
@@ -27,14 +27,14 @@ with_count (f: fn Unit => I64 can Ask, Log, Count): (I64, I64) can Ask, Log =
         r
     result, counted
 
-with_log (f: fn Unit => (I64, I64) can Ask, Log): (I64, I64) can Ask, Print =
+with_log (f: once fn Unit => (I64, I64) can Ask, Log): (I64, I64) can Ask, Print =
     handle f ()
     | log message ->
         r = resume ()
         println "logged ${message}"
         r
 
-with_ask (f: fn Unit => (I64, I64) can Ask, Print): (I64, I64) can Print =
+with_ask (f: once fn Unit => (I64, I64) can Ask, Print): (I64, I64) can Print =
     handle f ()
     | ask x s y ->
         r = resume (x * y, s ++ "!")

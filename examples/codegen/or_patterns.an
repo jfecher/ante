@@ -65,6 +65,9 @@ main () =
     println (all_in_one_case (Two 22 99))
     println (all_in_one_case (Three 33))
 
+impl drop_shape: Drop Shape pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // point

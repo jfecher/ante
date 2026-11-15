@@ -30,6 +30,13 @@ mod unimplemented_item;
 pub use location::*;
 pub use unimplemented_item::*;
 
+/// Where an unmovable value lives. Values behind a reference or in a global cannot be moved out of.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum UnownedHolder {
+    Reference,
+    Global,
+}
+
 /// Any diagnostic that the compiler can issue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
@@ -273,6 +280,33 @@ pub enum Diagnostic {
     MoveInRepeatedContext {
         name: String,
         context: RepeatedContext,
+        location: Location,
+    },
+    MoveOutOfReferenceCapture {
+        name: String,
+        location: Location,
+    },
+    MoveOutOfFn {
+        name: String,
+        location: Location,
+    },
+    CallOfUnownedOnceFn {
+        holder: UnownedHolder,
+        location: Location,
+    },
+    MissingDrop {
+        name: String,
+        typ: String,
+        /// True if the value is a function. Dropping a function drops its environment.
+        is_function: bool,
+        location: Location,
+        /// `Drop` impls for this type that exist but aren't imported
+        suggestions: Vec<ImportSuggestion>,
+    },
+    DropEffectNotAllowed {
+        name: String,
+        typ: String,
+        effects: String,
         location: Location,
     },
     ReferenceToMovedValue {
@@ -777,6 +811,44 @@ impl Diagnostic {
                     context.description()
                 )
             },
+            Diagnostic::MoveOutOfReferenceCapture { name, location: _ } => {
+                format!(
+                    "Cannot move {} because this closure captures it by reference. Use a {} to capture it by value",
+                    color_name(name),
+                    color_keyword("move fn")
+                )
+            },
+            Diagnostic::MoveOutOfFn { name, location: _ } => {
+                format!(
+                    "Cannot move {} out of this closure because it is used as a {}, which may be called more than once. Only a {} may move what it captures",
+                    color_name(name),
+                    color_keyword("fn"),
+                    color_keyword("once fn")
+                )
+            },
+            Diagnostic::CallOfUnownedOnceFn { holder, location: _ } => {
+                let holder = match holder {
+                    UnownedHolder::Reference => "it is behind a reference",
+                    UnownedHolder::Global => "it is a global",
+                };
+                format!("Calling a {} moves it, but {holder} so it cannot be moved", color_keyword("once fn"))
+            },
+            Diagnostic::MissingDrop { name, typ, location: _, suggestions: _, is_function: _ } => {
+                format!(
+                    "{} goes out of scope without being moved, but its type {} does not implement {}",
+                    color_name(name),
+                    color_type(typ),
+                    color_type("Drop")
+                )
+            },
+            Diagnostic::DropEffectNotAllowed { name, typ, effects, location: _ } => {
+                format!(
+                    "{} is dropped when it goes out of scope, but dropping a {} performs {} which this function cannot",
+                    color_name(name),
+                    color_type(typ),
+                    color_type(effects)
+                )
+            },
             Diagnostic::ReferenceToMovedValue { name, location: _, moved_in: _ } => {
                 format!("This reference may refer to {} which has already been moved", color_name(name))
             },
@@ -969,6 +1041,11 @@ impl Diagnostic {
             | Diagnostic::NotAType { location, .. }
             | Diagnostic::UseOfMovedValue { location, .. }
             | Diagnostic::MoveInRepeatedContext { location, .. }
+            | Diagnostic::MoveOutOfReferenceCapture { location, .. }
+            | Diagnostic::MoveOutOfFn { location, .. }
+            | Diagnostic::CallOfUnownedOnceFn { location, .. }
+            | Diagnostic::MissingDrop { location, .. }
+            | Diagnostic::DropEffectNotAllowed { location, .. }
             | Diagnostic::ReferenceToMovedValue { location, .. }
             | Diagnostic::UseOfInvalidatedReference { location, .. }
             | Diagnostic::InvalidatedInRepeatedContext { location, .. }
@@ -1006,6 +1083,18 @@ impl Diagnostic {
             | Diagnostic::ReferenceToMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))
+            },
+            Diagnostic::MissingDrop { suggestions, .. } if !suggestions.is_empty() => {
+                let impl_ = color_name(&suggestions[0].qualified_path);
+                Some((&suggestions[0].location, format!("did you mean to import {impl_}?")))
+            },
+            Diagnostic::MissingDrop { location, is_function: true, .. } => {
+                let message = "A function is dropped by dropping what it captured. Name its environment and add a `Drop` constraint for it as in `(f: fn a [env] -> b) {Drop env e}`, or make it a `once fn` if it is called exactly once";
+                Some((location, message.to_string()))
+            },
+            Diagnostic::MissingDrop { location, .. } => {
+                let message = "Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`";
+                Some((location, message.to_string()))
             },
             Diagnostic::UseOfInvalidatedReference { name, location: _, invalidated_at }
             | Diagnostic::InvalidatedInRepeatedContext { name, location: _, invalidated_at, .. } => {

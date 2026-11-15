@@ -1,58 +1,60 @@
-import Std.Stream.foldl, stream_fn
-import Std.Mem.transmute
+import Std.Mem.transmute, offset, deref_ptr
 import Std.Bitwise.bxor, shr, bitwise_u64
 
 trait Hash t =
-    hash: fn t -> U64
+    hash: fn (ref t) -> U64
 
 /// FNV-1a 64-bit with an offset basis of 14695981039346656037 (0xcbf29ce484222325),
 /// and prime of 1099511628211 (0x100000001b3).
 impl hash_string: Hash String with
     hash s =
-        foldl (s.bytes ()) 14695981039346656037 fn acc c ->
-            bxor acc (U64 c) * 1099511628211
+        var hash = 14695981039346656037u64
+        for i in 0 .. Usz s.length do
+            byte: Char = deref_ptr (offset s.data i)
+            hash := bxor hash (U64 byte) * 1099511628211
+        hash
 
 impl hash_u64: Hash U64 with
-    hash x = x
+    hash x = x.*
 
 impl hash_u8: Hash U8 with
-    hash x = cast x
+    hash x = cast x.*
 
 impl hash_u16: Hash U16 with
-    hash x = cast x
+    hash x = cast x.*
 
 impl hash_u32: Hash U32 with
-    hash x = cast x
+    hash x = cast x.*
 
 impl hash_usz: Hash Usz with
-    hash x = cast x
+    hash x = cast x.*
 
 impl hash_i8: Hash I8 with
-    hash (x: I8) = cast (transmute x : U8)
+    hash x = cast (transmute x.* : U8)
 
 impl hash_i16: Hash I16 with
-    hash (x: I16) = cast (transmute x : U16)
+    hash x = cast (transmute x.* : U16)
 
 impl hash_i32: Hash I32 with
-    hash (x: I32) = cast (transmute x : U32)
+    hash x = cast (transmute x.* : U32)
 
 impl hash_i64: Hash I64 with
-    hash (x: I64) = transmute x
+    hash x = transmute x.*
 
 impl hash_isz: Hash Isz with
-    hash (x: Isz) = cast (transmute x : Usz)
+    hash x = cast (transmute x.* : Usz)
 
 impl hash_f32: Hash F32 with
-    hash (x: F32) = cast (transmute x : U32)
+    hash x = cast (transmute x.* : U32)
 
 impl hash_f64: Hash F64 with
-    hash (x: F64) = transmute x
+    hash x = transmute x.*
 
 impl hash_bool: Hash Bool with
-    hash b = if b then 1 else 0
+    hash b = if b.* then 1 else 0
 
 impl hash_char: Hash Char with
-    hash (c: Char) = U64 c
+    hash c = U64 c.*
 
 /// Combine two hashes to form a new one. This is order-sensitive so (a, b) and
 /// (b, a) hash differently. Uses a mixing constant of 2^64 / phi.

@@ -1,0 +1,68 @@
+import Std.Mem.forget
+
+// Once a `drop` impl returns, each field it did not move out is dropped in turn.
+// A value which was only partially moved has its remaining fields dropped
+// instead, without running its own `drop`.
+type Tag = id: U32
+
+impl drop_tag: Drop Tag Print with
+    drop tag =
+        print "drop "
+        println tag.id
+
+type Two = first: Tag, second: Tag
+
+impl drop_two: Drop Two Print with
+    drop _ = println "drop two"
+
+type Shape =
+    | Dot
+    | Line Tag Tag
+
+impl drop_shape: Drop Shape Print with
+    drop _ = println "drop shape"
+
+// This impl takes care of one field itself
+type Kept = kept: Tag, dropped: Tag
+
+impl drop_kept: Drop Kept Print with
+    drop value =
+        println "drop kept"
+        forget value.kept
+
+keep (tag: Tag): Unit can Print =
+    print "keep "
+    println tag.id
+
+main () =
+    print_to_stdout do
+    _whole = Two (Tag 1) (Tag 2)
+    partial = Two (Tag 3) (Tag 4)
+    keep partial.first
+
+    _dot = Shape.Dot
+    _line = Shape.Line (Tag 5) (Tag 6)
+    _pair = (Tag 7, Tag 8)
+    _maybe = Maybe.Some (Tag 9)
+    _kept = Kept (Tag 10) (Tag 11)
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// keep 3
+// drop 3
+// end
+// drop kept
+// drop 11
+// drop 9
+// drop 7
+// drop 8
+// drop shape
+// drop 5
+// drop 6
+// drop shape
+// drop 4
+// drop two
+// drop 1
+// drop 2
+

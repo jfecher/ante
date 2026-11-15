@@ -1,0 +1,38 @@
+// Dropping a value performs the effects of its `Drop` impl where it goes out of scope
+type Noisy = id: I32
+
+impl drop_noisy: Drop Noisy Print with
+    drop noisy = println noisy.id
+
+quiet (): Unit is pure =
+    _noisy = Noisy 1
+
+allowed (): Unit can Print =
+    _noisy = Noisy 2
+
+// A function whose effects are inferred performs them too
+inferred () =
+    _noisy = Noisy 3
+
+only_pure (f: fn Unit -> Unit is pure): Unit = f ()
+
+main () =
+    only_pure inferred
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/drops/drop_effects.an:8:5
+//  7 | quiet (): Unit is pure =
+//    |     // error: _noisy is dropped when it goes out of scope, but dropping a Noisy performs Print which this function cannot
+//  8 |     _noisy = Noisy 1
+//    |     ^^^^^^
+// 
+// examples/typechecking/drops/drop_effects.an:20:15
+// 19 | main () =
+//    |     // error: Argument 1 has type fn Unit -> Unit can Print but fn Unit -> Unit is pure was expected
+// 20 |     only_pure inferred
+//    |               ^^^^^^^^
+// 
+// Found 2 errors and 0 warnings
+

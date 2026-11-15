@@ -10,7 +10,7 @@ import Std.C.VoidPtr
 // Std.Stream.foldr isn't effect polymorphic at time of writing, but it should be.
 // For now we have this copy
 // TODO: This fails to type check without an explicit signature
-foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
+foldr (gen: once fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b [env] -> b can e) {Drop env e}: b can e =
     handle
         gen ()
         initial

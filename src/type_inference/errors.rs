@@ -188,7 +188,7 @@ impl Locateable for ExprId {
 
 impl Locateable for PatternId {
     fn locate(&self, context: &TypeChecker) -> Location {
-        context.current_context().pattern_location(*self).clone()
+        context.current_extended_context().pattern_location(*self)
     }
 }
 

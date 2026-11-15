@@ -1,7 +1,7 @@
 foo () =
     x = "test"
     bar () =
-        baz () = x
+        baz () = clone x
         baz ()
 
     bar ()

@@ -7,7 +7,7 @@ try (f: a can Fail, e): Maybe a can e =
     handle Some (f ())
     | fail () -> None
 
-on_fail (f: a can Fail, e) (default: a can e): a can e =
+on_fail (f: a can Fail, e) (default: once fn Unit [env] -> a can e) {Drop env e}: a can e =
     handle f ()
     | fail () -> default ()
 
@@ -40,7 +40,7 @@ or_panic (f: a can Fail, e) (message: String): a can Panic, e =
     on_fail f do panic message
 
 /// Ignores a `Fail` effect, discarding it and returning Unit
-ignore_fail (f: a can Fail, e): Unit can e =
+ignore_fail (f: a can Fail, e) {Drop a d}: Unit can e, d =
     on_fail (do ignore (f ())) do ()
 
 /// Retry a function until it succeeds (doesn't call fail).
@@ -55,6 +55,6 @@ ignore_fail (f: a can Fail, e): Unit can e =
 ///     input = get_input ()
 ///     parse input
 /// ```
-retry_until_success (f: a can Fail, e): a can e =
+retry_until_success (f: fn Unit [env] -> a can Fail, e) {Drop env e}: a can e =
     handle f ()
     | fail () -> retry_until_success f

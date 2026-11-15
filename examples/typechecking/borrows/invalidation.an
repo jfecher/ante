@@ -73,7 +73,7 @@ closure_unused () =
     use first
     clear_v ()
 
-apply (f: fn Unit => Unit can e): Unit can e = f ()
+apply (f: once fn Unit => Unit can e): Unit can e = f ()
 
 inferred_effect_variable (v: mut Vec I32) =
     a = v.get 0

@@ -3,13 +3,13 @@
 effect Give a =
     give: fn a -> Unit
 
-both (f: fn Unit => Unit can Give a, Give b): Unit can Give a, Give b =
+both (f: once fn Unit => Unit can Give a, Give b): Unit can Give a, Give b =
     f ()
 
-both_recursive (f: fn Unit => Unit can Give a, Give b) (k: I32): Unit can Give a, Give b =
+both_recursive (f: once fn Unit => Unit can Give a, Give b) (k: I32): Unit can Give a, Give b =
     if k > 0 then both_recursive f (k - 1) else f ()
 
-inlined (x: a) (y: b) (n: I32): Unit can Print =
+inlined (x: a) (y: b) (n: I32) {Copy a} {Copy b}: Unit can Print =
     if n > 0 then inlined x y (n - 1)
     else
         handle
@@ -23,7 +23,7 @@ inlined (x: a) (y: b) (n: I32): Unit can Print =
             resume ()
             println "after outer"
 
-not_inlined (x: a) (y: b) (n: I32): Unit can Print =
+not_inlined (x: a) (y: b) (n: I32) {Copy a} {Copy b}: Unit can Print =
     if n > 0 then not_inlined x y (n - 1)
     else
         handle
@@ -37,7 +37,7 @@ not_inlined (x: a) (y: b) (n: I32): Unit can Print =
             resume ()
             println "after outer"
 
-tail_resumes (x: a) (y: b) (n: I32): Unit can Print =
+tail_resumes (x: a) (y: b) (n: I32) {Copy a} {Copy b}: Unit can Print =
     if n > 0 then tail_resumes x y (n - 1)
     else
         handle

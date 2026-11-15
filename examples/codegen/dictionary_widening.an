@@ -45,25 +45,25 @@ effect Ping =
 effect Pong =
     pong: fn Unit -> Unit
 
-both (x: t) {Run t e} {Copy t} (g: fn Unit => Unit can e): I32 can e =
+both (x: t) {Run t e} {Copy t} (g: once fn Unit => Unit can e): I32 can e =
     r = Run.run x
     g ()
     r + Run.other x
 
 // The impl of `d` is unknown here so it is wrapped in a new dictionary with more effects
-generic_widen (x: t) {d: Run t e2} {Copy t} (g: fn Unit => Unit can Ping, e2): I32 can Ping, e2 =
+generic_widen (x: t) {d: Run t e2} {Copy t} (g: once fn Unit => Unit can Ping, e2): I32 can Ping, e2 =
     both x g
 
 // Widening an already widened dictionary wraps it again
-twice (x: t) {d: Run t e3} {Copy t} (g: fn Unit => Unit can Pong, Ping, e3): I32 can Pong, Ping, e3 =
+twice (x: t) {d: Run t e3} {Copy t} (g: once fn Unit => Unit can Pong, Ping, e3): I32 can Pong, Ping, e3 =
     generic_widen x g
 
 // A dictionary which is never widened keeps its impl
-same (x: t) {d: Run t e4} {Copy t} (g: fn Unit => Unit can e4): I32 can e4 =
+same (x: t) {d: Run t e4} {Copy t} (g: once fn Unit => Unit can e4): I32 can e4 =
     both x g
 
 // A dictionary held by a field of another is adapted as well
-use_outer (x: t) {o: Outer t e ri} {Copy t} (g: fn Unit => Unit can e): I32 can e =
+use_outer (x: t) {o: Outer t e ri} {Copy t} (g: once fn Unit => Unit can e): I32 can e =
     g ()
     Run.run x {o.inner} + o.bonus x
 

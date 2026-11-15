@@ -12,7 +12,7 @@ gen (i: I64): Unit can Emit, Stop =
     emit i
     gen (i - 1)
 
-sum (action: fn Unit => Unit can Emit, e): I64 can e =
+sum (action: once fn Unit => Unit can Emit, e): I64 can e =
     var s = 0
     handle action ()
     | emit e ->
@@ -20,7 +20,7 @@ sum (action: fn Unit => Unit can Emit, e): I64 can e =
         resume ()
     s
 
-catch (action: fn Unit => Unit can Stop, e): Unit can e =
+catch (action: once fn Unit => Unit can Stop, e): Unit can e =
     handle action ()
     | stop () -> ()
 

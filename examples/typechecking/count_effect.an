@@ -6,7 +6,7 @@ foo (): Unit can Count =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count (f: fn Unit => Unit can Count) =
+handle_count (f: once fn Unit => Unit can Count) =
     handle
         f ()
         0
@@ -25,15 +25,15 @@ main () =
 // 
 // (foo: fn Unit -> Unit can Count) (): Unit can Count =
 //     (count: fn Unit -> Unit can Count) ()
-//     (repeat: fn Usz (fn Usz -> Unit can Count) -> Unit can Count) 10 (fn (_: Usz) -> (count: fn Unit -> Unit can Count) ())
+//     (repeat: fn Usz (fn Usz -> Unit can Count) {Drop NoClosureEnv Count Unit} -> Unit can Count) 10 (fn (_: Usz) -> (count: fn Unit -> Unit can Count) ()) {()}
 // 
-// (handle_count: fn (fn Unit [_] -> Unit can Count) -> I32 is pure) (f: fn Unit [_] -> Unit can Count) =
-//     handle fn () [(f: fn Unit [_] -> Unit can Count)] ->
-//         (f: fn Unit [_] -> Unit can Count) ()
+// (handle_count: fn (once fn Unit [_] -> Unit can Count) -> I32 is pure) (f: once fn Unit [_] -> Unit can Count) =
+//     handle fn () [(f: once fn Unit [_] -> Unit can Count)] ->
+//         (f: once fn Unit [_] -> Unit can Count) ()
 //         0
 //     | (count: fn Unit -> Unit can Count) () -> fn () (resume: fn Unit [ResumeEnv] -> I32 is pure) -> (add_i32: Add I32 add_i32).+ 1 ((resume: fn Unit [ResumeEnv] -> I32 is pure) ())
 // 
 // (main: fn Unit -> Unit is pure) () =
-//     (handle_count: fn (fn Unit -> Unit can Count) -> I32 is pure) (foo: fn Unit -> Unit can Count)
+//     (handle_count: fn (once fn Unit -> Unit can Count) -> I32 is pure) (foo: fn Unit -> Unit can Count)
 //     ()
 

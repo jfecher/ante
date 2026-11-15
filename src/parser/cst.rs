@@ -313,6 +313,8 @@ impl ErrorDefault for Type {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct FunctionType {
+    /// True for a `once fn`, which may be called at most once
+    pub once: bool,
     pub parameters: Vec<ParameterType>,
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
@@ -456,6 +458,8 @@ pub enum Expr {
     For(For),
     Break,
     Continue,
+    Chain(Chain),
+    Fallthrough,
     Quoted(Quoted),
     Return(Return),
     Assignment(Assignment),
@@ -688,6 +692,19 @@ pub struct Handle {
     pub handler_name: NameId,
     pub expression: ExprId,
     pub cases: Vec<(HandlePattern, ExprId)>,
+}
+
+/// An `and` chain containing an `is`, desugared so that `body` tests each condition in turn and
+/// evaluates to the chain's `then` if they all succeed. A failing condition hits an
+/// [Expr::Fallthrough], which jumps out of `body` to evaluate `else_` instead.
+///
+/// The conditions are nested so that names bound by an `is` are in scope for the rest of the
+/// chain. We can't just copy `else_` into each failure branch since then one expression would
+/// appear in several places in the control flow, each owning different values.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct Chain {
+    pub body: ExprId,
+    pub else_: ExprId,
 }
 
 /// `lhs is pattern` - always desugared during `GetItem`.

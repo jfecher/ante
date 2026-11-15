@@ -1,16 +1,16 @@
 // Closures created in generic functions capture the type information they need, so they
 // keep working after escaping the call which created them.
 
-pair_with (x: a) = fn (y: b) -> (x, y)
+pair_with (x: a) = move fn (y: b) -> (x, y)
 
 // `wrap` is instantiated with `(a, a)`, a type argument `outer` builds at runtime.
 // The closure must still work after `outer` returns.
-wrap (x: a) = fn () -> (x, 7i32)
+wrap (x: a) = move fn () -> (x, 7i32)
 outer (x: a) (y: a) = wrap (x, y)
 
-compose f g = fn x -> f (g x)
+compose f g = move fn x -> f (g x)
 
-twice (f: fn a => a) (x: a): a = f (f x)
+twice (f: fn a [env] -> a) (x: a) {Drop env pure}: a = f (f x)
 
 id (x: a): a = x
 

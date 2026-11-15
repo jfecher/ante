@@ -22,6 +22,9 @@ main () =
         println x
         resume ()
 
+impl drop_pair: Drop Pair pure with
+    drop _ = ()
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 1

@@ -48,6 +48,9 @@ use_a (x: A): A = x
 
 too_many_args (_x: Pair I32 I32): I32 = 0
 
+impl drop_point: Drop Point pure with
+    drop _ = ()
+
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
@@ -105,6 +108,9 @@ too_many_args (_x: Pair I32 I32): I32 = 0
 // (use_a: fn (error) -> (error) is pure) (x: (error)): A = (x: (error))
 // 
 // (too_many_args: fn (error) -> I32 is pure) (_x: (error)): I32 = 0
+// 
+// implicit (drop_point: Drop Point pure drop_point) = Drop Point pure with
+//     (drop: fn Point -> Unit is pure) = fn (_: Point) -> ()
 
 // expected stderr:
 // examples/typechecking/aliases.an:43:6

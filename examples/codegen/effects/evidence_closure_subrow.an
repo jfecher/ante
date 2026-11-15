@@ -1,6 +1,6 @@
 import Std.Stream.Emit, emit
 
-apply (f: fn Unit => a): a = f ()
+apply (f: once fn Unit => a): a = f ()
 
 main () =
     print_to_stdout do

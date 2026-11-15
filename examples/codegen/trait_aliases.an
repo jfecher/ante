@@ -11,7 +11,7 @@ type NamedI32 (i = _) = Named I32 i
 impl named_i32: NamedI32 with
     name _ = "i32"
 
-impl named_pair {Named a} (suffix: Char): Named (a, a) with
+impl named_pair {Named a} {Drop a pure} (suffix: Char): Named (a, a) with
     name p = name p.first ++ cast suffix
 
 main () =

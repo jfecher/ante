@@ -2,7 +2,7 @@
 // even on some more complex type inequalities involving unification variables.
 needs (_p: (I32, fn I32 -> Unit)): Unit = ()
 
-use _y = ()
+use y = Std.Mem.forget y
 
 main () =
     x = 5

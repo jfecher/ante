@@ -3,9 +3,9 @@ effect Emit a =
 
 // This function used to incorrectly not forward the `Emit` capability leading to
 // this program not printing anything
-pass_through (f: fn Unit [env] -> Unit can Emit I32, Print): fn Unit [env] -> Unit can Emit I32, Print = f
+pass_through (f: once fn Unit [env] -> Unit can Emit I32, Print): once fn Unit [env] -> Unit can Emit I32, Print = f
 
-use_it (g: fn Unit => Unit can Print): Unit can Emit I32, Print =
+use_it (g: once fn Unit => Unit can Print): Unit can Emit I32, Print =
     h = pass_through g
     h ()
 

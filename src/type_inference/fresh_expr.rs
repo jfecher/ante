@@ -91,6 +91,89 @@ pub struct ExtendedTopLevelContext {
     /// Each trait dictionary coerced to wider effect args, mapped to the trait type it was coerced
     /// to and how the MIR builder adapts it to that type
     dictionary_coercions: FxHashMap<ExprId, (Type, DictionaryCoercion)>,
+
+    /// Expressions for trait dictionaries that have no written impl. The MIR builder builds these
+    /// itself.
+    builtin_dictionaries: FxHashMap<ExprId, BuiltinDictionary>,
+
+    drops: Drops,
+}
+
+/// A trait dictionary the compiler provides for a type that no impl can be written for. The
+/// expression for one has the type of the dictionary, where the impl is whatever the impl data is.
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BuiltinDictionary {
+    /// `Copy t` for a `t` that is copied bit for bit. This is a reference, trait dictionary, or
+    /// function whose environment is `Copy`. It has no impl data.
+    Copy,
+
+    /// `Drop t e` for a `t` that is `Copy` and so owns nothing to drop. It has no impl data.
+    DropNothing,
+
+    /// `Drop f e` for a function `f`, which only owns its environment. The impl data is the
+    /// environment's `Drop` dictionary, which is also the value of this expression.
+    DropEnvironment(ExprId),
+}
+
+/// Where a list of drops in [Drops] is run
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DropSlot {
+    /// After the expression is evaluated, unless it diverged
+    After(ExprId),
+    /// Before the `return`, `break`, `continue` or [Expr::Fallthrough] jumps
+    BeforeJump(ExprId),
+    /// Before the assignment stores its new value, but after that value is evaluated
+    BeforeStore(ExprId),
+    /// Before the call is made but after its arguments are evaluated. Used for the tail `resume` of
+    /// a handler branch
+    BeforeCall(ExprId),
+    /// When the `if` has no `else` and its condition is false
+    Otherwise(ExprId),
+}
+
+/// Drops inserted by the borrow checker for values going out of scope. Each drop is an ordinary
+/// expression that isn't part of the item's tree, so it is only evaluated at the places recorded
+/// here.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Drops {
+    slots: FxHashMap<DropSlot, Vec<ExprId>>,
+
+    /// Expressions whose value is bound to a name so that a drop can refer to it
+    temporaries: FxHashMap<ExprId, NameId>,
+
+    /// The inverse of [Self::temporaries]
+    temporary_exprs: FxHashMap<NameId, ExprId>,
+}
+
+impl Drops {
+    pub(crate) fn push(&mut self, slot: DropSlot, drops: Vec<ExprId>) {
+        if !drops.is_empty() {
+            self.slots.entry(slot).or_default().extend(drops);
+        }
+    }
+
+    pub(crate) fn name_temporary(&mut self, expr: ExprId, name: NameId) {
+        self.temporaries.insert(expr, name);
+        self.temporary_exprs.insert(name, expr);
+    }
+
+    pub fn get(&self, slot: DropSlot) -> &[ExprId] {
+        self.slots.get(&slot).map_or(&[], Vec::as_slice)
+    }
+
+    pub fn temporary(&self, expr: ExprId) -> Option<NameId> {
+        self.temporaries.get(&expr).copied()
+    }
+
+    /// True if `name` is the name given to some temporary
+    pub(crate) fn names_temporary(&self, name: NameId) -> bool {
+        self.temporary_exprs.contains_key(&name)
+    }
+
+    /// Returns the expression whose value is held by the temporary `name`
+    pub(crate) fn temporary_expr(&self, name: NameId) -> Option<ExprId> {
+        self.temporary_exprs.get(&name).copied()
+    }
 }
 
 impl<'local, 'innter> TypeChecker<'local, 'innter> {
@@ -98,6 +181,16 @@ impl<'local, 'innter> TypeChecker<'local, 'innter> {
         let id = self.current_extended_context_mut().push_expr(expr, location);
         self.expr_types.insert(id, typ);
         id
+    }
+
+    /// Create a new expression of type `typ` referring to the Prelude definition `name`
+    pub(super) fn prelude_variable(&mut self, name: &'static str, typ: Type, location: Location) -> ExprId {
+        let origin = self.prelude_definition_origin(name);
+        // The path's type is overwritten if the expression is type checked
+        let path = Path::ident(std::sync::Arc::new(name.to_string()), location.clone());
+        let path = self.push_path(path, Type::ERROR, location.clone());
+        self.current_extended_context_mut().insert_path_origin(path, origin);
+        self.push_expr(Expr::Variable(path), typ, location)
     }
 
     pub(super) fn push_pattern(&mut self, pattern: Pattern, location: Location) -> PatternId {
@@ -137,6 +230,8 @@ impl ExtendedTopLevelContext {
             move_closures: Default::default(),
             function_coercions: Default::default(),
             dictionary_coercions: Default::default(),
+            builtin_dictionaries: Default::default(),
+            drops: Default::default(),
         }
     }
 
@@ -226,6 +321,14 @@ impl ExtendedTopLevelContext {
         match self.more_expr_locations.get(&expr) {
             Some(location) => location.clone(),
             None => self.original.expr_location(expr).clone(),
+        }
+    }
+
+    /// Retrieve the location of the corresponding [Pattern] of the given [PatternId]
+    pub(crate) fn pattern_location(&self, pattern: PatternId) -> Location {
+        match self.more_pattern_locations.get(&pattern) {
+            Some(location) => location.clone(),
+            None => self.original.pattern_location(pattern).clone(),
         }
     }
 
@@ -329,6 +432,12 @@ impl ExtendedTopLevelContext {
         self.closure_environments.get(&expr)
     }
 
+    /// Every name captured by reference by some closure
+    pub fn names_captured_by_reference(&self) -> FxHashSet<NameId> {
+        let by_reference = self.closure_environments.iter().filter(|(closure, _)| !self.is_move_closure(**closure));
+        by_reference.flat_map(|(_, names)| names.iter().copied()).collect()
+    }
+
     pub(crate) fn insert_function_coercion(&mut self, expr: ExprId, expected: Type) {
         self.function_coercions.insert(expr, expected);
     }
@@ -348,6 +457,14 @@ impl ExtendedTopLevelContext {
     /// The trait type a dictionary was coerced to with wider effect args, and how it is adapted to it
     pub fn get_dictionary_coercion(&self, expr: ExprId) -> Option<&(Type, DictionaryCoercion)> {
         self.dictionary_coercions.get(&expr)
+    }
+
+    pub(crate) fn insert_builtin_dictionary(&mut self, expr: ExprId, dictionary: BuiltinDictionary) {
+        self.builtin_dictionaries.insert(expr, dictionary);
+    }
+
+    pub fn builtin_dictionary(&self, expr: ExprId) -> Option<BuiltinDictionary> {
+        self.builtin_dictionaries.get(&expr).copied()
     }
 
     /// Copy all per-`ExprId` codegen metadata recorded for `from` onto `to`.
@@ -374,6 +491,14 @@ impl ExtendedTopLevelContext {
 
     pub fn is_move_closure(&self, expr: ExprId) -> bool {
         self.move_closures.contains(&expr)
+    }
+
+    pub fn drops(&self) -> &Drops {
+        &self.drops
+    }
+
+    pub(crate) fn drops_mut(&mut self) -> &mut Drops {
+        &mut self.drops
     }
 }
 

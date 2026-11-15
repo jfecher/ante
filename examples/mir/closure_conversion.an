@@ -18,101 +18,116 @@ main () =
     _ = captures_closure 0
     _ = captures_nested 0
 
-use _y = ()
+use (_y: a) {Copy a} = ()
 
 // args: -emir --no-color
 // expected stdout:
-// extern , d4: fn I32 I32 (evidence[]) -> (I32, I32)
-// extern use d2: fn (I32, I32) (evidence[]) -> Unit
+// extern , d5: fn I32 I32 (evidence[]) -> (I32, I32)
+// extern copy_i32 d3: (fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)
+// extern copy_pair d6: fn ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) (evidence[]) -> ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))))
+// extern use d2: fn (I32, I32) ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))) (evidence[]) -> Unit
+// 
+// fn captures_nested d9: fn I32 (evidence[]) [Pointer] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: Pointer):
+//     v0: fn I32 (evidence[]) [Pointer] -> Unit = pack-closure d9, b0_2
+//     v1: fn Unit (evidence[]) [Pointer] -> I32 = pack-closure d10, b0_2
+//     v2: fn (I32, I32) ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))) (evidence[]) -> Unit = instantiate d2 I32, I32 ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))
+//     v3: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d5 I32 I32
+//     v4: evidence[] = evidence()
+//     v5: I32 = closure-call v1 () v4
+//     v6: evidence[] = evidence()
+//     v7: I32, I32 = v3 b0_0 v5 v6
+//     v8: fn ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) (evidence[]) -> ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))) = instantiate d6 I32 #empty_tuple I32 #empty_tuple
+//     v9: evidence[] = evidence()
+//     v10: (fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))) = v8 copy_i32_d3 copy_i32_d3 v9
+//     v11: evidence[] = evidence()
+//     v12: Unit = v2 v7 v10 v11
+//     return v12
+// 
+// fn captures2 d7: fn I32 (evidence[]) [Pointer, Pointer] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: Pointer, Pointer):
+//     v0: Pointer = b0_2.0
+//     v1: Pointer = b0_2.1
+//     v2: fn I32 (evidence[]) [Pointer, Pointer] -> Unit = pack-closure d7, b0_2
+//     v3: fn (I32, (I32, I32)) ((fn Pointer Pointer (evidence[]) -> (I32, (I32, I32))), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))))) (evidence[]) -> Unit = instantiate d2 I32, (I32, I32) ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))))
+//     v4: fn I32 (I32, I32) (evidence[]) -> (I32, (I32, I32)) = instantiate d5 I32 I32, I32
+//     v5: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d5 I32 I32
+//     v6: I32 = deref v0
+//     v7: I32 = deref v1
+//     v8: evidence[] = evidence()
+//     v9: I32, I32 = v5 v6 v7 v8
+//     v10: evidence[] = evidence()
+//     v11: I32, (I32, I32) = v4 b0_0 v9 v10
+//     v12: fn ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))) (evidence[]) -> ((fn Pointer Pointer (evidence[]) -> (I32, (I32, I32))), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))))) = instantiate d6 I32 #empty_tuple I32, I32 ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))
+//     v13: fn ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) (evidence[]) -> ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))) = instantiate d6 I32 #empty_tuple I32 #empty_tuple
+//     v14: evidence[] = evidence()
+//     v15: (fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))) = v13 copy_i32_d3 copy_i32_d3 v14
+//     v16: evidence[] = evidence()
+//     v17: (fn Pointer Pointer (evidence[]) -> (I32, (I32, I32))), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))))) = v12 copy_i32_d3 v15 v16
+//     v18: evidence[] = evidence()
+//     v19: Unit = v3 v11 v17 v18
+//     return v19
 // 
 // fn main d0: fn Unit (evidence[]) -> Unit
 //   b0(b0_0: Unit, b0_1: evidence[]):
-//     v0: I32, = (1_i32)
-//     v1: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d3, v0
-//     v2: I32, I32 = (1_i32, 2_i32)
-//     v3: fn I32 (evidence[]) [I32, I32] -> Unit = pack-closure d5, v2
-//     v4: (fn I32 (evidence[]) [I32, I32] -> Unit), = (v3)
-//     v5: fn I32 (evidence[]) [(fn I32 (evidence[]) [I32, I32] -> Unit),] -> Unit = pack-closure d6, v4
-//     v6: I32, = (1_i32)
-//     v7: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d7, v6
+//     v0: Pointer = alloca 1_i32
+//     v1: Pointer = alloca 2_i32
+//     v2: fn I32 (evidence[]) [Pointer] -> Unit = pack-closure d4, v0
+//     v3: Pointer, Pointer = (v0, v1)
+//     v4: fn I32 (evidence[]) [Pointer, Pointer] -> Unit = pack-closure d7, v3
+//     v5: Pointer = alloca v4
+//     v6: fn I32 (evidence[]) [Pointer] -> Unit = pack-closure d8, v5
+//     v7: fn I32 (evidence[]) [Pointer] -> Unit = pack-closure d9, v0
 //     v8: evidence[] = evidence()
 //     v9: Unit = free_function_d1 0_i32 v8
 //     v10: evidence[] = evidence()
-//     v11: Unit = closure-call v1 0_i32 v10
-//     v12: evidence[] = evidence()
-//     v13: Unit = closure-call v3 0_i32 v12
-//     v14: evidence[] = evidence()
-//     v15: Unit = closure-call v5 0_i32 v14
-//     v16: evidence[] = evidence()
-//     v17: Unit = closure-call v7 0_i32 v16
+//     v11: Unit = closure-call v2 0_i32 v10
+//     v12: fn I32 (evidence[]) [Pointer, Pointer] -> Unit = deref v5
+//     v13: evidence[] = evidence()
+//     v14: Unit = closure-call v12 0_i32 v13
+//     v15: evidence[] = evidence()
+//     v16: Unit = closure-call v6 0_i32 v15
+//     v17: evidence[] = evidence()
+//     v18: Unit = closure-call v7 0_i32 v17
 //     return ()
-// 
-// fn captures_nested d7: fn I32 (evidence[]) [I32,] -> Unit
-//   b0(b0_0: I32, b0_1: evidence[], b0_2: I32,):
-//     v0: I32 = b0_2.0
-//     v1: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d7, b0_2
-//     v2: I32, = (v0)
-//     v3: fn Unit (evidence[]) [I32,] -> I32 = pack-closure d8, v2
-//     v4: fn (I32, I32) (evidence[]) -> Unit = instantiate d2 I32, I32
-//     v5: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d4 I32 I32
-//     v6: evidence[] = evidence()
-//     v7: I32 = closure-call v3 () v6
-//     v8: evidence[] = evidence()
-//     v9: I32, I32 = v5 b0_0 v7 v8
-//     v10: evidence[] = evidence()
-//     v11: Unit = v4 v9 v10
-//     return v11
-// 
-// fn captures2 d5: fn I32 (evidence[]) [I32, I32] -> Unit
-//   b0(b0_0: I32, b0_1: evidence[], b0_2: I32, I32):
-//     v0: I32 = b0_2.0
-//     v1: I32 = b0_2.1
-//     v2: fn I32 (evidence[]) [I32, I32] -> Unit = pack-closure d5, b0_2
-//     v3: fn (I32, (I32, I32)) (evidence[]) -> Unit = instantiate d2 I32, (I32, I32)
-//     v4: fn I32 (I32, I32) (evidence[]) -> (I32, (I32, I32)) = instantiate d4 I32 I32, I32
-//     v5: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d4 I32 I32
-//     v6: evidence[] = evidence()
-//     v7: I32, I32 = v5 v0 v1 v6
-//     v8: evidence[] = evidence()
-//     v9: I32, (I32, I32) = v4 b0_0 v7 v8
-//     v10: evidence[] = evidence()
-//     v11: Unit = v3 v9 v10
-//     return v11
-// 
-// fn captures1 d3: fn I32 (evidence[]) [I32,] -> Unit
-//   b0(b0_0: I32, b0_1: evidence[], b0_2: I32,):
-//     v0: I32 = b0_2.0
-//     v1: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d3, b0_2
-//     v2: fn (I32, I32) (evidence[]) -> Unit = instantiate d2 I32, I32
-//     v3: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d4 I32 I32
-//     v4: evidence[] = evidence()
-//     v5: I32, I32 = v3 b0_0 v0 v4
-//     v6: evidence[] = evidence()
-//     v7: Unit = v2 v5 v6
-//     return v7
 // 
 // fn free_function d1: fn I32 (evidence[]) -> Unit
 //   b0(b0_0: I32, b0_1: evidence[]):
-//     v0: fn I32 (evidence[]) -> Unit = instantiate d2 I32
+//     v0: fn I32 ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) (evidence[]) -> Unit = instantiate d2 I32 #empty_tuple
 //     v1: evidence[] = evidence()
-//     v2: Unit = v0 b0_0 v1
+//     v2: Unit = v0 b0_0 copy_i32_d3 v1
 //     return v2
 // 
-// fn captures_closure d6: fn I32 (evidence[]) [(fn I32 (evidence[]) [I32, I32] -> Unit),] -> Unit
-//   b0(b0_0: I32, b0_1: evidence[], b0_2: (fn I32 (evidence[]) [I32, I32] -> Unit),):
-//     v0: fn I32 (evidence[]) [I32, I32] -> Unit = b0_2.0
-//     v1: fn I32 (evidence[]) [(fn I32 (evidence[]) [I32, I32] -> Unit),] -> Unit = pack-closure d6, b0_2
+// fn nested d10: fn Unit (evidence[]) [Pointer] -> I32
+//   b0(b0_0: Unit, b0_1: evidence[], b0_2: Pointer):
+//     v0: fn Unit (evidence[]) [Pointer] -> I32 = pack-closure d10, b0_2
+//     v1: I32 = deref b0_2
+//     return v1
+// 
+// fn captures_closure d8: fn I32 (evidence[]) [Pointer] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: Pointer):
+//     v0: fn I32 (evidence[]) [Pointer] -> Unit = pack-closure d8, b0_2
+//     v1: fn I32 (evidence[]) [Pointer, Pointer] -> Unit = deref b0_2
 //     v2: evidence[] = evidence()
-//     v3: Unit = closure-call v0 b0_0 v2
+//     v3: Unit = closure-call v1 b0_0 v2
 //     return v3
 // 
-// fn nested d8: fn Unit (evidence[]) [I32,] -> I32
-//   b0(b0_0: Unit, b0_1: evidence[], b0_2: I32,):
-//     v0: I32 = b0_2.0
-//     v1: fn Unit (evidence[]) [I32,] -> I32 = pack-closure d8, b0_2
-//     return v0
+// fn captures1 d4: fn I32 (evidence[]) [Pointer] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: Pointer):
+//     v0: fn I32 (evidence[]) [Pointer] -> Unit = pack-closure d4, b0_2
+//     v1: fn (I32, I32) ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))) (evidence[]) -> Unit = instantiate d2 I32, I32 ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))
+//     v2: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d5 I32 I32
+//     v3: I32 = deref b0_2
+//     v4: evidence[] = evidence()
+//     v5: I32, I32 = v2 b0_0 v3 v4
+//     v6: fn ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)) (evidence[]) -> ((fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)))) = instantiate d6 I32 #empty_tuple I32 #empty_tuple
+//     v7: evidence[] = evidence()
+//     v8: (fn Pointer Pointer (evidence[]) -> (I32, I32)), (((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple)), ((fn Pointer Pointer (evidence[]) -> I32), (#empty_tuple))) = v6 copy_i32_d3 copy_i32_d3 v7
+//     v9: evidence[] = evidence()
+//     v10: Unit = v1 v5 v8 v9
+//     return v10
 // 
-// fn use d2: forall '0. fn '0 (evidence[]) -> Unit
-//   b0(b0_0: '0, b0_1: evidence[]):
+// fn use d2: forall '0 '1. fn '0 ((fn Pointer Pointer (evidence[]) -> '0), '1) (evidence[]) -> Unit
+//   b0(b0_0: '0, b0_1: (fn Pointer Pointer (evidence[]) -> '0), '1, b0_2: evidence[]):
 //     return ()
 

@@ -1,0 +1,79 @@
+// A pattern owns what it binds unless it matches a `Copy` value, whose parts it only copies.
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop (r: R) = println "drop ${r.x}"
+
+take (r: R) = println "take ${r.x}"
+
+type E = | A R | B R | C
+
+impl drop_e: Drop E Print with
+    drop (_: E) = println "drop e"
+
+// Each alternative of an or-pattern binds the same variable
+either (e: E) = match e
+    | A r | B r -> take r
+    | C -> println "c"
+
+type F = | One R R | Two R
+
+impl drop_f: Drop F Print with
+    drop (_: F) = println "drop f"
+
+// What a wildcard within an or-pattern matches is not dropped: no other alternative binds it
+first (f: F) = match f
+    | One r _ | Two r -> take r
+
+shared type Node = r: R, n: U32
+
+// The parts of a `shared` value stay with it
+peek (Node r n) = println "peek ${r.x} ${n}"
+
+type Pair = a: R, b: R
+
+impl drop_pair: Drop Pair Print with
+    drop (_: Pair) = println "drop pair"
+
+type Outer = p: Pair, c: R
+
+impl drop_outer: Drop Outer Print with
+    drop (_: Outer) = println "drop outer"
+
+main () = print_to_stdout do
+    either (A (R 1))
+    either (B (R 2))
+    either C
+
+    first (One (R 3) (R 4))
+    first (Two (R 5))
+
+    node = Node (R 6) 7
+    peek node
+    peek node
+
+    // A closure moving part of a capture bound within an alias pattern drops the rest of it
+    _whole @ (Outer p _) = Outer (Pair (R 8) (R 9)) (R 10)
+    takes_part = move fn () -> take p.a
+    takes_part ()
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// take 1
+// drop 1
+// take 2
+// drop 2
+// c
+// take 3
+// drop 3
+// take 5
+// drop 5
+// peek 6 7
+// peek 6 7
+// take 8
+// drop 8
+// drop 9
+// end
+// drop 10
+

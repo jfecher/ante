@@ -1,0 +1,55 @@
+// A closure captures by reference unless it is a `move` closure, so each value it captures is
+// still dropped once by the scope owning it.
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop (r: R) = println "drop ${r.x}"
+
+show (r: ref R) = println "show ${r.x}"
+
+take (r: R) = println "take ${r.x}"
+
+main () = print_to_stdout do
+    a = R 1
+    shows () = show a
+    shows ()
+
+    b = R 2
+    takes = move fn () -> take b
+    takes ()
+
+    // A `var` is captured by mutable reference
+    var c = R 3
+    set () =
+        println "set"
+        c := R 4
+    set ()
+
+    var total = 0
+    add x =
+        total += x
+    add 5
+    add 6
+    println total
+
+    nested () =
+        inner () = show a
+        inner ()
+        show c
+    nested ()
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// show 1
+// take 2
+// drop 2
+// set
+// drop 3
+// 11
+// show 1
+// show 4
+// end
+// drop 4
+// drop 1
+

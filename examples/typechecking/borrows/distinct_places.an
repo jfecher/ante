@@ -5,7 +5,7 @@ import Std.Fail.Fail
 
 use (_x: ref t): Unit = ()
 
-twice (f: fn a a => Unit can e) (x: a) {Copy a}: Unit can e =
+twice (f: once fn a a => Unit can e) (x: a) {Copy a}: Unit can e =
     f x x
 
 mutate_b (a: mut 'a Vec I32) (b: mut 'b Vec I32): Unit can Mutate 'b =

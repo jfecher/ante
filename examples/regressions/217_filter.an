@@ -6,14 +6,14 @@ iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
         emit i
         recur (i + 1)
 
-filter (stream: fn Unit => Unit can Emit a) {Copy a} (f: fn a -> Bool) =
+filter (stream: once fn Unit => Unit can Emit a) {Copy a} (f: fn a -> Bool) =
     handle stream ()
     | emit x ->
         if f x then
             emit x
         resume ()
 
-for_ (stream: fn Unit => Unit can Emit a) (f: fn a -> Unit) =
+for_ (stream: once fn Unit => Unit can Emit a) (f: fn a -> Unit) =
     handle stream ()
     | emit x ->
         f x

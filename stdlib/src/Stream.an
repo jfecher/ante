@@ -1,6 +1,7 @@
 import Std.Vec.Vec, get_unchecked
 import Std.Fail.Fail, fail
 import Std.Array.array_get_unchecked
+import Std.Mem.forget
 
 /// Emit a single item of type `a`. Another name for this is `Yield`.
 effect Emit a =
@@ -20,7 +21,10 @@ trait Stream t a (e: effect) =
 /// This is the most common stream impl. Most streams will just be thunks
 /// that emit. This impl is most common in the middle of stream chains since
 /// functions like `map` and `filter` return such thunks.
-impl stream_fn: Stream (fn Unit [env] -> Unit can Emit a, e) a e with
+impl stream_fn {Drop env e}: Stream (fn Unit [env] -> Unit can Emit a, e) a e with
+    stream f = f ()
+
+impl stream_once_fn: Stream (once fn Unit [env] -> Unit can Emit a, e) a e with
     stream f = f ()
 
 /// Emits each element in the array
@@ -28,11 +32,13 @@ impl stream_array: Stream (Array n t) t pure with
     stream (array: Array n t): Unit can Emit t =
         for i in 0 .. array_len array do
             array_get_unchecked array i |> deref |> emit
+        // Every element was moved out
+        forget array
 
 /// Consumes the given stream, applying `f` to each element
 /// 
 /// E.g. `iter (iota 5) print` will print `01234`
-iter (stream: s) {Stream s a e} (f: fn a => b can e2): Unit can e, e2 =
+iter (stream: s) {Stream s a e} (f: fn a [env] -> Unit can e2) {Drop env e2}: Unit can e, e2 =
     handle Stream.stream stream
     | emit a ->
         f a
@@ -48,11 +54,11 @@ iter (stream: s) {Stream s a e} (f: fn a => b can e2): Unit can e, e2 =
 ///     if i > 2 then break_ ()
 ///     print i
 /// ```
-for_ (stream: s) {Stream s a e} (f: fn a => b can Loop, e): Unit can e =
+for_ (stream: s) {Stream s a e} (f: fn a [env] -> Unit can Loop, e) {Drop env e}: Unit can e =
     var broke = false
     handle Stream.stream stream
     | emit a ->
-        handle f a; ()
+        handle f a
         | break_ () -> broke := true
         | continue_ () -> ()
         if not broke then resume ()
@@ -60,7 +66,7 @@ for_ (stream: s) {Stream s a e} (f: fn a => b can Loop, e): Unit can e =
 /// Applies `f` to each element from the stream, re-emitting each result.
 /// 
 /// Given `a1, a2, .., aN`, emit `f a1, f a2, .., f aN`
-map (stream: s) {Stream s a e} (f: fn a => b) = do
+map (stream: s) {Stream s a e} (f: fn a [env] -> b can e2) {Drop env e2} = move fn () ->
     handle Stream.stream stream
     | emit a ->
         emit (f a)
@@ -69,7 +75,7 @@ map (stream: s) {Stream s a e} (f: fn a => b) = do
 /// Re-emits only the elements from the original stream for which `f elem` is true
 ///
 /// E.g. `filter (iota 5) (_ > 2)` will emit `3` and `4`.
-filter (stream: s) {Stream s a e} (f: fn (ref a) => Bool) = do
+filter (stream: s) {Stream s a e} {Drop a d} (f: fn (ref a) [env] -> Bool) {Drop env d} = move fn () ->
     handle Stream.stream stream
     | emit a ->
         if f (ref a) then emit a
@@ -78,7 +84,7 @@ filter (stream: s) {Stream s a e} (f: fn (ref a) => Bool) = do
 /// Performs a combined map and filter opereration, applying `f` to each element in
 /// the stream, filtering out any elements for which `None` is returned, leaving only
 /// the `Some` elements.
-filter_map (stream: s) {Stream s a e} (f: fn a => Maybe b) = do
+filter_map (stream: s) {Stream s a e} (f: fn a [env] -> Maybe b can e2) {Drop env e2} = move fn () ->
     handle Stream.stream stream
     | emit a ->
         match f a
@@ -87,7 +93,7 @@ filter_map (stream: s) {Stream s a e} (f: fn a => Maybe b) = do
         resume ()
 
 /// Given `a1, a2, .., aN`, emit `(0, a1), (1, a2), .., (N-1, aN)`
-enumerate (stream: s) {Stream s a e} = fn () can Emit (Usz, a), e ->
+enumerate (stream: s) {Stream s a e} = move fn () can Emit (Usz, a), e ->
     var i = 0
     handle Stream.stream stream
     | emit a ->
@@ -99,7 +105,7 @@ enumerate (stream: s) {Stream s a e} = fn () can Emit (Usz, a), e ->
 ///
 /// Unlike `foldr`, `foldl` is tail-resumptive and thus more efficient. If `f` is commutative, prefer
 /// `foldl` over `foldr`.
-foldl (stream: s) {Stream s b e} (initial: a) (f: fn a b => a): a can e =
+foldl (stream: s) {Stream s b e} (initial: a) (f: fn a b [env] -> a can e) {Drop env e}: a can e =
     var result = initial
 
     handle Stream.stream stream
@@ -114,7 +120,7 @@ foldl (stream: s) {Stream s b e} (initial: a) (f: fn a b => a): a can e =
 /// Unlike `foldl`, `foldr` is not tail-resumptive (the initial `f a1 _` call does not finish
 /// until the rest of the stream has been consumed) which limits performance. Prefer `foldl`
 /// when `f` is commutative.
-foldr (stream: s) {Stream s a e} (initial: b) (f: fn a b => b): b can e =
+foldr (stream: s) {Stream s a e} (initial: b) (f: fn a b [env] -> b can e) {Drop env e}: b can e =
     handle Stream.stream stream; initial
     | emit value ->
         rest = resume ()
@@ -125,7 +131,7 @@ foldr (stream: s) {Stream s a e} (initial: b) (f: fn a b => b): b can e =
 /// Given `a1, a2, a3, .., aN`, return `f (.. (f (f a1 a2) a3) ..) aN`
 ///
 /// This function is tail-resumptive. Fails if the stream is empty.
-reduce (stream: s) {Stream s a e} (f: fn a a => a): a can Fail, e =
+reduce (stream: s) {Stream s a e} (f: fn a a [env] -> a can e) {Drop env e}: a can Fail, e =
     var result = Maybe.None
 
     // TODO: Can this be simplified? This would be easier with shallow handlers
@@ -143,7 +149,7 @@ reduce (stream: s) {Stream s a e} (f: fn a a => a): a can Fail, e =
 /// Given `a1, a2, .., aN` and `b1, b2, .., bN`, emit `f a1 b1, f a2 b2, .., f aN bN`.
 /// If the two input streams are not the same length, the length of the resulting stream
 /// will be the shorter of the two.
-map2 (stream1: s1) (stream2: s2) {Stream s1 a e1} {Stream s2 b e2} {Copy a} {Copy b} (f: fn a b => c) = do
+map2 (stream1: s1) (stream2: s2) {Stream s1 a e1} {Stream s2 b e2} {Copy a} {Copy b} (f: fn a b [env] -> c can e3) {Drop env e3} = move fn () ->
     // TODO: Old impl was broken, rewrite again to remove collecting to Vec
     v1 = Vec.of stream1
     v2 = Vec.of stream2
@@ -154,7 +160,7 @@ map2 (stream1: s1) (stream2: s2) {Stream s1 a e1} {Stream s2 b e2} {Copy a} {Cop
         emit (f a b)
 
 /// Emit numbers from 0 to `n`, end-exclusive
-iota n = do
+iota n = move fn () ->
     for i in 0usz .. n do emit i
 
 /// Zip the two streams together, emitting `x, y` for each
@@ -170,7 +176,7 @@ zip stream1 stream2 {sa: Stream s1 a e1} {sb: Stream s2 b e2} {Copy a} {Copy b} 
 ///
 /// If `false` is returned for any element, the stream will not
 /// be pulled any further and `false` will be returned early.
-all (stream: s) {Stream s a e} (f: fn a => Bool): Bool can e =
+all (stream: s) {Stream s a e} (f: fn a [env] -> Bool can e) {Drop env e}: Bool can e =
     handle Stream.stream stream; true
     | emit a ->
         if f a then resume ()
@@ -182,7 +188,7 @@ all (stream: s) {Stream s a e} (f: fn a => Bool): Bool can e =
 ///
 /// If `true` is returned for any element, the stream will not
 /// be pulled any further and `true` will be returned early.
-any (stream: s) {Stream s a e} (f: fn a => Bool): Bool can e =
+any (stream: s) {Stream s a e} (f: fn a [env] -> Bool can e) {Drop env e}: Bool can e =
     handle Stream.stream stream; false
     | emit a ->
         if f a then true
@@ -194,7 +200,7 @@ first (stream: s) {Stream s a e}: a can Fail, e =
     | emit a -> a
 
 /// Returns the final element of the stream. Fails if the stream is empty
-last (stream: s) {Stream s a e}: a can Fail, e =
+last (stream: s) {Stream s a e} {Drop a d}: a can Fail, e, d =
     var result = Maybe.None
     handle Stream.stream stream
     | emit a ->
@@ -205,7 +211,7 @@ last (stream: s) {Stream s a e}: a can Fail, e =
     else fail ()
 
 /// Returns the nth element of the stream (indexed starting from 0). Fails if the stream's length is `< n`.
-nth (stream: s) {Stream s a e} (n: Usz): a can Fail, e =
+nth (stream: s) {Stream s a e} {Drop a d} (n: Usz): a can Fail, e, d =
     var i = 0
     handle Stream.stream stream; fail ()
     | emit a ->
@@ -215,7 +221,7 @@ nth (stream: s) {Stream s a e} (n: Usz): a can Fail, e =
 /// Intersperse an item in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
-intersperse (stream: s) {Stream s a e} (item: a) {Clone a} = do
+intersperse (stream: s) {Stream s a e} (item: a) {Clone a} {Drop a d} = move fn () ->
     var not_first = false
     handle Stream.stream stream
     | emit a ->
@@ -227,7 +233,7 @@ intersperse (stream: s) {Stream s a e} (item: a) {Clone a} = do
 /// Intersperse an item from the given function in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
-intersperse_with (stream: s) {Stream s a e} (item: fn Unit => a) = do
+intersperse_with (stream: s) {Stream s a e} (item: fn Unit [env] -> a can e2) {Drop env e2} = move fn () ->
     var not_first = false
     handle Stream.stream stream
     | emit a ->
@@ -237,17 +243,19 @@ intersperse_with (stream: s) {Stream s a e} (item: fn Unit => a) = do
         resume ()
 
 /// Emits all elements from the first stream followed by all elements from the second stream
-chain (stream1: s1) {Stream s1 a e1} (stream2: s2) {Stream s2 a e2} = do
+chain (stream1: s1) {Stream s1 a e1} (stream2: s2) {Stream s2 a e2} = move fn () ->
     Stream.stream stream1
     Stream.stream stream2
 
 /// Consume the stream, returning the total number of elements in it
-count (stream: s) {Stream s a e}: U32 can e =
-    map stream (fn _ -> 1) |> foldl 0 (+)
+count (stream: s) {Stream s a e} {Drop a d}: U32 can e, d =
+    foldl stream 0 fn total element ->
+        ignore element
+        total + 1
 
 /// Find an element in the stream for which `predicate` returns true.
 /// Fails if there is no such element
-find (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool): a can Fail, e =
+find (stream: s) {Stream s a e} {Drop a d} (predicate: fn (ref a) [env] -> Bool can e) {Drop env d}: a can Fail, e, d =
     handle
         Stream.stream stream
         fail ()
@@ -257,7 +265,7 @@ find (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool): a can Fail, e =
 
 /// Find an element in the stream for which `predicate` returns `Some b`, and return that `b`.
 /// Fails if there is no such element
-find_map (stream: s) {Stream s a e} (predicate: fn a => Maybe b): b can Fail, e =
+find_map (stream: s) {Stream s a e} (predicate: fn a [env] -> Maybe b can e) {Drop env e}: b can Fail, e =
     // TODO: Should `predicate` be `fn a => b can Fail` instead?
     handle
         Stream.stream stream
@@ -268,7 +276,7 @@ find_map (stream: s) {Stream s a e} (predicate: fn a => Maybe b): b can Fail, e 
         | None -> resume ()
 
 /// Re-emit only the first `n` items from the stream
-take (stream: s) {Stream s a e} (initial_n: U32) = do
+take (stream: s) {Stream s a e} {Drop a d} (initial_n: U32) = move fn () ->
     var n = initial_n
     handle Stream.stream stream
     | emit a ->
@@ -279,7 +287,7 @@ take (stream: s) {Stream s a e} (initial_n: U32) = do
 
 /// Re-emit items from the stream only while `predicate` keeps returning true.
 /// When the predicate first returns false, the stream will stop.
-take_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = do
+take_while (stream: s) {Stream s a e} {Drop a d} (predicate: fn (ref a) [env] -> Bool) {Drop env d} = move fn () ->
     handle Stream.stream stream
     | emit a ->
         if predicate (ref a) then
@@ -287,7 +295,7 @@ take_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = do
             resume ()
 
 /// Skips the first `n` items from the stream, emitting the rest as normal.
-skip (stream: s) {Stream s a e} (initial_n: U32) = do
+skip (stream: s) {Stream s a e} {Drop a d} (initial_n: U32) = move fn () ->
     var n = initial_n
     handle Stream.stream stream
     | emit a ->
@@ -299,7 +307,7 @@ skip (stream: s) {Stream s a e} (initial_n: U32) = do
 
 /// Skips elements while `predicate elem` is true. After the first `false`,
 /// no more elements will be skipped (including the element itself).
-skip_while (stream: s) {Stream s a e} (predicate: fn (ref a) => Bool) = do
+skip_while (stream: s) {Stream s a e} {Drop a d} (predicate: fn (ref a) [env] -> Bool) {Drop env d} = move fn () ->
     var found_false = false
     handle Stream.stream stream
     | emit a ->

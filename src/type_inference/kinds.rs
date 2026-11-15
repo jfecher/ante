@@ -7,7 +7,7 @@ use crate::diagnostics::{Diagnostic, Location};
 /// A type's [Kind] is essentially the type of a type.
 /// These differentiate whether something in a type position is itself
 /// a type, a type constructor, or a type-level integer.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash, Clone)]
 pub enum Kind {
     /// A type valid in a type position
     Type,

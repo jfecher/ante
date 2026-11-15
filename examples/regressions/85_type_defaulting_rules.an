@@ -3,7 +3,7 @@
 //   thread 'main' panicked at 'internal error: entered unreachable code: There is no code in a trait definition that can be codegen'd.
 //   No cached impl for printne 50: (unit -> unit)', src/llvm/mod.rs:438:17
 
-count_down n f =
+count_down n (f: fn _ [env] -> Unit can e) {Drop env e} =
     if n > 0 then
         f n
         count_down (n - 1) f

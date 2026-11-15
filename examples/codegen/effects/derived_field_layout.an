@@ -33,6 +33,9 @@ main () =
         println "fail"
         resume ()
 
+impl drop_holder: Drop (Holder e) pure with
+    drop _ = ()
+
 // args: --delete-binary
 // expected stdout:
 // fail

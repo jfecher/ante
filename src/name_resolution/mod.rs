@@ -741,6 +741,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.pop_local_scope();
                 }
             },
+            Expr::Chain(chain) => {
+                self.resolve_expr(chain.body);
+
+                self.push_local_scope();
+                self.resolve_expr(chain.else_);
+                self.pop_local_scope();
+            },
+            Expr::Fallthrough => (),
             Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             Expr::Handle(handle) => {

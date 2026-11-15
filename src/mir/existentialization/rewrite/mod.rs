@@ -135,6 +135,7 @@ impl<'a> Rewriter<'a> {
                 Some(self.call(id, function, arguments, &typ))
             },
             Instruction::PackClosure { function, environment } => Some(self.pack_closure(function, environment, &typ)),
+            Instruction::ClosureEnvironment(closure) => Some(self.environment_of(closure, &typ)),
             Instruction::Instantiate(target, bindings) => self.materialized.contains(&result).then(|| {
                 let bindings = Bindings::Explicit(bindings.clone());
                 self.builder.definition_value(*target, &bindings, &typ)

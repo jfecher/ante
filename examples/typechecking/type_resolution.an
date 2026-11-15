@@ -24,6 +24,9 @@ foo (e: Either) =
     | Up -> ()
     | Down -> ()
 
+impl drop_either: Drop Either pure with
+    drop _ = ()
+
 // args: -e ast-t --no-color
 // expected stdout:
 // type Either =
@@ -47,4 +50,7 @@ foo (e: Either) =
 //     | 1 -> ()
 //     | 2 -> ()
 //     | 3 -> ()
+// 
+// implicit (drop_either: Drop Either pure drop_either) = Drop Either pure with
+//     (drop: fn Either -> Unit is pure) = fn (_: Either) -> ()
 

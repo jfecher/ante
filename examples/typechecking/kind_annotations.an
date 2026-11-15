@@ -63,6 +63,12 @@ type Mismatch (n: type) =
 //    |                ^
 // 23 |     extra: n
 // 
+// examples/typechecking/kind_annotations.an:25:16
+//    | // error: _array goes out of scope without being moved, but its type Array n t does not implement Drop
+//    | // note: Move it, implement `Drop` for its type, add a `Drop` constraint, or consume it with `Std.Mem.forget`
+// 25 | bad_fn (x: n) (_array: Array n t) = x
+//    |                ^^^^^^
+// 
 // examples/typechecking/kind_annotations.an:25:30
 //    | // error: Expected a type constructor of kind U32, but found one of kind type
 // 25 | bad_fn (x: n) (_array: Array n t) = x
@@ -74,5 +80,5 @@ type Mismatch (n: type) =
 // 29 |     arr: Array n I32
 //    |                ^
 // 
-// Found 3 errors and 0 warnings
+// Found 4 errors and 0 warnings
 

@@ -4,7 +4,7 @@ effect Send a =
 // The surface arguments force `a := U8, b := I32`. Sorting row entries by their full type
 // would order the generic view `Send a, Send b` but the instantiated view `Send I32, Send U8`,
 // silently flipping which capability sits where in the evidence.
-both (_x: a) (_y: b) (f: fn Unit -> Unit can Send a, Send b): Unit can Send a, Send b =
+both (_x: a) (_y: b) {Copy a} {Copy b} (f: fn Unit -> Unit can Send a, Send b): Unit can Send a, Send b =
     f ()
 
 take_u8 (_v: U8): Unit = ()

@@ -1,0 +1,30 @@
+// Calling a `fn` through a reference leaves its environment with whatever holds it,
+// so a non-Copy closure can be lent to a callee in a loop without moving it
+apply_twice (f: ref (fn I32 [env] -> I32 can e)) (x: I32): I32 can e =
+    f (f x)
+
+run (f: fn I32 [env] -> I32) {Drop env pure}: I32 =
+    var total = 0
+    var i = 0
+    while i < 3 do
+        total += apply_twice f i
+        i += 1
+    total
+
+global_fn (x: I32): I32 = x + 1
+
+call_global (f: ref (fn I32 -> I32)) (x: I32): I32 = f x
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    v = Vec.of [1i32, 2, 3]
+    println (run (move fn x -> x + 1 + (if v.is_empty () then 0 else 3)))
+    println (run (fn x -> x * 2))
+    println (call_global global_fn 1)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 27
+// 12
+// 2

@@ -5,7 +5,7 @@ effect Emit a =
     emit: fn a -> Unit
 
 // Counts what `f` emits and keeps the last value, generic in what is emitted
-collect (f: fn Unit => Unit can Emit a, e): (U32, Maybe a) can e =
+collect (f: once fn Unit => Unit can Emit a, e) {Drop a d}: (U32, Maybe a) can e, d =
     var count = 0
     var last = Maybe.None
     handle f ()
@@ -23,7 +23,7 @@ emit_n (n: U32) (x: a) {Copy a}: Unit can Emit a =
 
 // Handles `Emit a` by emitting `(b, a)` pairs: two instantiations of one effect are in
 // scope at once inside the handler
-tag_each (tag: b) (f: fn Unit => Unit can Emit a, Emit (b, a), e) {Copy b}: Unit can Emit (b, a), e =
+tag_each (tag: b) (f: once fn Unit => Unit can Emit a, Emit (b, a), e) {Copy b}: Unit can Emit (b, a), e =
     handle f ()
     | emit x ->
         emit (tag, x)

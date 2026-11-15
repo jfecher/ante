@@ -1,0 +1,57 @@
+import Std.Mem.forget
+
+// A value of a generic type can only be dropped with a `Drop` constraint for it. Without
+// one it must be moved elsewhere or consumed with `forget`, which runs no `drop`.
+type Tag = id: U32
+
+impl drop_tag: Drop Tag Print with
+    drop tag =
+        print "drop "
+        println tag.id
+
+type Box t = value: t
+
+impl drop_box {Drop t e}: Drop (Box t) e with
+    drop _ = ()
+
+discard (_value: t) {Drop t e}: Unit can e = ()
+
+first_of (first: t) (_second: t) {Drop t e}: t can e = first
+
+leak (value: t): Unit = forget value
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    discard (Tag 1)
+    discard (Box (Box (Tag 2)))
+    kept = first_of (Tag 3) (Tag 4)
+    println "kept"
+
+    // Collections drop their elements
+    var tags = Vec.empty ()
+    tags.push (Tag 5)
+    tags.push (Tag 6)
+    tags.[0] := Tag 7
+    println "replaced"
+
+    // A `Copy` type is never dropped and needs no impl
+    discard (1i32, 'c')
+
+    leak (Tag 8)
+    println "end"
+    ignore kept
+
+// args: --delete-binary --no-color
+// expected stdout:
+// drop 1
+// drop 2
+// drop 4
+// kept
+// drop 5
+// replaced
+// end
+// drop 3
+// drop 7
+// drop 6
+

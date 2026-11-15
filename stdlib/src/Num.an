@@ -71,7 +71,7 @@ impl mod_usz: Mod Usz with (%) x y = intrinsic "ModUnsigned" x y
 // Cranelift backend does not support floating-point remainder or modulus
 
 // TODO: We do not have an integer-generic 0 value to use here
-(%%) (a: t) (b: t) {Mod t} {Eq t e} {Cast U8 t e}: Bool can e =
+(%%) (a: t) (b: t) {Mod t} {Eq t e} {Cast U8 t e} {Copy t}: Bool can e =
     a % b == cast 0u8 : t
 
 trait Eq t (e: effect) = (==): fn (ref t) (ref t) -> Bool can e
@@ -101,7 +101,7 @@ impl eq_ptr: Eq (Ptr t) pure with
 
 impl eq_maybe {Eq e2 e}: Eq (Maybe e2) e with
     (==) l r =
-        match deref l, deref r
+        match l, r
         | Some lv, Some rv -> lv == rv
         | None, None -> true
         | _ -> false

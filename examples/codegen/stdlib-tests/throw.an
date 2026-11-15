@@ -1,6 +1,8 @@
 import Std.Throw.Throw, throw, catch, catch_or, catch_or_else, map_err, unwrap_err
 import Std.Fail.Fail, fail, try, assert, abort_on_fail
 
+never_throws (): I32 can Throw I32 = 99
+
 main () =
     abort_on_fail do
 
@@ -11,7 +13,7 @@ main () =
     // catch_or:
     // Type annotation is needed here to not return Never, `0i32` does not fix it
     assert <| (throw 1 : I32 ~> catch_or 0) == 0
-    assert <| (99 ~> catch_or 0) == 99
+    assert <| (never_throws () ~> catch_or 0) == 99
 
     // catch_or_else:
     assert <| (throw "x" : I32 ~> catch_or_else (fn _s -> 42)) == 42

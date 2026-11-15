@@ -13,7 +13,7 @@ foo (): Unit can Count, Bail =
 
 // Regression test showing the error message quality of this test.
 // Previously Bail and Log mismatches were reported in separate errors
-handle_count (f: fn Unit => Unit can Count, Bail): I32 can Count =
+handle_count (f: once fn Unit => Unit can Count, Bail): I32 can Count =
     handle
         f ()
         0

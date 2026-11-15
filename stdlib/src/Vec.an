@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free, calloc
 import Std.Stream.Stream, iter, emit
 import Std.Fail.Fail, fail, panic_on_fail
-import Std.Mem.Type, MkType, size_of, transmute, null, offset, deref_ptr, ptr_to_ref, array_insert
+import Std.Mem.Type, MkType, size_of, transmute, null, offset, deref_ptr, ptr_to_ref, array_insert, forget
 import Std.Slice.Slice
 
 export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
@@ -130,7 +130,8 @@ Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e, Mut
             idxs.push i
 
     count = idxs.len
-    v.remove_indices idxs ~> panic_on_fail
+    handle v.remove_indices idxs
+    | fail () -> panic "Vec.remove_all: index out of bounds"
     count
 
 
@@ -192,7 +193,7 @@ Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
     if new_len >= v.len then return ()
     for i in new_len .. v.len do
         elem = offset v.data i
-        Drop.drop (ptr_to_ref elem)
+        drop (deref_ptr elem)
     v.len := new_len
 
 /// Remove and drop every element.
@@ -200,7 +201,7 @@ Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
 Vec.clear (v: mut Vec t) {Drop t e}: Unit can e, Mutate 'v =
     v.truncate 0
 
-insertion_sort (data: Ptr t) (start: Usz) (end: Usz) (cmp: fn (ref t) (ref t) => Bool): Unit =
+insertion_sort (data: Ptr t) (start: Usz) (end: Usz) (cmp: ref (fn (ref t) (ref t) [env] -> Bool can e)): Unit can e =
     for i in (start + 1) .. end do
         elem = deref_ptr (offset data i)
         var j = i
@@ -209,7 +210,7 @@ insertion_sort (data: Ptr t) (start: Usz) (end: Usz) (cmp: fn (ref t) (ref t) =>
             j -= 1
         array_insert data j elem
 
-merge_runs (src: Ptr t) (dst: Ptr t) (lo: Usz) (mid: Usz) (hi: Usz) (cmp: fn (ref t) (ref t) => Bool): Unit =
+merge_runs (src: Ptr t) (dst: Ptr t) (lo: Usz) (mid: Usz) (hi: Usz) (cmp: ref (fn (ref t) (ref t) [env] -> Bool can e)): Unit can e =
     elem_size = size_of (MkType: Type t)
     var left = lo
     var right = mid
@@ -226,7 +227,7 @@ merge_runs (src: Ptr t) (dst: Ptr t) (lo: Usz) (mid: Usz) (hi: Usz) (cmp: fn (re
     memcpy (offset dst (out + mid - left)) (offset src right) ((hi - right) * elem_size)
     ()
 
-merge_sort (data: Ptr t) (n: Usz) (cmp: fn (ref t) (ref t) => Bool): Unit =
+merge_sort (data: Ptr t) (n: Usz) (cmp: fn (ref t) (ref t) [env] -> Bool) {Drop env pure}: Unit =
     run_len = 16usz
     var run_start = 0usz
     while run_start < n do
@@ -258,7 +259,7 @@ merge_sort (data: Ptr t) (n: Usz) (cmp: fn (ref t) (ref t) => Bool): Unit =
     free buffer
 
 /// Sort the vector in place using `cmp` to compare elements.
-Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit can Mutate 'v! =
+Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) [env] -> Bool) {Drop env pure}: Unit can Mutate 'v! =
     merge_sort v.data v.len cmp
 
 /// Sort the vector in place using the `Cmp` ordering.
@@ -277,12 +278,12 @@ Vec.slice_from (v: ref 'v Vec t) (start: Usz): Slice 'v! t can Panic =
 Vec.slice_until (v: ref 'v Vec t) (end: Usz): Slice 'v! t can Panic =
     (v.slice ()).slice_until end
 
-Vec.windows (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v! t) ->
+Vec.windows (v: ref 'v Vec t) (n: Usz) = move fn () can Emit (Slice 'v! t) ->
     if n != 0 and n <= v.len then
         for i in 0 .. v.len - n + 1 do
             emit (Slice.from_parts (offset v.data i) n)
 
-Vec.chunks (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v! t) ->
+Vec.chunks (v: ref 'v Vec t) (n: Usz) = move fn () can Emit (Slice 'v! t) ->
     if n != 0 then
         var start = 0usz
         while start < v.len do
@@ -290,7 +291,7 @@ Vec.chunks (v: ref 'v Vec t) (n: Usz) = fn () can Emit (Slice 'v! t) ->
             emit (Slice.from_parts (offset v.data start) len)
             start += len
 
-Vec.permutations (v: ref 'v Vec t) = fn () can Emit (Slice 'v! t) ->
+Vec.permutations (v: ref 'v Vec t) = move fn () can Emit (Slice 'v! t) ->
     n = v.len
     elem_size = size_of (MkType: Type t)
     buffer: Ptr t = malloc (n * elem_size)
@@ -322,8 +323,7 @@ impl print_vec {p: Display t e}: Display (Vec t) e with
 
         for i in 0 .. v.len do
             if i != 0 then print ", "
-            elem: t = deref_ptr (offset v.data i)
-            print elem
+            print (v.get_unchecked i)
 
         print "]"
 
@@ -337,7 +337,7 @@ impl extract_vec: Extract (ref 'v Vec t) Usz (ref 'v! t) Panic with
 /// Vec.insert will insert into a slot, moving the previous element and each
 /// element after to the right. This `Insert` implementation will instead
 /// directly mutate the element at the given index to the new element.
-impl insert_vec: Insert (mut 'v Vec t) Usz t (Panic & Mutate 'v!) with
+impl insert_vec {Drop t e}: Insert (mut 'v Vec t) Usz t (Panic & Mutate 'v! & e) with
     (.[]:=) v i e =
         slot = v.get i ~> panic_on_fail
         slot := e
@@ -346,6 +346,11 @@ impl stream_vec: Stream (Vec a) a pure with
     stream vec =
         for i in 0 .. vec.len do
             emit (deref (vec.get_unchecked i))
+
+        // Every element was moved out, so only the buffer is left to free
+        if vec.cap != 0 then
+            free vec.data
+        forget vec
 
 impl stream_ref_vec: Stream (ref Vec a) (ref a) pure with
     stream vec =
@@ -363,11 +368,11 @@ impl clone_vec {Clone t}: Clone (Vec t) with
         Vec data v.len v.len
 
 impl drop_vec {Drop t e}: Drop (Vec t) e with
-    drop (v: mut Vec t) =
+    drop (v: Vec t) =
         if v.cap != 0 then
             for i in 0 .. v.len do
                 elem = offset v.data i
-                Drop.drop (ptr_to_ref elem)
+                drop (deref_ptr elem)
             free v.data
 
 impl eq_vec {Eq t e}: Eq (Vec t) e with

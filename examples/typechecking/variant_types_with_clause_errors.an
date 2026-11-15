@@ -19,6 +19,9 @@ type Dup2 =
 
 main () = ()
 
+impl drop_expr: Drop Expr pure with
+    drop _ = ()
+
 // args: --no-color
 // expected exit status: 1
 // expected stderr:

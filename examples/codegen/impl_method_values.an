@@ -3,7 +3,7 @@ trait Show t =
     name: String
 
 make_show (prefix: String): fn I32 => String =
-    fn x -> prefix ++ cast x
+    move fn x -> clone prefix ++ cast x
 
 // A method given as an arbitrary expression is evaluated on each call to the method
 impl show_i32: Show I32 with
@@ -28,7 +28,7 @@ impl show_pair {s: Show a}: Show (a, a) with
     show = (fn (x, y) -> Show.show x {s} ++ " & " ++ Show.show y {s}) : fn (a, a) => String
     name = "pair"
 
-wrap (f: fn a => String): fn a => String = fn x -> "[" ++ f x ++ "]"
+wrap (f: fn a => String): fn a => String = move fn x -> "[" ++ f x ++ "]"
 
 impl show_bool {s: Show U8}: Show Bool with
     show = wrap fn b -> if b then Show.show 1u8 {s} else Show.show 0u8 {s}

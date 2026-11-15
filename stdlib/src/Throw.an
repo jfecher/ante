@@ -7,30 +7,29 @@ catch (f: a can Throw e): Result a e =
     handle Ok (f ())
     | throw e -> Error e
 
-catch_or (f: a can Throw e) (default: a): a =
+catch_or (f: a can Throw e) (default: a) {Drop a d} {Drop e d}: a can d =
     handle f ()
     | throw _ -> default
 
-catch_or_else (f: a can Throw e) (default: fn e => a): a =
+catch_or_else (f: a can Throw e) (default: once fn e [env] -> a) {Drop env d}: a can d =
     handle f ()
     | throw e -> default e
 
-on_err (f: a can Throw e) (on_err: fn e => Unit): Unit =
+on_err (f: a can Throw e) (on_err: once fn e [env] -> Unit) {Drop a d} {Drop env d}: Unit can d =
     handle
-        f ()
-        ()
+        ignore (f ())
     | throw e -> on_err e
 
 /// Apply the given function to the thrown value and re-throw it
-map_err (f: t can Throw e1) (f2: fn e1 => e2): t can Throw e2 =
+map_err (f: t can Throw e1) (f2: once fn e1 [env] -> e2) {Drop env d}: t can Throw e2, d =
     handle f ()
     | throw e ->
         throw (f2 e)
 
 /// Returns the error when thrown or fails if the operation finishes without throwing.
-unwrap_err (f: t can Throw e): e can Fail =
+unwrap_err (f: t can Throw e) {Drop t d}: e can Fail, d =
     handle
-        f ()
+        ignore (f ())
         fail ()
     | throw e -> e
 
@@ -38,5 +37,5 @@ unwrap_err (f: t can Throw e): e can Fail =
 exit_on_throw (f: a can Throw t, e) {Display t e2}: a can Fs, e, e2 =
     handle f ()
     | throw error ->
-        print_to_stderr do println error
+        print_to_stderr fn () -> println error
         Std.C.exit 1

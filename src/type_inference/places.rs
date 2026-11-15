@@ -16,6 +16,7 @@ use crate::{
     shared_arc::Shared,
     type_inference::{
         TypeChecker, Variance,
+        kinds::Kind,
         row::{RowEnd, RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into, is_open},
     },
 };
@@ -73,9 +74,7 @@ impl std::fmt::Display for PlaceMode {
 /// How a reference may access a concrete place
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PlaceAccess {
-    Plain {
-        mutable: bool,
-    },
+    Plain { mutable: bool },
     Mode(PlaceMode),
 }
 
@@ -601,7 +600,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
 
             if widen {
-                absorbed.push(self.next_type_variable());
+                absorbed.push(self.next_variable(Kind::Place));
             }
             self.bind_places_end(&end, &absorbed, side, new_bindings)?;
         }
@@ -627,7 +626,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// A places row with every place in `places` plus a fresh tail to widen into
     fn reopen_places(&self, places: &Type, new_bindings: &TypeBindings) -> Type {
         let mut entries = self.collect_and_merge_places(places, new_bindings);
-        entries.push(self.next_type_variable());
+        entries.push(self.next_variable(Kind::Place));
         Type::places(&entries, &self.bindings, new_bindings)
     }
 
@@ -800,7 +799,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     let mut places = self.collect_and_merge_places(&places, &none);
 
                     // A closed row can't name an inferred place, nor can an impl name its method's places
-                    let is_impl_method = self.item.impl_.as_ref().is_some_and(|impl_| impl_.methods.contains(&lambda));
+                    let is_impl_method = self.is_impl_method(lambda);
                     places.retain(|place| {
                         PlaceEntry::new(place).is_some_and(|place| {
                             let unnameable = match place.root {
@@ -813,10 +812,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     });
                     self.push_mutate(&mut kept, self.unmutated_places(places, &function.effects));
                 },
-                // Against a closed row, an open end nothing bound performs nothing
+                // An unbound open end in a closed row performs no effects. We wait until the item
+                // is borrow checked to close it though, since a drop within the body or a branch
+                // of a `handle` may still perform any effect of the row.
                 (None, Type::Variable(id)) if closed && !implicits_delayed => {
-                    let location = self.current_context().expr_location(lambda).clone();
-                    self.try_default_effect_to_pure(id, location);
+                    self.effect_bounds.insert(id, function.effects.clone());
+                    self.deferred_effect_defaults.push(id);
                 },
                 (None, entry) => kept.push(entry),
             }
@@ -914,19 +915,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Variable(path) => match self.path_origin(*path) {
                 Some(Origin::Local(name)) => self.open_place(self.binding_place(name)),
                 // TODO: Track places for globals
-                _ => self.next_type_variable(),
+                _ => self.next_variable(Kind::Place),
             },
             Expr::MemberAccess(access) => {
                 let object = access.object;
                 match self.expr_types.get(&object) {
-                    // Object is already a reference
+                    // Object is already a reference. If it is a reference to a reference, the
+                    // field belongs to whatever the innermost reference points to.
                     Some(t) if t.reference_element(&self.bindings).is_some() => {
-                        match t.reference_places(&self.bindings) {
+                        let mut innermost = t.clone();
+                        while let Some((_, element)) = innermost.reference_element(&self.bindings)
+                            && element.reference_element(&self.bindings).is_some()
+                        {
+                            innermost = element;
+                        }
+                        match innermost.reference_places(&self.bindings) {
                             Some(places) => {
                                 let field = [PlaceSegment::Field(self.member_name(access).clone())];
                                 Type::project_place(&places, &field, &self.bindings, &TypeBindings::default())
                             },
-                            None => self.next_type_variable(),
+                            None => self.next_variable(Kind::Place),
                         }
                     },
                     _ => match self.try_build_move_path(expr) {
@@ -937,7 +945,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Expr::TypeAnnotation(annotation) => self.infer_place(annotation.lhs),
             // A diverging expr may be coerced to any place
-            _ if self.expr_types.get(&expr).is_some_and(|t| self.diverges(t)) => self.next_type_variable(),
+            _ if self.expr_types.get(&expr).is_some_and(|t| self.diverges(t)) => self.next_variable(Kind::Place),
             // Otherwise we have an anonymous local like `ref my_call ()`
             _ => self.open_place(Place::anonymous(expr, self.current_scope_depth())),
         }
@@ -998,7 +1006,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A places row containing just `atom` plus a fresh open tail
     pub(crate) fn open_place(&self, atom: Place) -> Type {
-        let fresh = self.next_type_variable();
+        let fresh = self.next_variable(Kind::Place);
         let access = PlaceAccess::Plain { mutable: self.place_root_is_mutable(&atom) };
         Type::places(&[Type::Place(atom, access), fresh], &self.bindings, &TypeBindings::default())
     }
@@ -1053,7 +1061,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             other => other,
         };
         let Type::Variable(id) = base.follow_two(&self.bindings, new_bindings) else { return Err(()) };
-        let fresh = self.next_type_variable();
+        let fresh = self.next_variable(Kind::Place);
         let constrained = Type::PlaceProjection(Shared::new(fresh), Shared::new(Vec::new()), Some(mode));
         new_bindings.insert(id, Type::Places(Some(Shared::new(vec![constrained]))));
         Ok(())

@@ -54,7 +54,7 @@ test_get_or_insert_contains_and_merge () =
 
     assert <| m.get_or_insert_with 5 (do 50) == 50
 
-    m.retain (fn k _ -> k %% 2)
+    m.retain (fn k _ -> k.* %% 2)
     assert <| HashMap.len m == 2
 
     var m2 = HashMap.of [(100u8, 1000), (200, 2000)]

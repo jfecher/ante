@@ -87,6 +87,18 @@ impl Rewriter<'_> {
         Some(self.builder.call_direct(known.function, &known.bindings, args, result_type, destination))
     }
 
+    /// Retrieve the environment of the function value `closure`, which has type `typ`
+    pub(super) fn environment_of(&mut self, closure: &Value, typ: &Type) -> Value {
+        let Type::Function(function) = self.old_type(closure) else {
+            panic!("existentialization: the environment of the non-function `{closure}`")
+        };
+        match self.closure_environment(closure, function.parameters.len(), typ) {
+            Arg::Value(environment) => environment,
+            Arg::Address(address) if self.builder.indirect(typ) => address,
+            Arg::Address(address) => self.builder.load_immutable(address, typ),
+        }
+    }
+
     /// The environment of `closure` of the given arity, read out of its function value
     fn closure_environment(&mut self, closure: &Value, arity: usize, environment_type: &Type) -> Arg {
         let (closure, closure_type) = self.arg(closure);

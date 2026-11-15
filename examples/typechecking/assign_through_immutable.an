@@ -21,6 +21,9 @@ field_of_var () =
 
 main () = ()
 
+impl drop_p: Drop (P 'a) pure with
+    drop _ = ()
+
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:

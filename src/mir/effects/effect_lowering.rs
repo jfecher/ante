@@ -13,7 +13,7 @@
 //! in the running coroutine via `mco_coro_set_message` and suspends. The driver function then
 //! reads the message, matches on the effect, and dispatches to the relevant handler branch,
 //! whose `resume` writes the result into the slot before resuming the performer.
-use std::sync::Arc;
+use std::{cell::RefCell, sync::Arc};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -25,6 +25,8 @@ use crate::{
         InstructionId, IntConstant, Mir, TerminatorInstruction, Type, Value, next_definition_id,
     },
 };
+
+use super::tail_resume_optimization::analyze_resumes;
 
 struct AminicoroFn {
     name: &'static str,
@@ -70,7 +72,9 @@ impl Mir {
         let fns = aminicoro_fns();
         let op_index = build_op_index(&self);
         let coroutine_entry = generic_coroutine_entry.then(|| generate_coroutine_entry(&mut self, &fns));
-        let context = Context { mco: &fns, op_index: &op_index, coroutine_entry };
+        let deferred_handlers = RefCell::default();
+        let context =
+            Context { mco: &fns, op_index: &op_index, coroutine_entry, deferred_handlers: &deferred_handlers };
 
         let definition_ids: Vec<DefinitionId> = self.definitions.keys().copied().collect();
 
@@ -220,6 +224,9 @@ struct Context<'local> {
 
     /// The non-generic function generic coroutines start in
     coroutine_entry: Option<DefinitionId>,
+
+    /// Maps each handler rewritten by [defer_resumes] to its rewritten version
+    deferred_handlers: &'local RefCell<FxHashMap<DefinitionId, DefinitionId>>,
 }
 
 /// Every effect message is `(target_coro, case_index, arguments, result)`
@@ -480,6 +487,20 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
         case_shape_from_handler_type(t).expect("handler type must be `fn op_args.., resume -> r`")
     });
 
+    // If every `resume` in a handler is in tail position, the handler has nothing left to do
+    // after resuming, so we can loop in the drive instead of calling it again from `resume`.
+    // See [DeferredResume].
+    let handlers = mapvec(&cases, |case| resolve_body_function(case.handler, definition));
+    let deferred_handlers = mapvec(handlers.into_iter().zip(&case_shapes), |(handler, shape)| {
+        let (handler, environment, bindings) = handler?;
+        let deferred = defer_resumes(mir, handler, shape.op_arg_types.len(), context)?;
+        Some((deferred, mir.definitions[&deferred].typ.clone(), environment, bindings))
+    });
+    let handler_types = mapvec(handler_types.into_iter().zip(&deferred_handlers), |(typ, deferred)| {
+        deferred.as_ref().map_or(typ, |(_, deferred_type, ..)| deferred_type.clone())
+    });
+    let resumes_in_tail = mapvec(&deferred_handlers, Option::is_some);
+
     let layout = match context.coroutine_entry {
         Some(entry) if caller_generic_count > 0 => CoroutineInit::Indirect(entry),
         _ => CoroutineInit::Direct,
@@ -505,8 +526,16 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
         context,
         caller_generic_count,
     );
-    let drive_id =
-        generate_drive_function(mir, &cases, &handler_types, &case_shapes, &result_type, context, caller_generic_count);
+    let drive_id = generate_drive_function(
+        mir,
+        &cases,
+        &handler_types,
+        &case_shapes,
+        &resumes_in_tail,
+        &result_type,
+        context,
+        caller_generic_count,
+    );
 
     // Read generated def types up-front; the mutable borrow below precludes accessing them later.
     let body_wrapper_typ = mir.definitions[&body_wrapper_id].typ.clone();
@@ -554,8 +583,21 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
 
     let mut drive_arguments = Vec::with_capacity(1 + cases.len());
     drive_arguments.push(coro);
-    for case in &cases {
-        drive_arguments.push(case.handler);
+    for (case, deferred) in cases.iter().zip(deferred_handlers) {
+        let handler = match deferred {
+            None => case.handler,
+            // Same closure as before, but using the handler rewritten to defer its resumes
+            Some((deferred, typ, environment, bindings)) => {
+                let function = emitter.emit_definition_value(deferred, typ.clone(), bindings);
+                match environment {
+                    Some(environment) => {
+                        emitter.push_instruction(Instruction::PackClosure { function, environment }, typ)
+                    },
+                    None => function,
+                }
+            },
+        };
+        drive_arguments.push(handler);
     }
     let drive_value = emitter.emit_definition_value(drive_id, drive_typ, caller_bindings.clone());
     emitter.reuse_instruction(
@@ -790,30 +832,23 @@ fn generate_body_wrapper(
 /// dispatches to the matching handler by `case_idx`, otherwise it forwards the same message
 /// pointer to the parent coro and suspends the parent. Whichever drive handles the message
 /// writes the result directly into the performer's result slot.
+///
+/// A handler resumes the body by calling `resume`, which by default calls the drive again. This
+/// nests one drive per effect performed, which we can't avoid when the handler uses the result of
+/// `resume`. When each `resume` in a case is in tail position (`resumes_in_tail`) though, the
+/// handler was rewritten by [defer_resumes] so that the drive can loop instead.
+#[allow(clippy::too_many_arguments)]
 fn generate_drive_function(
-    mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], case_shapes: &[CaseShape], result_type: &Type,
-    context: Context, caller_generic_count: u32,
+    mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], case_shapes: &[CaseShape], resumes_in_tail: &[bool],
+    result_type: &Type, context: Context, caller_generic_count: u32,
 ) -> DefinitionId {
     let drive_id = next_definition_id();
     let mut drive_parameters = vec![Type::POINTER];
     drive_parameters.extend(handler_types.iter().cloned());
     let drive_type = Type::function(drive_parameters.clone(), result_type.clone());
 
-    // One resume helper per case, capturing (coro, handlers..) to re-invoke drive on body resume.
-    let resume_functions = mapvec(case_shapes, |shape| {
-        generate_resume_function(
-            mir,
-            shape.op_return_type.clone(),
-            drive_id,
-            drive_type.clone(),
-            handler_types,
-            result_type,
-            caller_generic_count,
-        )
-    });
-
     let mut definition =
-        Definition::new(Arc::new("handle_drive".to_string()), drive_id, caller_generic_count, drive_type);
+        Definition::new(Arc::new("handle_drive".to_string()), drive_id, caller_generic_count, drive_type.clone());
     let entry = BlockId::ENTRY_BLOCK;
     for parameter_type in &drive_parameters {
         definition.blocks[entry].parameter_types.push(parameter_type.clone());
@@ -827,6 +862,29 @@ fn generate_drive_function(
     let my_dispatch_block = definition.blocks.push(Block::new(Vec::new()));
     let forward_block = definition.blocks.push(Block::new(Vec::new()));
     let final_block = definition.blocks.push(Block::new(vec![result_type.clone()]));
+
+    // Allocate this once up front rather than once per effect handled since the cases are inside the loop
+    let deferred = resumes_in_tail.contains(&true).then(|| {
+        let mut emitter = Emitter::in_block(&mut definition, entry);
+        DeferredResume::allocate(&mut emitter, result_type)
+    });
+
+    let case_resumes = mapvec(case_shapes.iter().zip(resumes_in_tail), |(shape, in_tail)| {
+        match deferred.filter(|_| *in_tail) {
+            Some(deferred) => CaseResume::Deferred(deferred, loop_header),
+            // Each non-deferred case gets its own resume helper capturing (coro, handlers..) so it
+            // can call the drive again when the body is resumed.
+            None => CaseResume::Closure(generate_resume_function(
+                mir,
+                shape.op_return_type.clone(),
+                drive_id,
+                drive_type.clone(),
+                handler_types,
+                result_type,
+                caller_generic_count,
+            )),
+        }
+    });
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::jmp_no_args(loop_header));
 
@@ -885,7 +943,7 @@ fn generate_drive_function(
             coro,
             arguments,
             result_slot,
-            resume_functions[case_index],
+            case_resumes[case_index],
             handler_parameters[case_index],
             &handler_parameters,
             &case_shapes[case_index],
@@ -918,19 +976,21 @@ fn generate_drive_function(
     drive_id
 }
 
+/// How a handler case resumes the body
+#[derive(Copy, Clone)]
+enum CaseResume {
+    /// `resume` is a closure that calls the drive again
+    Closure(DefinitionId),
+    /// The handler returns to the drive, which then resumes the body from this block in its loop
+    Deferred(DeferredResume, BlockId),
+}
+
 #[allow(clippy::too_many_arguments)]
 fn emit_handler_case(
     definition: &mut Definition, case_block: BlockId, coro: Value, arguments: Value, result_slot: Value,
-    resume_function_id: DefinitionId, handler_parameter: Value, all_handler_parameters: &[Value], shape: &CaseShape,
+    resume: CaseResume, handler_parameter: Value, all_handler_parameters: &[Value], shape: &CaseShape,
     result_type: &Type, final_block: BlockId, mir: &Mir, caller_generic_count: u32,
 ) {
-    let resume_function_type = mir.definitions.get(&resume_function_id).map(|d| d.typ.clone()).unwrap_or(Type::ERROR);
-
-    let param_types =
-        all_handler_parameters.iter().map(|value| definition.type_of_value(value, &mir.externals, &mir.definitions));
-
-    let state_field_types = [Type::POINTER, Type::POINTER].into_iter().chain(param_types).collect::<Vec<_>>();
-
     let mut emitter = Emitter::in_block(definition, case_block);
 
     // Copy the arguments out of the message now, since resuming the performer invalidates it
@@ -944,33 +1004,174 @@ fn emit_handler_case(
         })
     };
 
-    // resume's MIR-declared env type is Pointer, so its state is packed into a stack-allocated tuple.
-    let mut state_elements = Vec::with_capacity(2 + all_handler_parameters.len());
-    state_elements.extend([coro, result_slot]);
-    state_elements.extend(all_handler_parameters.iter().copied());
-    let state =
-        emitter.push_instruction(Instruction::MakeTuple(state_elements), Type::Tuple(Arc::new(state_field_types)));
-    let environment = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
-
-    let resume_function_value = emitter.emit_definition_value(
-        resume_function_id,
-        resume_function_type.clone(),
-        crate::mir::identity_bindings(caller_generic_count),
-    );
-    let resume_closure = emitter.push_instruction(
-        Instruction::PackClosure { function: resume_function_value, environment },
-        resume_function_type,
-    );
-
-    handler_arguments.push(resume_closure);
-    let call_instruction = if shape.handler_is_closure {
-        Instruction::CallClosure { closure: handler_parameter, arguments: handler_arguments }
-    } else {
-        Instruction::Call { function: handler_parameter, arguments: handler_arguments }
+    let call_handler = |arguments| match shape.handler_is_closure {
+        true => Instruction::CallClosure { closure: handler_parameter, arguments },
+        false => Instruction::Call { function: handler_parameter, arguments },
     };
-    let handler_result = emitter.push_instruction(call_instruction, result_type.clone());
 
-    definition.blocks[case_block].terminator = Some(TerminatorInstruction::Jmp((final_block, Some(handler_result))));
+    let (deferred, loop_header) = match resume {
+        CaseResume::Deferred(deferred, loop_header) => (deferred, loop_header),
+        CaseResume::Closure(resume_function_id) => {
+            let resume_function_type = mir.definitions[&resume_function_id].typ.clone();
+
+            // The MIR type of resume's environment is a Pointer, so we pack its state into a stack-allocated tuple
+            let mut state_elements = Vec::with_capacity(2 + all_handler_parameters.len());
+            state_elements.extend([coro, result_slot]);
+            state_elements.extend(all_handler_parameters.iter().copied());
+            let param_types = all_handler_parameters
+                .iter()
+                .map(|value| emitter.definition.type_of_value(value, &mir.externals, &mir.definitions));
+            let state_field_types = [Type::POINTER, Type::POINTER].into_iter().chain(param_types).collect();
+            let state_type = Type::Tuple(Arc::new(state_field_types));
+            let state = emitter.push_instruction(Instruction::MakeTuple(state_elements), state_type);
+            let environment = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
+
+            let resume_function_value = emitter.emit_definition_value(
+                resume_function_id,
+                resume_function_type.clone(),
+                crate::mir::identity_bindings(caller_generic_count),
+            );
+            let resume_closure = emitter.push_instruction(
+                Instruction::PackClosure { function: resume_function_value, environment },
+                resume_function_type,
+            );
+
+            handler_arguments.push(resume_closure);
+            let handler_result = emitter.push_instruction(call_handler(handler_arguments), result_type.clone());
+            definition.blocks[case_block].terminator =
+                Some(TerminatorInstruction::Jmp((final_block, Some(handler_result))));
+            return;
+        },
+    };
+
+    // The deferred state is shared across cases, we only need to update the performer's result slot
+    let store = Instruction::Store { pointer: deferred.result_slot_cell, value: result_slot };
+    emitter.push_instruction(store, Type::UNIT);
+    handler_arguments.push(deferred.state);
+    let resumed = emitter.push_instruction(call_handler(handler_arguments), Type::BOOL);
+
+    // If the handler resumed we jump back to the top of the loop to run the rest of the body.
+    // Otherwise the handler wrote its result to `out`, which is the result of the whole Handle.
+    let resume_block = definition.blocks.push(Block::new(Vec::new()));
+    let finish_block = definition.blocks.push(Block::new(Vec::new()));
+
+    // end = else_ since the branches don't converge
+    definition.blocks[case_block].terminator = Some(TerminatorInstruction::If {
+        condition: resumed,
+        then: (resume_block, None),
+        else_: (finish_block, None),
+        end: finish_block,
+    });
+    definition.blocks[resume_block].terminator = Some(TerminatorInstruction::jmp_no_args(loop_header));
+
+    let mut emitter = Emitter::in_block(definition, finish_block);
+    let handler_result = emitter.push_instruction(Instruction::Deref(deferred.out), result_type.clone());
+    definition.blocks[finish_block].terminator = Some(TerminatorInstruction::Jmp((final_block, Some(handler_result))));
+}
+
+/// State shared between a drive and each handler case rewritten by [defer_resumes]. These handlers
+/// are passed a pointer to this state in place of `resume`.
+#[derive(Copy, Clone)]
+struct DeferredResume {
+    /// Pointer to a [DeferredResume::state_type]
+    state: Value,
+    /// Pointer to the result slot of the effect currently being handled
+    result_slot_cell: Value,
+    /// Pointer to the Handle's result, written to by the handler if it does not resume
+    out: Value,
+}
+
+mod deferred_field {
+    pub(super) const RESULT_SLOT_CELL: u32 = 0;
+    pub(super) const OUT: u32 = 1;
+}
+
+impl DeferredResume {
+    /// `(result_slot_cell, out)`, each a pointer
+    fn state_type() -> Type {
+        Type::tuple(vec![Type::POINTER, Type::POINTER])
+    }
+
+    fn allocate(emitter: &mut Emitter, result_type: &Type) -> Self {
+        let result_slot_cell = emitter.push_instruction(Instruction::StackAllocUninit(Type::POINTER), Type::POINTER);
+        let out = emitter.push_instruction(Instruction::StackAllocUninit(result_type.clone()), Type::POINTER);
+        let state = Instruction::MakeTuple(vec![result_slot_cell, out]);
+        let state = emitter.push_instruction(state, Self::state_type());
+        let state = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
+        DeferredResume { state, result_slot_cell, out }
+    }
+}
+
+/// If each `resume` in the handler `handler_id` is in tail position, returns a copy of the handler
+/// rewritten so that the drive resumes the body instead of the handler. The new handler has type
+/// `fn op_args.. (state: Pointer) -> Bool`, where `state` points to a [DeferredResume::state_type].
+///
+/// - `resume v` in tail position stores `v` in the performer's result slot and returns `true`.
+///   The drive then resumes the body from its loop.
+/// - Returning any other `r` stores it through the state's `out` and returns `false`. The drive
+///   then returns `r` as the result of the Handle.
+///
+/// Without this, each `resume` would call the drive again, nesting a drive, handler, and `resume`
+/// on the stack for every effect performed.
+fn defer_resumes(
+    mir: &mut Mir, handler_id: DefinitionId, resume_index: usize, context: Context,
+) -> Option<DefinitionId> {
+    if let Some(deferred) = context.deferred_handlers.borrow().get(&handler_id) {
+        return Some(*deferred);
+    }
+    let handler = mir.definitions.get(&handler_id)?;
+    let resumes = analyze_resumes(handler, resume_index).filter(|resumes| !resumes.calls.is_empty())?;
+
+    let Type::Function(function_type) = &handler.typ else { return None };
+    let mut function_type = FunctionType::clone(function_type);
+    *function_type.parameters.get_mut(resume_index)? = Type::POINTER;
+    function_type.return_type = Type::BOOL;
+
+    let id = next_definition_id();
+    let mut deferred = handler.clone_with_id(id);
+    deferred.typ = Type::Function(Arc::new(function_type));
+    deferred.blocks[BlockId::ENTRY_BLOCK].parameter_types[resume_index] = Type::POINTER;
+    let state = Value::Parameter(BlockId::ENTRY_BLOCK, resume_index as u32);
+
+    let state_field = |emitter: &mut Emitter, field| {
+        let fields = emitter.push_instruction(Instruction::Deref(state), DeferredResume::state_type());
+        emitter.index_tuple(fields, field, Type::POINTER)
+    };
+
+    let resume_blocks: FxHashSet<BlockId> = resumes.calls.iter().map(|(block, ..)| *block).collect();
+    let blocks: Vec<BlockId> = deferred.blocks.iter().map(|(block, _)| block).collect();
+    for block in blocks {
+        let Some(TerminatorInstruction::Return(result)) = &deferred.blocks[block].terminator else { continue };
+        let result = *result;
+        if resume_blocks.contains(&block) {
+            continue;
+        }
+        let mut emitter = Emitter::in_block(&mut deferred, block);
+        let out = state_field(&mut emitter, deferred_field::OUT);
+        emitter.push_instruction(Instruction::Store { pointer: out, value: result }, Type::UNIT);
+        deferred.blocks[block].terminator = Some(TerminatorInstruction::Return(Value::Bool(false)));
+    }
+
+    // Each call's result only flows to a return through empty blocks, so we can return directly
+    // from the call's block instead
+    for (block, call, resumed_value) in resumes.calls {
+        deferred.blocks[block].instructions.pop();
+        let mut emitter = Emitter::in_block(&mut deferred, block);
+        let cell = state_field(&mut emitter, deferred_field::RESULT_SLOT_CELL);
+        let result_slot = emitter.push_instruction(Instruction::Deref(cell), Type::POINTER);
+        emitter.reuse_instruction(call, Instruction::Store { pointer: result_slot, value: resumed_value }, Type::UNIT);
+        deferred.blocks[block].terminator = Some(TerminatorInstruction::Return(Value::Bool(true)));
+    }
+
+    // The empty blocks each resume used to jump through are now unreachable
+    deferred.remove_unreachable_blocks();
+
+    mir.definitions.insert(id, deferred);
+    context.deferred_handlers.borrow_mut().insert(handler_id, id);
+
+    // The copy isn't in the definitions we're iterating over but may still contain its own Handle
+    rewrite_sites_in_definition(mir, id, context, collect_handle_sites, rewrite_single_handle);
+    Some(id)
 }
 
 /// `resume: fn r1 [Pointer] -> r2`; env is `&(coro, result_slot, handler_0, .., handler_{N-1})`.

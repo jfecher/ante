@@ -1,0 +1,73 @@
+// A value is dropped at the end of the scope it was declared in, last declared first,
+// and at each `return`, `break` or `continue` which leaves that scope.
+type Tag = id: U32
+
+impl drop_tag: Drop Tag Print with
+    drop tag =
+        print "drop "
+        println tag.id
+
+show (tag: ref Tag): Unit can Print =
+    print "show "
+    println tag.id
+
+early_return (flag: Bool): U32 can Print =
+    _a = Tag 10
+    if flag then
+        _b = Tag 11
+        return 1
+    _c = Tag 12
+    2
+
+loops (): Unit can Print =
+    for i in 0u32 .. 4 do
+        tag = Tag (20 + i)
+        if i == 1 then continue
+        if i == 3 then break
+        show tag
+
+main () =
+    print_to_stdout do
+    _a = Tag 1
+    _b = Tag 2
+    if true then
+        _c = Tag 3
+        println "inner scope"
+
+    // Assigning to a variable drops the value it held
+    var d = Tag 4
+    d := Tag 5
+    reference = mut d
+    reference := Tag 6
+
+    println "early return"
+    ignore (early_return true)
+    ignore (early_return false)
+
+    println "loops"
+    loops ()
+    println "end"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// inner scope
+// drop 3
+// drop 4
+// drop 5
+// early return
+// drop 11
+// drop 10
+// drop 12
+// drop 10
+// loops
+// show 20
+// drop 20
+// drop 21
+// show 22
+// drop 22
+// drop 23
+// end
+// drop 6
+// drop 2
+// drop 1
+
