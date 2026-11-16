@@ -1,5 +1,3 @@
-import Std.C.putchar
-
 export Print, Print.write, write, Print.write_char, write_char, Print.write_u64, write_u64, Print.write_i64, write_i64, Print.write_f64, write_f64,
     print_to_sink, print_to_stdout, print_to_stderr, dbg, Display, print, println, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_ref
 

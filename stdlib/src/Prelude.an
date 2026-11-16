@@ -31,18 +31,22 @@ import Std.Num.Add, (+), add_i8, add_i16, add_i32, add_i64, add_isz, add_u8, add
 import Std.Print.Print, write, write_char, write_u64, write_i64, write_f64,
     print_to_sink, print_to_stdout, print_to_stderr, dbg, Display, print, println, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_ref
 import Std.Array.array_len, extract_array, insert_array, print_array, cmp_array, copy_array, drop_array
-import Std.Mem.transmute, null, offset, deref_ptr, ptr_store, ptr_to_ref, copy_type
+import Std.Mem.null, offset, deref_ptr, ptr_store, ptr_to_ref, copy_type
 import Std.HashMap.drop_hashmap, drop_entry
 import Std.HashSet.drop_hashset
 import Std.Rc.drop_rc
 import Std.Seq.drop_seq
-import Std.IO.drop_file
-import Std.Sync.drop_mutex, drop_condvar, drop_arc, drop_atomic
+import Std.IO.File.drop_file
+import Std.Sync.Mutex.drop_mutex
+import Std.Sync.Condvar.drop_condvar
+import Std.Sync.Arc.drop_arc
+import Std.Sync.Atomic.drop_atomic
 import Std.Iterator.copy_range
-import Std.Time.copy_duration, copy_instant
+import Std.Time.Duration.copy_duration
+import Std.Time.Instant.copy_instant
 import Std.C.copy_clock
 
-export String, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwrap, Maybe.unwrap_or_else, Result, Result.Ok, Result.Error, (,),
+export String, Maybe, Maybe.None, Maybe.Some, iff, unwrap, unwrap_or_else, Result, Result.Ok, Result.Error, (,),
     Fs, Net, IO, Mutate,
     first, second, third, fourth, fifth,
     Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
@@ -93,12 +97,12 @@ type Maybe t =
 iff (condition: Bool) (then_: once fn Unit [env] -> a) {Drop env e}: Maybe a can e =
     if condition then Some (then_ ()) else None
 
-Maybe.unwrap (m: Maybe t): t can Panic =
+unwrap (m: Maybe t): t can Panic =
     match m
     | Some x -> x
     | None -> panic "Tried to unwrap a None value"
 
-Maybe.unwrap_or_else (m: Maybe t) (f: once fn Unit [env] -> t) {Drop env e}: t can e =
+unwrap_or_else (m: Maybe t) (f: once fn Unit [env] -> t) {Drop env e}: t can e =
     match m
     | Some x -> x
     | None -> f ()

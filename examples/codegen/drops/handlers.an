@@ -1,5 +1,3 @@
-import Std.Fail.Fail, fail
-
 // The body and branches of a `handle` run as part of the function they are in. A value
 // moved by a branch which does not resume is dropped at the end of the body instead
 // when the body completes.

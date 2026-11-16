@@ -1,0 +1,79 @@
+import Std.C.fwrite, ungetc, malloc, realloc, free, copy_file, copy_cstring
+import Std.C
+import Std.Mem.null
+import Std.Iterator.Iterator
+import Std.String
+
+export File, open, close, drop_file, eof, write, next_char, next_line, iterator_file, print_to_file
+
+type File = c_file: C.File
+
+/// Open the file at `path` with the given `fopen` mode.
+/// Fails if it cannot be opened.
+///
+/// This function is temporary, mode will eventually become a union, and `path` a proper path type.
+open (path: String) (mode: String): File can Fs, Fail =
+    c_path = C.from_string path
+    c_mode = C.from_string mode
+    c_file = fopen c_path c_mode
+    free c_path.ptr
+    free c_mode.ptr
+    fail_if (c_file.f == null ())
+    File c_file
+
+close (file: File): Unit can Fs =
+    drop file
+
+impl drop_file: Drop File Fs with
+    drop f =
+        _ = fclose f.c_file
+
+/// Convenience function for using feof with better types
+eof (f: ref File): Bool can Fs =
+    feof f.c_file != 0
+
+write (f: mut File) (text: String): Unit can Fs =
+    fwrite (transmute text.data) 1 (Usz text.length) f.c_file
+    ()
+
+/// Handles `Print` by writing everything printed to `file`
+print_to_file (file: ref File) (f: a can Print, e): a can Fs, e =
+    print_to_sink (fn data len -> ignore (fwrite (transmute data) 1 len file.c_file)) f
+
+/// Read the next character.
+/// Fails if at the end of the file or on a read error.
+next_char (f: ref File): Char can Fs, Fail =
+    c = fgetc f.c_file
+    fail_if (c < 0)
+    Char c
+
+next_line (f: mut File): String can Fs =
+    if eof f then return ""
+
+    len, cstr = loop (len = 0) (capacity = 32) (cstr = malloc 32) ->
+        next = fgetc f.c_file
+        if next < 0 then return (len, cstr)
+        c = Char next
+
+        //Flag feof if eof occurs after terminating newline
+        if c == '\n' then
+            peek = fgetc f.c_file
+            if peek >= 0 then ungetc peek f.c_file
+            return (len, cstr)
+
+        new_capacity, new_cstr = if len + 1 >= capacity then
+            new_cap = capacity * 2
+            (new_cap, realloc cstr new_cap)
+        else (capacity, cstr)
+
+        array_insert new_cstr len c
+        recur (len + 1) new_capacity new_cstr
+
+    array_insert cstr len '\0'
+    String.from_parts cstr (U32 len)
+
+/// Iterating through a File iterates through each line
+impl iterator_file: Iterator (mut File) String Fs with
+    next file =
+        if eof file then None
+        else Some (file, next_line file)

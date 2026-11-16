@@ -1,6 +1,6 @@
-import Std.Rc.Rc, of, as_ref, ref_count, inc_ref_count, dec_ref_count, clone_rc, drop_rc
+import Std.Rc.as_ref, ref_count, inc_ref_count, dec_ref_count, clone_rc
 import Std.Fail.assert, abort_on_fail
-import Std.String.eq_string
+import Std.Rc
 
 main () =
     print_to_stdout do
@@ -28,18 +28,18 @@ main () =
 
     // try_unwrap
     rc1 = Rc.of 42i32
-    assert <| Rc.try_unwrap rc1 is Ok 42
+    assert <| try_unwrap rc1 is Ok 42
 
     rc2 = Rc.of 7i32
     _rc2_clone = clone rc2
-    assert <| Rc.try_unwrap rc2 is Error _
+    assert <| try_unwrap rc2 is Error _
 
     // unwrap_or_clone
     rc3 = Rc.of "hello"
-    assert <| Rc.unwrap_or_clone rc3 == "hello"
+    assert <| unwrap_or_clone rc3 == "hello"
 
     rc4 = Rc.of "world"
     _rc4_clone = clone rc4
-    assert <| Rc.unwrap_or_clone rc4 == "world"
+    assert <| unwrap_or_clone rc4 == "world"
 
 // args: --delete-binary --no-color

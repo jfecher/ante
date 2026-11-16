@@ -20,8 +20,8 @@ use ante::{
     name_resolution::namespace::{CrateId, SourceFileId},
     parser::{
         context::TopLevelContext,
-        cst::{Expr, ItemName, Name, Pattern, TopLevelItem, TopLevelItemKind},
-        ids::{IdStore, NameStore, PatternId, TopLevelId},
+        cst::{Expr, ItemName, Pattern, TopLevelItem, TopLevelItemKind},
+        ids::{IdStore, PatternId, TopLevelId},
     },
     paths::stdlib_path,
 };
@@ -45,8 +45,6 @@ struct Item {
     signature: CString,
     /// `None` if the item has no doc comment
     doc: Option<CString>,
-    /// If the item is a method, this is its object type
-    object_type: Option<CString>,
 }
 
 #[repr(u32)]
@@ -84,9 +82,9 @@ fn kind_of(kind: &TopLevelItemKind) -> ItemKind {
 
 fn exported_items(db: &Db, file: SourceFileId) -> Vec<TopLevelId> {
     let definitions = ExportedDefinitions(file).get(db);
-    let methods = definitions.methods.values().flat_map(|methods| methods.values());
+    let members = definitions.type_members.values().flat_map(|members| members.values());
     let types = ExportedTypes(file).get(db);
-    definitions.definitions.values().chain(methods).chain(types.values()).map(|name| name.top_level_item).collect()
+    definitions.definitions.values().chain(members).chain(types.values()).map(|name| name.top_level_item).collect()
 }
 
 fn load_module(db: &Db, crate_name: &str, path: &Path, file: SourceFileId) -> Module {
@@ -102,7 +100,6 @@ fn load_module(db: &Db, crate_name: &str, path: &Path, file: SourceFileId) -> Mo
             name: c_string(item.kind.name().to_string(context.as_ref())),
             signature: c_string(signature(db, item, context)),
             doc: (!item.comments.is_empty()).then(|| c_string(item.comments.join("\n"))),
-            object_type: object_type(&item.kind, context).map(|name| c_string(name.to_string())),
         })
     });
     let items = items.collect();
@@ -142,18 +139,6 @@ fn is_annotated(kind: &TopLevelItemKind, context: &TopLevelContext) -> bool {
     }
 }
 
-fn object_type<'a>(kind: &TopLevelItemKind, context: &'a TopLevelContext) -> Option<&'a Name> {
-    let TopLevelItemKind::Definition(definition) = kind else { return None };
-    let mut pattern = context.get_pattern(definition.pattern);
-    while let Pattern::TypeAnnotation(inner, _) = pattern {
-        pattern = context.get_pattern(*inner);
-    }
-    match pattern {
-        Pattern::MethodName { type_name, .. } => Some(context.get_name(*type_name)),
-        _ => None,
-    }
-}
-
 fn name_location<'a>(name: ItemName, context: &'a TopLevelContext) -> &'a Location {
     match name {
         ItemName::Single(name) => &context.name_locations[name],
@@ -167,7 +152,6 @@ fn pattern_name_location(pattern: PatternId, context: &TopLevelContext) -> &Loca
         Pattern::Variable(name) | Pattern::Alias(name, _) | Pattern::ConstructorRest(_, _, Some(name)) => {
             &context.name_locations[*name]
         },
-        Pattern::MethodName { item_name, .. } => &context.name_locations[*item_name],
         Pattern::TypeAnnotation(inner, _) => pattern_name_location(*inner, context),
         Pattern::Or(alts) if !alts.is_empty() => pattern_name_location(alts[0], context),
         _ => &context.pattern_locations[pattern],
@@ -323,8 +307,8 @@ pub unsafe extern "C" fn ante_item_exported(s: *const Session, m: usize, i: usiz
     unsafe { item(s, m, i) }.is_some_and(|item| item.exported)
 }
 
-/// The type a method is defined on, or an empty string if this item is not a method
+/// Always an empty string since Ante no longer has methods. Kept so existing callers still link.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ante_item_object_type(s: *const Session, m: usize, i: usize) -> *const c_char {
-    as_ptr(unsafe { item(s, m, i) }.map(|item| item.object_type.as_deref().unwrap_or(c"")))
+    as_ptr(unsafe { item(s, m, i) }.map(|_| c""))
 }

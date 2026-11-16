@@ -1,0 +1,58 @@
+import Std.C.malloc, free, VoidPtr
+import Std.Mem.Type, null, forget
+
+export Thread, spawn, join, detach
+
+pthread_create: fn VoidPtr VoidPtr (fn VoidPtr -> VoidPtr) VoidPtr -> I32 = extern "pthread_create"
+pthread_join: fn VoidPtr (Ptr VoidPtr) -> I32 = extern "pthread_join"
+pthread_detach: fn VoidPtr -> I32 = extern "pthread_detach"
+
+// This size should be large enough on mac & linux gcc at least.
+// TODO: Remove hard-coded sizes
+pthread_t_size: Usz = 8
+
+type Thread a = raw: VoidPtr
+
+/// Spawn a new OS thread running `f`. The returned thread must be joined or detached.
+spawn (f: once fn Unit [e] -> a is pure): Thread a =
+    // `run` can't be a closure function for `thread_entry` to be able to call it
+    run: fn VoidPtr -> VoidPtr is pure = fn payload ->
+        pair = transmute payload : Ptr (fn VoidPtr -> VoidPtr is pure, once fn Unit [e] -> a is pure)
+        _, thunk = deref_ptr pair
+        free pair
+        out = malloc (size_of (MkType: Type a))
+        ptr_store out (thunk ())
+        transmute out
+
+    pair = malloc (size_of (MkType: Type (fn VoidPtr -> VoidPtr is pure, once fn Unit [e] -> a is pure)))
+    ptr_store pair (run, f)
+    raw = malloc pthread_t_size
+    pthread_create raw (null ()) thread_entry (transmute pair)
+    Thread raw
+
+/// pthread_create needs a free function, so this takes a pointer whose first field is the closure to run
+thread_entry (payload: VoidPtr): VoidPtr =
+    run = deref_ptr (transmute payload : Ptr (fn VoidPtr -> VoidPtr is pure))
+    run payload
+
+/// Block until the thread finishes and return its result.
+join (t: Thread a): a =
+    var ret = null ()
+
+    tid = deref_ptr (transmute t.raw : Ptr VoidPtr)
+    // TODO: this can mangle ret with PTHREAD_CANCELED
+    pthread_join tid (transmute (mut ret))
+    result = deref_ptr ret
+    free ret
+    free t.raw
+    forget t
+    result
+
+/// Detach the thread so its resources are reclaimed automatically on exit.
+/// The result value is leaked; use `join` if you need it.
+detach (t: Thread a): Unit =
+    tid = deref_ptr (transmute t.raw : Ptr VoidPtr)
+    pthread_detach tid
+    free t.raw
+    forget t
+

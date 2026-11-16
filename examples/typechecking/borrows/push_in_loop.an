@@ -1,9 +1,9 @@
-import Std.Vec.Vec
+import Std.Vec
 
 bad () =
     var vec = Vec.empty ()
     for i in 0 .. 3 do
-        vec.push (ref i)
+        push vec (ref i)
 
 main () = ()
 
@@ -14,7 +14,7 @@ main () = ()
 // 4 |     var vec = Vec.empty ()
 // 5 |     for i in 0 .. 3 do	// note: i is only valid until the end of this scope
 //   |         -
-// 6 |         vec.push (ref i)	// error: This reference to i outlives its scope
+// 6 |         push vec (ref i)	// error: This reference to i outlives its scope
 //   |                   ^^^^^
 // 
 // Found 1 error and 0 warnings

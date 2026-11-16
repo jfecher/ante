@@ -1,5 +1,6 @@
 import Std.C.malloc
-import Std.Mem.transmute, ptr_store, array_insert
+import Std.String
+import Std.Mem.transmute
 
 export Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
     cast_u8_u16, cast_u8_u32, cast_u8_u64, cast_u8_usz, cast_u16_u8, cast_u16_u32, cast_u16_u64, cast_u16_usz, cast_u32_u8, cast_u32_u16, cast_u32_u64, cast_u32_usz, cast_u64_u8, cast_u64_u16, cast_u64_u32, cast_u64_usz,

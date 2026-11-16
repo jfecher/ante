@@ -386,7 +386,9 @@ where
             },
             Origin::Local(_) => unreachable!("Types cannot be declared locally"),
             Origin::TraitMember(_) | Origin::EffectOperation { .. } => unreachable!("Ability members are not types"),
-            Origin::TypeResolution => unreachable!("Types should never be Origin::TypeResolution"),
+            Origin::TypeResolution | Origin::ArgumentResolution => {
+                unreachable!("Types should never be Origin::TypeResolution or ArgumentResolution")
+            },
             Origin::Builtin(builtin) => self.convert_builtin_type(builtin),
         }
     }

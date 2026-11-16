@@ -1,33 +1,32 @@
-// Methods must be exported qualified with their type; `Box.get` is the valid form
-export Box, get, Box.missing, NotAType.get, Box.get
+// Variants must be exported qualified with their type; `Shape.Circle` is the valid form
+export Shape, Circle, Shape.Missing, NotAType.Circle, Shape.Circle
 
-type Box = val: I32
-
-Box.get (b: Box) = b.val
+type Shape =
+    | Circle
+    | Square
 
 main () = ()
-
-impl drop_box: Drop Box pure with
-    drop _ = ()
 
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/nameresolution/export_qualified.an:2:13
-// 1 | // Methods must be exported qualified with their type; `Box.get` is the valid form
-//   | // error: `get` must be exported as `Box.get`
-// 2 | export Box, get, Box.missing, NotAType.get, Box.get
-//   |             ^^^
+// examples/nameresolution/export_qualified.an:2:15
+// 1 | // Variants must be exported qualified with their type; `Shape.Circle` is the valid form
+//   | // error: `Circle` must be exported as `Shape.Circle`
+// 2 | export Shape, Circle, Shape.Missing, NotAType.Circle, Shape.Circle
+//   |               ^^^^^^
 // 
-// examples/nameresolution/export_qualified.an:2:22
-// 1 | // Methods must be exported qualified with their type; `Box.get` is the valid form
-// 2 | export Box, get, Box.missing, NotAType.get, Box.get	// error: `missing` is not defined
-//   |                      ^^^^^^^
+// examples/nameresolution/export_qualified.an:2:29
+// 1 | // Variants must be exported qualified with their type; `Shape.Circle` is the valid form
+//   | // error: `Missing` is not defined
+// 2 | export Shape, Circle, Shape.Missing, NotAType.Circle, Shape.Circle
+//   |                             ^^^^^^^
 // 
-// examples/nameresolution/export_qualified.an:2:31
-// 1 | // Methods must be exported qualified with their type; `Box.get` is the valid form
-// 2 | export Box, get, Box.missing, NotAType.get, Box.get	// error: `NotAType` is not defined
-//   |                               ^^^^^^^^
+// examples/nameresolution/export_qualified.an:2:38
+// 1 | // Variants must be exported qualified with their type; `Shape.Circle` is the valid form
+//   | // error: `NotAType` is not defined
+// 2 | export Shape, Circle, Shape.Missing, NotAType.Circle, Shape.Circle
+//   |                                      ^^^^^^^^
 // 
 // Found 3 errors and 0 warnings
 

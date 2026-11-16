@@ -1,11 +1,10 @@
 import Std.Hash.Hash
+import Std.HashMap
 import Std.HashMap.HashMap, Entry, clone_hashmap, stream_map
-import Std.Stream.Stream, iter, stream_fn, Emit, emit, map
-import Std.Mem.offset, ptr_to_ref
 
-export HashSet, Hash, HashSet.len, HashSet.is_empty, HashSet.empty, HashSet.of,
-    HashSet.clear, HashSet.contains, HashSet.insert, HashSet.remove, HashSet.extend,
-    HashSet.retain, HashSet.merge, HashSet.keys, stream_set, stream_ref_hashset,
+export HashSet, Hash, len, is_empty, empty, of,
+    clear, contains, insert, remove, extend,
+    retain, merge, keys, stream_set, stream_ref_hashset,
     print_hashset, clone_hashset, drop_hashset
 
 to_unit_tuple s = (s, ())
@@ -13,48 +12,48 @@ to_unit_tuple s = (s, ())
 type HashSet k (h = _) =
     inner: HashMap k Unit h
 
-HashSet.len (set: ref HashSet v): Usz = set.inner.len ()
+len (set: ref HashSet v): Usz = HashMap.len set.inner
 
-HashSet.is_empty (set: ref HashSet k): Bool =
-    set.inner.len () == 0
+is_empty (set: ref HashSet k): Bool =
+    HashMap.len set.inner == 0
 
-HashSet.empty () {Hash k h}: HashSet k h = HashSet (HashMap.empty ())
+empty () {Hash k h}: HashSet k h = HashSet (HashMap.empty ())
 
-HashSet.of (stream: s) {Stream s k e} {Hash k h} {Eq k e} {Drop k d}: HashSet k h can Panic, e, d =
+of (stream: s) {Stream s k e} {Hash k h} {Eq k e} {Drop k d}: HashSet k h can Panic, e, d =
     map stream to_unit_tuple
         |> HashMap.of
         |> HashSet
 
-HashSet.clear (set: mut HashSet k) {Drop k d}: Unit can d, Mutate 'set =
-    set.inner.clear ()
+clear (set: mut HashSet k) {Drop k d}: Unit can d, Mutate 'set =
+    HashMap.clear set.inner
 
-HashSet.contains (set: ref HashSet k) (key: ref k) {Eq k e}: Bool can e =
-    set.inner.contains key
+contains (set: ref HashSet k) (key: ref k) {Eq k e}: Bool can e =
+    HashMap.contains set.inner key
 
 /// Insert a new element into the HashSet
 /// Returns True if the key is newly inserted
 /// Returns False if the key already existed
-HashSet.insert (set: mut HashSet k) (key: k) {Eq k e} {Drop k d}: Bool can Panic, e, d, Mutate 'set =
-    set.inner.insert key () is None
+insert (set: mut HashSet k) (key: k) {Eq k e} {Drop k d}: Bool can Panic, e, d, Mutate 'set =
+    HashMap.insert set.inner key () is None
 
 /// Remove an element from the HashSet
 /// Returns True if the key existed and was removed
 /// Return False if the key was not present in the HashSet
-HashSet.remove (set: mut HashSet k) (key: ref k) {Eq k e} {Drop k d}: Bool can e, d, Mutate 'set =
-    set.inner.remove key is Some _
+remove (set: mut HashSet k) (key: ref k) {Eq k e} {Drop k d}: Bool can e, d, Mutate 'set =
+    HashMap.remove set.inner key is Some _
 
-HashSet.extend (set: mut HashSet k) (stream: s) {Stream s k e} {Eq k e} {Drop k d}: Unit can Panic, e, d, Mutate 'set =
+extend (set: mut HashSet k) (stream: s) {Stream s k e} {Eq k e} {Drop k d}: Unit can Panic, e, d, Mutate 'set =
     result = map stream to_unit_tuple
-    set.inner.extend result
+    HashMap.extend set.inner result
 
-HashSet.retain (set: mut HashSet k) (predicate: fn (ref k) [env] -> Bool) {Drop k d} {Drop env d}: Unit can d, Mutate 'set =
-    set.inner.retain fn key _ -> predicate key
+retain (set: mut HashSet k) (predicate: fn (ref k) [env] -> Bool) {Drop k d} {Drop env d}: Unit can d, Mutate 'set =
+    HashMap.retain set.inner fn key _ -> predicate key
 
 /// Insert every key of `src` into `dst`.
-HashSet.merge (dst: mut HashSet k h) (src: HashSet k h) {Eq k e} {Drop k d}: Unit can Panic, e, d, Mutate 'dst =
-    dst.inner.merge src.inner
+merge (dst: mut HashSet k h) (src: HashSet k h) {Eq k e} {Drop k d}: Unit can Panic, e, d, Mutate 'dst =
+    HashMap.merge dst.inner src.inner
 
-HashSet.keys (set: ref HashSet k) =
+keys (set: ref HashSet k) =
     HashMap.keys set.inner
 
 impl stream_set: Stream (HashSet k) k pure with

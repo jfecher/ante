@@ -1,6 +1,4 @@
-import Std.Vec.Vec, get_unchecked
-import Std.Fail.Fail, fail
-import Std.Array.array_get_unchecked
+import Std.Vec
 import Std.Mem.forget
 
 /// Emit a single item of type `a`. Another name for this is `Yield`.
@@ -155,8 +153,8 @@ map2 (stream1: s1) (stream2: s2) {Stream s1 a e1} {Stream s2 b e2} {Copy a} {Cop
     v2 = Vec.of stream2
     n = if v1.len < v2.len then v1.len else v2.len
     for i in 0 .. n do
-        a = (v1.get_unchecked i).*
-        b = (v2.get_unchecked i).*
+        a = (get_unchecked v1 i).*
+        b = (get_unchecked v2 i).*
         emit (f a b)
 
 /// Emit numbers from 0 to `n`, end-exclusive

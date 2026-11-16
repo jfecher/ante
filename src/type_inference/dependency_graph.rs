@@ -12,7 +12,7 @@ use crate::{
     },
     iterator_extensions::mapvec,
     parser::{
-        cst::TopLevelItemKind,
+        cst::{Name, TopLevelItemKind},
         ids::{NameId, TopLevelId},
     },
     shared_arc::Shared,
@@ -79,6 +79,21 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
 
     let lacks_known_type = |item: TopLevelId| lacks_known_type_map[&item];
 
+    // Callees resolved by their first argument's type may refer to any exported definition
+    // of the same name. Only those lacking a known type need an edge.
+    let crates = GetCrateGraph.get(db);
+    let mut untyped_exports: FxHashMap<Name, Vec<TopLevelId>> = FxHashMap::default();
+    for crate_ in crates.values() {
+        for file in crate_.source_files.values() {
+            let exported = ExportedDefinitions(*file).get(db);
+            for (name, id) in &exported.definitions {
+                if lacks_known_type_map.get(&id.top_level_item).copied().unwrap_or(false) {
+                    untyped_exports.entry(name.clone()).or_default().push(id.top_level_item);
+                }
+            }
+        }
+    }
+
     while let Some(item) = queue.pop() {
         if !visited.insert(item) {
             continue;
@@ -94,29 +109,11 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
                 graph.update_edge(item_index, dependency_index, ());
             }
         }
-    }
 
-    // Methods are resolved during type checking, not name resolution, so mutually recursive
-    // methods (e.g. HashMap.insert <-> HashMap.resize) won't appear in each other's
-    // referenced_items. Conservatively link all methods of the same object type that lack
-    // known types so they end up in the same SCC.
-    let crates = GetCrateGraph.get(db);
-    for crate_ in crates.values() {
-        for file in crate_.source_files.values() {
-            let exported = ExportedDefinitions(*file).get(db);
-            for methods in exported.methods.values() {
-                let mut method_ids =
-                    methods.values().map(|name| &name.top_level_item).filter(|id| lacks_known_type(**id));
-
-                if let Some(representative) = method_ids.next() {
-                    let rep_index = add_node(&mut graph, *representative);
-
-                    for other in method_ids {
-                        let other_index = add_node(&mut graph, *other);
-                        graph.update_edge(rep_index, other_index, ());
-                        graph.update_edge(other_index, rep_index, ());
-                    }
-                }
+        for name in &resolution.argument_resolved_names {
+            for &dependency_id in untyped_exports.get(name).into_iter().flatten() {
+                let dependency_index = add_node(&mut graph, dependency_id);
+                graph.update_edge(item_index, dependency_index, ());
             }
         }
     }

@@ -1,11 +1,12 @@
-import Std.HashMap.HashMap, empty, insert, get
-import Std.Hash.Hash, hash_u8
+import Std.HashMap.HashMap
+import Std.Hash.hash_u8
+import Std.HashMap
 
 // The map's `Hash` impl is omitted from the return type so it is inferred from the body
 build (): HashMap U8 I32 can Panic =
     var map = HashMap.empty ()
-    ignore (map.insert 1 2)
-    ignore (map.insert 3 4)
+    ignore (insert map 1 2)
+    ignore (insert map 3 4)
     map
 
 main () =

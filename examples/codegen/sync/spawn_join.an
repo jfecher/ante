@@ -1,4 +1,4 @@
-import Std.Sync.Thread, spawn, join
+import Std.Sync.Thread.spawn
 
 // Spawn a thread running a capturing closure, then join for its result.
 main () =

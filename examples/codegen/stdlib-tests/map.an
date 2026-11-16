@@ -1,6 +1,7 @@
-import Std.HashMap.HashMap, empty, of, clear, insert, print_hashmap, remove, get,
+import Std.HashMap.clear, insert, remove, get,
     get_entry, stream_map, eq_hashmap
-import Std.Stream.iter, iota, map, stream_fn, stream_array
+import Std.HashMap
+import Std.Stream.iter, map
 import Std.Hash.Hash, hash_u8
 import Std.Fail.try, panic_on_fail, assert, abort_on_fail
 
@@ -9,19 +10,19 @@ main () =
     abort_on_panic do
     abort_on_fail do
 
-    var map = empty ()
-    map.insert 1u8 3u16
-    map.insert 2 6
-    map.insert 3 9
-    map.insert 4 12
-    map.insert 5 15
-    map.insert 6 18
+    var map = HashMap.empty ()
+    insert map 1u8 3u16
+    insert map 2 6
+    insert map 3 9
+    insert map 4 12
+    insert map 5 15
+    insert map 6 18
 
-    map.remove 5
-    map.insert 7 21
+    remove map 5
+    insert map 7 21
 
     assert <| map == HashMap.of [(1, 3), (2, 6), (3, 9), (4, 12), (6, 18), (7, 21)]
-    assert <| (map.get 3 ~> try) is Some 9
+    assert <| (get map 3 ~> try) is Some 9
     assert <| (get map 5 ~> try) is None
 
     assert <| get_entry map 3 is Some _
@@ -39,33 +40,33 @@ test_iter_and_clear () =
     // clear:
     var map = HashMap.of [(1u8, 2), (3, 4), (5, 6)]
     clear (mut map)
-    assert <| map.is_empty ()
+    assert <| is_empty map
     assert <| map == HashMap.empty ()
 
 test_get_or_insert_contains_and_merge () =
     var m = HashMap.of [(1u8, 10), (2, 20), (3, 30)]
 
-    assert <| m.len () == 3
-    assert <| not m.is_empty ()
+    assert <| len m == 3
+    assert <| not (is_empty m)
 
-    assert <| m.get_or_insert 1 99 == 10
-    assert <| m.get_or_insert 4 40 == 40
-    assert <| m.contains 4
+    assert <| get_or_insert m 1 99 == 10
+    assert <| get_or_insert m 4 40 == 40
+    assert <| contains m 4
 
-    assert <| m.get_or_insert_with 5 (do 50) == 50
+    assert <| get_or_insert_with m 5 (do 50) == 50
 
-    m.retain (fn k _ -> k.* %% 2)
-    assert <| HashMap.len m == 2
+    retain m (fn k _ -> k.* %% 2)
+    assert <| len m == 2
 
     var m2 = HashMap.of [(100u8, 1000), (200, 2000)]
-    m.merge m2
-    assert <| m.len() == 4
+    merge m m2
+    assert <| len m == 4
 
 test_insert_duplicate () =
     var m = HashMap.of [(1u8, 10u16)]
-    assert <| m.insert 1 99 is Some 10
-    assert <| m.insert 2 20 is None
-    assert <| m.len () == 2
+    assert <| insert m 1 99 is Some 10
+    assert <| insert m 2 20 is None
+    assert <| len m == 2
 
 
 type MyType = 
@@ -86,21 +87,19 @@ test_collision_management () =
         
     var m = HashMap.of [(first, 1), (second, 2)]
     // these have the same hash so should be put in the same index
-    assert <| m.len () == 2
+    assert <| len m == 2
 
-    assert <| (m.get first ~> panic_on_fail) is 1
-    assert <| (m.get second ~> panic_on_fail) is 2
+    assert <| (get m first ~> panic_on_fail) is 1
+    assert <| (get m second ~> panic_on_fail) is 2
 
     // testing tombstone case
-    m.remove first
-    assert <| m.len () == 1
-    assert <| (m.get first ~> try) is None
-    assert <| (m.get second ~> panic_on_fail) is 2
-    assert <| m.insert second 3 is Some 2
-    assert <| (m.get second ~> panic_on_fail) is 3
-    assert <| m.len () is 1
-
+    remove m first
+    assert <| len m == 1
+    assert <| (get m first ~> try) is None
+    assert <| (get m second ~> panic_on_fail) is 2
+    assert <| insert m second 3 is Some 2
+    assert <| (get m second ~> panic_on_fail) is 3
+    assert <| len m is 1
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 42, 100
+// expected stdout: 42, 100

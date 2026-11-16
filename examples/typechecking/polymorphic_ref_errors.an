@@ -1,6 +1,6 @@
-import Std.Vec.Vec, of, get
-import Std.Stream.stream_array
+import Std.Vec.get
 import Std.Fail.Fail
+import Std.Vec
 
 // A polymorphic reference may be read-only so it can't be mutated
 set_poly (r: ref 'p I32): Unit =
@@ -14,7 +14,7 @@ use_mut (_: mut I32): Unit = ()
 // Anything reached through a reference to a non-var is read-only
 set_first (): Unit can Fail, Panic =
     v = Vec.of [1, 2]
-    v.get 0 := 5
+    get v 0 := 5
 
 main () =
     x = 1
@@ -45,11 +45,11 @@ main () =
 // 10 | to_mut (r: ref 'p I32): mut 'p I32 = r
 //    |                                      ^
 // 
-// examples/typechecking/polymorphic_ref_errors.an:17:6
+// examples/typechecking/polymorphic_ref_errors.an:17:5
 // 16 |     v = Vec.of [1, 2]
 //    |     // error: Cannot assign through a value of type ref 'v! _, a mut reference is required
-// 17 |     v.get 0 := 5
-//    |      ^^^^^^
+// 17 |     get v 0 := 5
+//    |     ^^^^^^^
 // 
 // examples/typechecking/polymorphic_ref_errors.an:25:5
 // 24 |     rx = ref x

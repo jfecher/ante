@@ -1,4 +1,4 @@
-import Std.Stream.Emit, emit, Stream, iter
+import Std.Stream.emit, Stream, iter
 
 effect Tick =
     tick: fn Unit -> Unit

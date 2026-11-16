@@ -44,8 +44,6 @@ pub enum TypeErrorKind {
     Callee,
     /// A function body's type (actual) does not match the function's return type (expected)
     FunctionBody,
-    /// A method's expected object type (actual) does not match the object it is called on (expected)
-    MethodObject,
     /// An if/while condition (actual) is not a Bool (expected)
     Condition,
     /// A constructor field value (actual) does not match the field's declared type (expected)
@@ -126,9 +124,6 @@ impl TypeErrorKind {
             },
             TypeErrorKind::FunctionBody => {
                 format!("The body of this function has type {actual} but it is expected to return {expected}")
-            },
-            TypeErrorKind::MethodObject => {
-                format!("This method expects an object of type {actual} but was called on a value of type {expected}")
             },
             TypeErrorKind::Condition => {
                 format!("Conditions must have type {expected} but this condition has type {actual}")

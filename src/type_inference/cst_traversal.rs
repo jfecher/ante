@@ -1,11 +1,16 @@
 use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use crate::{
-    diagnostics::{Diagnostic, Location, NameKind, UnimplementedItem},
-    incremental::{AllDefinitions, ExportedDefinitions, GetItem, GetItemRaw, GetType, RawItem, Resolve},
+    diagnostics::{Diagnostic, NameKind, UnimplementedItem},
+    incremental::{ExportedDefinitions, GetItem, GetItemRaw, GetType, RawItem, Resolve},
     iterator_extensions::mapvec,
     lexer::token::Integer,
-    name_resolution::{Origin, TraitMember, builtin::Builtin, origin_of_top_level_definition},
+    name_resolution::{
+        Origin, TraitMember,
+        builtin::Builtin,
+        namespace::{CrateId, SourceFileId},
+        origin_of_top_level_definition,
+    },
     parser::{
         cst::{self, Definition, Expr, Literal, Pattern, ReferenceKind},
         get_item::TraitDefinition,
@@ -17,8 +22,8 @@ use crate::{
         errors::TypeErrorKind,
         get_type::{get_partial_type, implicit_result_omitted_type_args, try_get_generalized_type},
         kinds::Kind,
-        places::{Mutability, Place, PlaceMode},
-        types::{self, FunctionType, ParameterType, Type, TypeBindings},
+        places::{Mutability, Place},
+        types::{self, FunctionType, ParameterType, PrimitiveType, Type, TypeBindings},
         value_impls::{Owned, OwnedRoot},
     },
 };
@@ -133,7 +138,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// or multiple names like `a, b = 1, 2.
     pub(super) fn definition_name(&self, pattern: PatternId) -> Option<NameId> {
         match &self.current_extended_context()[pattern] {
-            Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => Some(*name),
+            Pattern::Variable(name) => Some(*name),
             Pattern::TypeAnnotation(inner, _) => self.definition_name(*inner),
             _ => None,
         }
@@ -293,7 +298,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         match pattern.as_ref() {
             Pattern::Error => (),
-            Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
+            Pattern::Variable(name) => {
                 self.check_name(*name, expected);
             },
             Pattern::Literal(literal) => {
@@ -404,7 +409,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn assign_binding_places(&mut self, id: PatternId, place: Place) {
         let pattern = self.pattern_of(id);
         match pattern.as_ref() {
-            Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
+            Pattern::Variable(name) => {
                 self.request_value_impls(Owned::new(OwnedRoot::Name(*name)), true);
                 self.item.binding_places.insert(*name, place);
             },
@@ -553,6 +558,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 typ
             },
             Some(Origin::TypeResolution) => self.resolve_type_resolution(path, expected),
+            // Callees are resolved by `try_resolve_by_first_argument`, so this path is not a callee
+            Some(Origin::ArgumentResolution) => self.issue_name_not_in_scope_error(path),
             Some(Origin::Builtin(builtin)) => self.check_builtin(builtin, path),
             None => expected.clone(),
         };
@@ -685,9 +692,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn infer_call(&mut self, call: &cst::Call, expected: &Type, call_expr: ExprId, position: ExprPosition) -> Type {
-        // If the function is a MemberAccess, try to resolve it as a method call.
-        // E.g. `vec.push 3` is rewritten to `push (mut vec) 3`.
-        if let Some(new_expr) = self.try_rewrite_method_call(call, call_expr) {
+        // E.g. `push v 3` where `push` is only defined in the module declaring `v`'s type
+        if let Some(new_expr) = self.try_resolve_by_first_argument(call, call_expr) {
             return self.infer_expr(new_expr, expected);
         }
 
@@ -831,74 +837,79 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.implicit_candidate_exists(&trait_type)
     }
 
-    /// If `call` is `v.push 3`, try to resolve `push` as a function in the module where `v`'s type
-    /// is defined. If found, rewrite the Call expression to `push (mut v) 3` in the extended
-    /// context and type-check that instead.
-    fn try_rewrite_method_call(&mut self, call: &cst::Call, call_expr: ExprId) -> Option<ExprId> {
-        let func_expr = self.resolved_expr(call.function).into_owned();
-
-        let Expr::MemberAccess(member_access) = &func_expr else {
+    /// If `call`'s callee was not found by name, look it up in the module declaring the type of the
+    /// call's first explicit argument, then rewrite the callee to refer to what was found. Argument
+    /// coercions auto-ref the first argument when the function expects a reference.
+    fn try_resolve_by_first_argument(&mut self, call: &cst::Call, call_expr: ExprId) -> Option<ExprId> {
+        let Expr::Variable(path) = self.resolved_expr(call.function).into_owned() else { return None };
+        if self.current_resolve().path_origins.get(&path) != Some(&Origin::ArgumentResolution) {
             return None;
-        };
+        }
 
-        let object = member_access.object;
-        let member = member_access.member;
-        let member_name = self.member_name(member_access).clone();
-
+        let first = call.arguments.iter().find(|arg| !arg.is_implicit)?.expr;
         let hint = self.next_type_variable();
-        let struct_type = self.infer_expr(object, &hint);
-        self.poke_type_with_implicits(&struct_type);
+        let first_type = self.infer_expr(first, &hint);
+        self.poke_type_with_implicits(&first_type);
 
-        // Resolve the method name to a top-level function
-        let Some((method_name, func_type, bindings)) = self.resolve_method_for_type(&struct_type, &member_name) else {
-            return None;
-        };
-        let method_type = Type::Function(func_type.clone());
+        let name = self.current_context()[path].last_name().clone();
+        let location = self.current_context().path_location(path).clone();
 
-        // Build the object argument, auto-ref'ing if the first parameter is a reference type
-        let location = self.current_context().expr_location(call.function).clone();
-        let Some(object_arg) = self.build_object_arg_with_auto_ref(
-            object,
-            &struct_type,
-            &func_type.parameters[0].typ,
-            &location,
-            call_expr,
-        ) else {
+        let Some(id) = self.find_in_declaring_module(&first_type, &name) else {
+            let diagnostic = if !self.is_concrete_type_or_numeric_typevar(&first_type) {
+                Diagnostic::ArgumentTypeMustBeKnown { name, location }
+            } else {
+                let typ = self.type_to_string(&first_type);
+                Diagnostic::NameNotInArgumentModule { name, typ, location }
+            };
+            self.compiler.accumulate(diagnostic);
+            self.current_extended_context_mut().insert_expr(call.function, Expr::Error);
             return None;
         };
 
-        // Create a Variable expression for the method, with a fresh path
-        let member_location = self.current_extended_context().name_location(member);
-        let method_path =
-            self.push_path(cst::Path::ident(member_name, member_location), method_type.clone(), location.clone());
-        self.name_types.insert(member, method_type.clone());
+        let (item, _) = GetItem(id.top_level_item).get(self.compiler);
+        let origin = origin_of_top_level_definition(id, &item.kind);
 
-        let origin = Origin::TopLevelDefinition(method_name);
+        // A fresh path so later lookups of its origin see the resolved one rather than the resolver's
+        let callee_path = cst::Path::ident(name, location.clone());
+        let callee_type = self.next_type_variable();
+        let callee_path = self.push_path(callee_path, callee_type.clone(), location.clone());
         let context = self.current_extended_context_mut();
-        context.insert_path_origin(method_path, origin);
-        context.insert_name_origin(member, origin);
-        if let Some(bindings) = bindings {
-            context.insert_instantiation(method_path, bindings);
-        }
+        context.insert_path_origin(callee_path, origin);
+        context.insert_path_origin(path, origin);
+        let callee = self.push_expr(Expr::Variable(callee_path), callee_type, location);
 
-        let method_var = self.push_expr(Expr::Variable(method_path), method_type, location);
-
-        // Build the new Call: `push (mut v) 3`
-        // If the call is in the form `obj.method ()` and the method only takes 1 parameter,
-        // strip the `()`.
-        let single_unit_arg = call.arguments.len() == 1
-            && func_type.parameters.iter().filter(|p| !p.is_implicit).count() == 1
-            && matches!(self.current_context()[call.arguments[0].expr], Expr::Literal(Literal::Unit));
-
-        let mut new_arguments = vec![cst::Argument::explicit(object_arg)];
-        if !single_unit_arg {
-            new_arguments.extend_from_slice(&call.arguments);
-        }
-
-        let new_call = Expr::Call(cst::Call { function: method_var, arguments: new_arguments });
+        let new_call = Expr::Call(cst::Call { function: callee, arguments: call.arguments.clone() });
         self.current_extended_context_mut().insert_expr(call_expr, new_call);
-
         Some(call_expr)
+    }
+
+    /// Look up `name` in the module declaring `typ`, looking through references. Names in the
+    /// current module always resolve by name, so only other modules' exports need searching.
+    fn find_in_declaring_module(&self, typ: &Type, name: &cst::Name) -> Option<TopLevelName> {
+        let module = self.declaring_module(typ)?;
+        ExportedDefinitions(module).get(self.compiler).definitions.get(name).copied()
+    }
+
+    /// The module declaring `typ`. Builtin types have no declaring module, so each is
+    /// assigned the stdlib module holding functions on it.
+    fn declaring_module(&self, typ: &Type) -> Option<SourceFileId> {
+        let module = match self.follow_type(typ) {
+            Type::UserDefined(Origin::TopLevelDefinition(id)) => return Some(id.top_level_item.source_file),
+            Type::Application(constructor, _) => {
+                return match typ.reference_element(&self.bindings) {
+                    Some((_, element)) => self.declaring_module(&element),
+                    None => self.declaring_module(constructor),
+                };
+            },
+            Type::Primitive(PrimitiveType::Bool) => return Some(SourceFileId::prelude()),
+            Type::Primitive(PrimitiveType::Char) => "Char.an",
+            Type::Primitive(PrimitiveType::Int(_) | PrimitiveType::Float(_)) => "Math.an",
+            Type::Primitive(PrimitiveType::Pointer) => "Mem.an",
+            Type::Primitive(PrimitiveType::Array) => "Array.an",
+            Type::Variable(_) if self.is_concrete_type_or_numeric_typevar(typ) => "Math.an",
+            _ => return None,
+        };
+        Some(SourceFileId::new(CrateId::STDLIB, std::path::Path::new(module)))
     }
 
     /// Convert a lambda's effects clause to an effect row or a fresh open row if omitted.
@@ -1107,44 +1118,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Resolve a method name on a type to its top-level function definition.
-    /// Returns the method's name, function type, and optional generic bindings.
-    fn resolve_method_for_type(
-        &mut self, struct_type: &Type, member: &cst::Name,
-    ) -> Option<(TopLevelName, Shared<FunctionType>, Option<Vec<Type>>)> {
-        let type_top_level_id = self.find_type_name(struct_type)?.top_level_item;
-        let source_file = type_top_level_id.source_file;
-
-        // Only resolve methods on actual type definitions, not on traits or effects
-        let RawItem(item, _) = GetItemRaw(type_top_level_id).get(self.compiler);
-        if !matches!(item.kind, cst::TopLevelItemKind::TypeDefinition(_)) {
-            return None;
-        }
-
-        // Within the same file, non-exported methods should be visible.
-        // Across files, only exported methods are visible.
-        let current_file = self.current_item.expect("current_item set").source_file;
-        let definitions = if source_file == current_file {
-            AllDefinitions(source_file).get(self.compiler)
-        } else {
-            ExportedDefinitions(source_file).get(self.compiler)
-        };
-
-        let name = *definitions.methods.get(&type_top_level_id)?.get(member)?;
-
-        let (method_type, bindings) = self.type_and_bindings_of_top_level_name(&name);
-
-        let Type::Function(func_type) = &method_type else {
-            return None;
-        };
-
-        if func_type.parameters.is_empty() {
-            return None;
-        }
-
-        Some((name, func_type.clone(), bindings))
-    }
-
     /// Find the name of the user-defined type `typ` refers to, unwrapping references and type applications.
     fn find_type_name(&self, typ: &Type) -> Option<TopLevelName> {
         match self.follow_type(typ) {
@@ -1155,40 +1128,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             _ => None,
         }
-    }
-
-    /// Build the object argument for a method call, automatically wrapping it in a
-    /// reference if the method's first parameter expects one.
-    fn build_object_arg_with_auto_ref(
-        &mut self, mut object: ExprId, struct_type: &Type, first_param: &Type, location: &Location, call_expr: ExprId,
-    ) -> Option<ExprId> {
-        // If the first param expects a reference, unwrap both sides and auto-ref the object if needed.
-        let (param_type, struct_base, auto_ref) = if let Some((places, inner_type)) =
-            first_param.reference_element(&self.bindings)
-        {
-            let ref_kind = match self.uniform_mode(&places) {
-                Some(PlaceMode::Mut) => ReferenceKind::Mut,
-                Some(PlaceMode::Read) => ReferenceKind::Read,
-                None => ReferenceKind::Ref,
-            };
-            let (struct_base_type, should_wrap_object_in_ref) = match struct_type.reference_element(&self.bindings) {
-                Some((_, element)) => (element, false),
-                None => (struct_type.clone(), true),
-            };
-            let auto_ref = should_wrap_object_in_ref.then_some(ref_kind);
-            (inner_type, struct_base_type, auto_ref)
-        } else {
-            (first_param.clone(), struct_type.clone(), None)
-        };
-
-        self.unify(&param_type, &struct_base, TypeErrorKind::MethodObject, call_expr);
-
-        if let Some(ref_kind) = auto_ref {
-            let ref_expr = Expr::Reference(cst::Reference { kind: ref_kind, rhs: object, implicit: false });
-            object = self.push_expr(ref_expr, first_param.clone(), location.clone());
-        }
-
-        Some(object)
     }
 
     /// Ensure `expr` in `mut expr` is actually mutable
@@ -1685,9 +1624,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.item.mutable_definitions.insert(*name);
                 }
             },
-            // This may be reachable on a parse error but these should only be for
-            // top-level methods which should never be mutable
-            Pattern::MethodName { .. } => (),
             Pattern::Or(alts) => {
                 alts.iter().for_each(|pattern| self.record_mutable_pattern(*pattern));
             },

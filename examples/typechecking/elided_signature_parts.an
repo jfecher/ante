@@ -6,12 +6,12 @@ same (x: ref t): ref t = x
 
 // Every other elided place in a parameter is a rigid place of its own, so `x` can't be stored in `v`
 store (v: mut (Vec (ref I32))) (x: ref I32): Unit can Mutate 'v, Panic =
-    v.push x
+    push v x
 
 // An annotation's elided parameter places are rigid too, so a local can't be stored in `v`
 store_annotated: fn (mut 'p (Vec (ref I32))) -> Unit can Mutate 'p, Panic = fn v ->
     x = 1
-    v.push (ref x)
+    push v (ref x)
 
 // A place in a parameter's `can` clause isn't an input place, so `x` is the only one
 nested_clause (x: ref I32) (_f: fn Unit -> Unit can Emit (ref I32)): ref I32 = x
@@ -47,16 +47,15 @@ main () = ()
 // 
 // (main: fn Unit -> Unit is pure) () = ()
 
-
 // expected stderr:
 // examples/typechecking/elided_signature_parts.an:9:12
 //  8 | store (v: mut (Vec (ref I32))) (x: ref I32): Unit can Mutate 'v, Panic =
-//  9 |     v.push x	// error: Argument 2 has type ref 'x I32 but ref '_ I32 was expected
+//  9 |     push v x	// error: Argument 2 has type ref 'x I32 but ref '_ I32 was expected
 //    |            ^
 // 
 // examples/typechecking/elided_signature_parts.an:14:13
 // 13 |     x = 1
-// 14 |     v.push (ref x)	// error: Argument 2 has type ref 'x I32 but ref '_ I32 was expected
+// 14 |     push v (ref x)	// error: Argument 2 has type ref 'x I32 but ref '_ I32 was expected
 //    |             ^^^^^
 // 
 // Found 2 errors and 0 warnings

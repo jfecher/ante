@@ -1,4 +1,4 @@
-import Std.Stream.Emit, emit
+import Std.Stream.emit
 
 h (k: fn Unit -> Unit is pure): Unit = k ()
 

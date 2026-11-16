@@ -308,9 +308,6 @@ impl FreeVars {
                 }
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.declare_pattern(*pattern, checker),
-            cst::Pattern::MethodName { type_name: _, item_name } => {
-                self.defined_in_fn.insert(*item_name);
-            },
             cst::Pattern::Or(alts) => {
                 // Each alt binds the same names, so we only need to walk the first.
                 if let Some(alt) = alts.first() {

@@ -14,8 +14,8 @@ pub mod namespace;
 use crate::{
     diagnostics::{Diagnostic, Location, NameKind},
     incremental::{
-        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, Submodules, VisibleDefinitions,
-        VisibleDefinitionsResult,
+        self, DbHandle, ExportedDefinitions, ExportedTypes, GetCrateGraph, GetItem, Resolve, Submodules,
+        VisibleDefinitions, VisibleDefinitionsResult,
     },
     iterator_extensions::mapvec,
     name_resolution::{builtin::Builtin, namespace::CrateId},
@@ -50,6 +50,27 @@ pub struct ResolutionResult {
 
     /// True if this item constructs a trait outside of an impl, which is an error
     pub constructs_trait_outside_impl: bool,
+
+    /// Names of each callee with [Origin::ArgumentResolution]. Used to build a dependency graph for
+    /// type inference since the definitions these refer to are only known after type inference.
+    pub argument_resolved_names: BTreeSet<Name>,
+}
+
+/// Which unresolved names may be deferred to type inference instead of erroring
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Deferral {
+    None,
+    /// Capitalized names become [Origin::TypeResolution]
+    Constructor,
+    /// As [Deferral::Constructor], and other names become [Origin::ArgumentResolution].
+    /// Only for the callee of a call with an explicit argument.
+    ConstructorOrCallee,
+}
+
+impl Deferral {
+    fn constructor_if(allow: bool) -> Deferral {
+        if allow { Deferral::Constructor } else { Deferral::None }
+    }
 }
 
 struct Resolver<'local, 'inner> {
@@ -80,6 +101,9 @@ struct Resolver<'local, 'inner> {
 
     /// See [ResolutionResult::constructs_trait_outside_impl]
     constructs_trait_outside_impl: bool,
+
+    /// See [ResolutionResult::argument_resolved_names]
+    argument_resolved_names: BTreeSet<Name>,
 }
 
 /// Where was this variable defined?
@@ -97,6 +121,9 @@ pub enum Origin {
     Local(NameId),
     /// This name did not resolve, try to perform type based resolution on it during type inference
     TypeResolution,
+    /// This callee did not resolve. During type inference it is looked up in the module declaring
+    /// the type of the call's first explicit argument.
+    ArgumentResolution,
     /// This name refers to a builtin item such as `Unit`, `Char`, etc.
     Builtin(Builtin),
 }
@@ -124,7 +151,10 @@ impl Origin {
     pub fn may_be_a_type(self) -> bool {
         match self {
             Origin::TopLevelDefinition(..) | Origin::Local(_) => true,
-            Origin::TraitMember(_) | Origin::EffectOperation { .. } | Origin::TypeResolution => false,
+            Origin::TraitMember(_)
+            | Origin::EffectOperation { .. }
+            | Origin::TypeResolution
+            | Origin::ArgumentResolution => false,
             Origin::Builtin(builtin) => matches!(builtin, Builtin::Unit | Builtin::Char),
         }
     }
@@ -316,6 +346,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             loop_depth: 0,
             impl_constructor: None,
             constructs_trait_outside_impl: false,
+            argument_resolved_names: Default::default(),
             context,
         }
     }
@@ -327,6 +358,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             referenced_items: self.referenced_items,
             top_level_names: self.top_level_names,
             constructs_trait_outside_impl: self.constructs_trait_outside_impl,
+            argument_resolved_names: self.argument_resolved_names,
         }
     }
 
@@ -397,24 +429,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Namespace::Crate(_) => None,
             Namespace::Module(file_id) => {
                 let visible = &VisibleDefinitions(file_id).get(self.compiler);
-                if let Some(&id) = visible.definitions.get(name) {
-                    self.referenced_items.insert(id.top_level_item);
-                    return Some(Origin::TopLevelDefinition(id));
-                }
-                // Also check methods defined on types in this module.
-                // This just removes the need to type `Std.Vec.Vec.push` over `Std.Vec.push`
-                for methods in visible.methods.values() {
-                    if let Some(&id) = methods.get(name) {
-                        self.referenced_items.insert(id.top_level_item);
-                        return Some(Origin::TopLevelDefinition(id));
-                    }
-                }
-                None
+                let id = *visible.definitions.get(name)?;
+                self.referenced_items.insert(id.top_level_item);
+                Some(Origin::TopLevelDefinition(id))
             },
             Namespace::Type(top_level_id) => {
                 let visible = &VisibleDefinitions(top_level_id.source_file).get(self.compiler);
-                let methods = visible.methods.get(&top_level_id)?;
-                let id = *methods.get(name)?;
+                let members = visible.type_members.get(&top_level_id)?;
+                let id = *members.get(name)?;
                 self.referenced_items.insert(id.top_level_item);
                 Some(Origin::TopLevelDefinition(id))
             },
@@ -423,7 +445,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     /// Lookup the given path in the given namespace
     fn lookup_in<'a, Iter>(
-        &mut self, mut path: Iter, mut namespace: Namespace, allow_type_based_resolution: bool, is_type: bool,
+        &mut self, mut path: Iter, mut namespace: Namespace, deferral: Deferral, is_type: bool,
     ) -> Result<Origin, Diagnostic>
     where
         Iter: ExactSizeIterator<Item = &'a (Name, Location)>,
@@ -453,10 +475,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             return Ok(origin);
         }
 
+        if let Namespace::Type(type_id) = namespace
+            && self.is_exported(type_id.source_file, name)
+        {
+            let location = location.clone();
+            let name = name.clone();
+            return Err(Diagnostic::FunctionQualifiedByType { name, location });
+        }
+
         // No known origin.
         // If the name is capitalized we delay until type inference to auto-import variants
         let first_char = name.chars().next().unwrap();
-        if allow_type_based_resolution && first_char.is_ascii_uppercase() && namespace == Namespace::Local {
+        if deferral != Deferral::None && first_char.is_ascii_uppercase() && namespace == Namespace::Local {
             Ok(Origin::TypeResolution)
         } else if let Some(origin) = self.lookup_builtin_name(name) {
             Ok(origin)
@@ -471,11 +501,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             let name = name.clone();
             let (actual, expected) = (NameKind::Module, NameKind::of_position(is_type));
             Err(Diagnostic::UnexpectedNameKind { name, actual, expected, location })
+        } else if deferral == Deferral::ConstructorOrCallee && namespace == Namespace::Local {
+            self.argument_resolved_names.insert(name.clone());
+            Ok(Origin::ArgumentResolution)
         } else {
             let location = location.clone();
             let name = name.clone();
             Err(Diagnostic::NameNotInScope { name, location })
         }
+    }
+
+    fn is_exported(&self, file: SourceFileId, name: &String) -> bool {
+        ExportedDefinitions(file).get(self.compiler).definitions.contains_key(name)
     }
 
     fn lookup_builtin_name(&self, name: &str) -> Option<Origin> {
@@ -501,7 +538,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         None
     }
 
-    fn lookup(&mut self, path: &Path, allow_type_based_resolution: bool, is_type: bool) -> Result<Origin, Diagnostic> {
+    fn lookup(&mut self, path: &Path, deferral: Deferral, is_type: bool) -> Result<Origin, Diagnostic> {
         let mut components = path.components.iter().peekable();
 
         if components.len() > 1 {
@@ -518,18 +555,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     // Discard the crate name
                     components.next();
                     let namespace = Namespace::Crate(*dependency_id);
-                    return self.lookup_in(components, namespace, allow_type_based_resolution, is_type);
+                    return self.lookup_in(components, namespace, deferral, is_type);
                 }
             }
         }
 
         // Not an absolute path
-        self.lookup_in(components, Namespace::Local, allow_type_based_resolution, is_type)
+        self.lookup_in(components, Namespace::Local, deferral, is_type)
     }
 
     /// Links a path to its definition or errors if it does not exist
-    fn link(&mut self, path: PathId, allow_type_based_resolution: bool, is_type: bool) {
-        match self.lookup(&self.context[path], allow_type_based_resolution, is_type) {
+    fn link(&mut self, path: PathId, deferral: Deferral, is_type: bool) {
+        match self.lookup(&self.context[path], deferral, is_type) {
             Ok(mut origin) => {
                 // Handle type aliases in an expression position
                 if !is_type
@@ -566,7 +603,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         self.name_links.insert(name_id, origin);
     }
 
-    /// Link a method whose name is expected to be in `self.names_in_global_scope`
+    /// Link a variant whose name is expected to be in `self.names_in_global_scope`
     fn link_existing_union_variant(&mut self, type_name: NameId, item_name: NameId) {
         let type_name_string = &self.context[type_name];
         let item_name_string = &self.context[item_name];
@@ -576,12 +613,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             return;
         };
 
-        if let Some(methods) = &self.names_in_global_scope.methods.get(&type_id.top_level_item) {
-            if let Some(method) = methods.get(item_name_string) {
+        if let Some(members) = &self.names_in_global_scope.type_members.get(&type_id.top_level_item) {
+            if let Some(member) = members.get(item_name_string) {
                 self.top_level_names.push(item_name);
                 self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
-                let (item, _) = GetItem(method.top_level_item).get(self.compiler);
-                self.name_links.insert(item_name, origin_of_top_level_definition(*method, &item.kind));
+                let (item, _) = GetItem(member.top_level_item).get(self.compiler);
+                self.name_links.insert(item_name, origin_of_top_level_definition(*member, &item.kind));
             }
         } else {
             println!(
@@ -597,13 +634,13 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Pattern::Literal(_) => (),
             Pattern::Variable(name_id) => self.link_existing_global(*name_id),
             Pattern::Constructor(constructor, args) => {
-                self.link(*constructor, false, false);
+                self.link(*constructor, Deferral::None, false);
                 for arg in args {
                     self.link_existing_pattern(*arg);
                 }
             },
             Pattern::ConstructorRest(constructor, args, name) => {
-                self.link(*constructor, false, false);
+                self.link(*constructor, Deferral::None, false);
                 for arg in args {
                     self.link_existing_pattern(*arg);
                 }
@@ -615,7 +652,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.link_existing_pattern(*pattern);
                 self.resolve_type(typ, true);
             },
-            Pattern::MethodName { type_name, item_name } => self.link_existing_union_variant(*type_name, *item_name),
             // This is only called on top-level patterns where Or would be invalid anyway but it
             // should be fine to link either way
             Pattern::Or(alts) => {
@@ -642,7 +678,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn is_valid_for_position(&self, origin: Origin, is_type: bool) -> bool {
         match origin {
             // TypeResolution is always a value (deferred enum/struct constructor), never a type
-            Origin::TypeResolution => !is_type,
+            Origin::TypeResolution | Origin::ArgumentResolution => !is_type,
             // Local names (type vars or value bindings) are accepted in either position
             Origin::Local(_) => true,
             Origin::TraitMember(_) | Origin::EffectOperation { .. } => !is_type,
@@ -677,20 +713,25 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         }
     }
 
+    fn resolve_variable_expr(&mut self, path: PathId, deferral: Deferral) {
+        self.link(path, deferral, false);
+        if let Some(trait_name) = self.path_links.get(&path).and_then(|origin| self.trait_constructor_name(*origin)) {
+            let location = self.context.path_location(path).clone();
+            self.trait_constructed_outside_impl(trait_name, location);
+        }
+    }
+
     fn resolve_expr(&mut self, expr: ExprId) {
         match &self.context[expr] {
             Expr::Literal(_literal) => (),
-            Expr::Variable(path) => {
-                self.link(*path, true, false);
-                if let Some(trait_name) =
-                    self.path_links.get(path).and_then(|origin| self.trait_constructor_name(*origin))
-                {
-                    let location = self.context.path_location(*path).clone();
-                    self.trait_constructed_outside_impl(trait_name, location);
-                }
-            },
+            Expr::Variable(path) => self.resolve_variable_expr(*path, Deferral::Constructor),
             Expr::Call(call) => {
-                self.resolve_expr(call.function);
+                match &self.context[call.function] {
+                    Expr::Variable(path) if call.arguments.iter().any(|arg| !arg.is_implicit) => {
+                        self.resolve_variable_expr(*path, Deferral::ConstructorOrCallee);
+                    },
+                    _ => self.resolve_expr(call.function),
+                }
                 for arg in &call.arguments {
                     self.resolve_expr(arg.expr);
                 }
@@ -936,7 +977,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             // In a constructor pattern such as `Struct foo bar baz` or `(a, b)` the arguments
             // should be declared but the function itself should never be.
             Pattern::Constructor(function, args) => {
-                self.link(*function, allow_type_based_resolution, false);
+                self.link(*function, Deferral::constructor_if(allow_type_based_resolution), false);
                 for arg in args {
                     self.declare_names_in_pattern(
                         *arg,
@@ -948,7 +989,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 }
             },
             Pattern::ConstructorRest(function, args, name) => {
-                self.link(*function, allow_type_based_resolution, false);
+                self.link(*function, Deferral::constructor_if(allow_type_based_resolution), false);
                 for arg in args {
                     self.declare_names_in_pattern(
                         *arg,
@@ -972,10 +1013,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     refutable,
                 );
                 self.resolve_type(typ, declare_type_vars);
-            },
-            Pattern::MethodName { type_name, item_name } => {
-                self.resolve_variable(*type_name, false);
-                self.declare_name(*item_name, check_unused);
             },
             Pattern::Or(alts) => {
                 if !refutable {
@@ -1086,7 +1123,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::ImplicitPlace { .. }
             | TypeKind::Pure
             | TypeKind::IntegerConstant(_) => (),
-            TypeKind::Named(path) => self.link(*path, false, true),
+            TypeKind::Named(path) => self.link(*path, Deferral::None, true),
             TypeKind::Variable(name) => self.resolve_variable(*name, declare_type_vars),
             TypeKind::Place(paths) => {
                 for path in paths {
@@ -1248,7 +1285,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Comptime::Expr(expr_id) => self.resolve_expr(*expr_id),
             Comptime::Derive(paths) => {
                 for path in paths {
-                    self.link(*path, false, true);
+                    self.link(*path, Deferral::None, true);
                 }
             },
             Comptime::Definition(definition) => self.resolve_definition(definition),
@@ -1263,7 +1300,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
         for (pattern, branch) in &handle.cases {
             let path = pattern.function;
-            self.link(path, false, false);
+            self.link(path, Deferral::None, false);
             self.used_locals.insert(pattern.resume_name);
             self.resolve_expr(*branch);
 

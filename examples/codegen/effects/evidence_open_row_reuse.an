@@ -1,6 +1,3 @@
-import Std.Stream.Emit, emit
-import Std.Fail.Fail, fail, try
-
 // This used to panic MIR evidence projection since `e` would end up duplicating an effect
 foldr (gen: once fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b [env] -> b can e) {Drop env e}: b can e =
     handle

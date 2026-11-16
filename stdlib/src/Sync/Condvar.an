@@ -1,0 +1,45 @@
+import Std.C.malloc, free, VoidPtr
+import Std.Mem.null
+import Std.Sync.Mutex.Mutex
+
+export Condvar, new, wait, signal, broadcast, drop_condvar
+
+pthread_cond_init: fn VoidPtr VoidPtr -> I32 = extern "pthread_cond_init"
+pthread_cond_wait: fn VoidPtr VoidPtr -> I32 = extern "pthread_cond_wait"
+pthread_cond_signal: fn VoidPtr -> I32 = extern "pthread_cond_signal"
+pthread_cond_broadcast: fn VoidPtr -> I32 = extern "pthread_cond_broadcast"
+pthread_cond_destroy: fn VoidPtr -> I32 = extern "pthread_cond_destroy"
+
+// This size should be large enough on mac & linux gcc at least.
+// TODO: Remove hard-coded sizes
+cond_buf_size: Usz = 64
+
+type Condvar = raw: VoidPtr
+
+new (): Condvar =
+    raw = malloc cond_buf_size
+    pthread_cond_init raw (null ())
+    Condvar raw
+
+/// Atomically release `m`'s lock and block until signalled, then re-acquire it. Must be
+/// called while holding `m`'s lock (i.e. from within a `Mutex.with_lock` body that also
+/// captured `m`).
+/// TODO: Add MutexGuard and require that instead of a Mutex
+wait (c: ref Condvar) (m: ref Mutex t): Unit =
+    pthread_cond_wait c.raw m.raw
+    ()
+
+/// Unblock one thread waiting on this condvar
+signal (c: ref Condvar): Unit =
+    pthread_cond_signal c.raw
+    ()
+
+/// Unblock all threads waiting on this condvar
+broadcast (c: ref Condvar): Unit =
+    pthread_cond_broadcast c.raw
+    ()
+
+impl drop_condvar: Drop Condvar pure with
+    drop c =
+        pthread_cond_destroy c.raw
+        free c.raw

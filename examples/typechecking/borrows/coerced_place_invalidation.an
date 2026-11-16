@@ -1,19 +1,19 @@
-import Std.Vec.Vec, of, get
-import Std.Stream.stream_array
+import Std.Vec.Vec, get
 import Std.Fail.Fail
+import Std.Vec
 
 use (_x: ref t): Unit = ()
 
 type S = a: Vec (Vec String), b: Vec (Vec String)
 
-first (s: ref 's S): ref 's! (Vec String) can Fail = s.a.get 0
+first (s: ref 's S): ref 's! (Vec String) can Fail = get s.a 0
 
-first_mut (s: mut 's S): mut 's! (Vec String) can Fail = s.a.get 0
+first_mut (s: mut 's S): mut 's! (Vec String) can Fail = get s.a 0
 
 // `inner` may be `x.a`'s first element, so replacing it may drop what `elem` points into
 replaced_through_summary (x: mut S): Unit can Mutate 'x, Fail, Panic =
     // element: ref 'x.a!!
-    elem = (x.a.get 0).get 0
+    elem = get x.a 0 |> get 0
     inner = first_mut x
     inner := Vec.empty ()
     use elem
@@ -21,7 +21,7 @@ replaced_through_summary (x: mut S): Unit can Mutate 'x, Fail, Panic =
 // The replaced element itself is still valid
 element_survives (x: mut S): Unit can Mutate 'x, Fail, Panic =
     // element: ref 'x.a!
-    element = x.a.get 0
+    element = get x.a 0
     inner = first_mut x
     inner := Vec.empty ()
     use element
@@ -29,13 +29,13 @@ element_survives (x: mut S): Unit can Mutate 'x, Fail, Panic =
 summary_survives (x: mut S): Unit can Mutate 'x, Fail, Panic =
     // element: ref 'x!
     element = first x
-    inner = x.a.get 0
+    inner = get x.a 0
     inner := Vec.empty ()
     use element
 
 sibling_field (x: mut S): Unit can Mutate 'x, Fail, Panic =
-    elem = (x.a.get 0).get 0
-    other = x.b.get 0
+    elem = get x.a 0 |> get 0
+    other = get x.b 0
     other := Vec.empty ()
     use elem
 

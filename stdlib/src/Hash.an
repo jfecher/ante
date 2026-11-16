@@ -1,4 +1,4 @@
-import Std.Mem.transmute, offset, deref_ptr
+import Std.Mem.transmute
 import Std.Bitwise.bxor, shr, bitwise_u64
 
 trait Hash t =

@@ -160,7 +160,6 @@ impl PatternId {
         match &context.patterns[self] {
             super::cst::Pattern::Error => (),
             super::cst::Pattern::Literal(_) => (),
-            super::cst::Pattern::MethodName { .. } => (),
             super::cst::Pattern::Variable(name) => f(*name),
             super::cst::Pattern::Constructor(_, args) => {
                 for arg in args {

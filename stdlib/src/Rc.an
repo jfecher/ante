@@ -1,20 +1,20 @@
 import Std.C.malloc, free
-import Std.Mem.Type, MkType, size_of, transmute, null, deref_ptr, ptr_store, ptr_to_ref, forget
+import Std.Mem.Type, transmute, forget
 
-export Rc, Rc.of, Rc.as_ref, ref_count, inc_ref_count, dec_ref_count,
-    Rc.try_unwrap, Rc.unwrap_or_clone, clone_rc, drop_rc
+export Rc, of, as_ref, ref_count, inc_ref_count, dec_ref_count,
+    try_unwrap, unwrap_or_clone, clone_rc, drop_rc
 
 /// A non-threadsafe reference-counted pointer.
 type Rc t =
     ptr: Ptr (U32, t)
 
-Rc.of (value: t): Rc t =
+of (value: t): Rc t =
     size = size_of (MkType: Type (U32, t))
     ptr = malloc size
     ptr_store ptr (1, value)
     Rc ptr
 
-Rc.as_ref (rc: ref Rc t): ref! t =
+as_ref (rc: ref Rc t): ref! t =
     rc = ptr_to_ref rc.ptr
     rc.second
 
@@ -34,9 +34,9 @@ dec_ref_count (rc: mut Rc t): Unit =
 /// Otherwise, returns `Error rc` with the original Rc value.
 ///
 /// If you always need to extract the inner value from the Rc, consider
-/// using `Rc.unwrap_or_clone` which will clone the inner value in the shared case
+/// using `unwrap_or_clone` which will clone the inner value in the shared case
 /// instead of returning an error.
-Rc.try_unwrap (rc: Rc t): Result t (Rc t) =
+try_unwrap (rc: Rc t): Result t (Rc t) =
     if ref_count rc == 1 then
         pair = deref_ptr rc.ptr
         free rc.ptr
@@ -47,10 +47,10 @@ Rc.try_unwrap (rc: Rc t): Result t (Rc t) =
 
 /// If the reference count is 1, unwraps the Rc returning the value directly.
 /// Otherwise, clones the inner value.
-Rc.unwrap_or_clone (rc: Rc t) {Clone t} {Drop t e}: t can e =
-    match Rc.try_unwrap rc
+unwrap_or_clone (rc: Rc t) {Clone t} {Drop t e}: t can e =
+    match try_unwrap rc
     | Ok v -> v
-    | Error rc2 -> clone (Rc.as_ref rc2)
+    | Error rc2 -> clone (as_ref rc2)
 
 impl clone_rc: Clone (Rc t) with
     clone (rc: ref Rc t) =

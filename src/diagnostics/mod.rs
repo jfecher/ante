@@ -91,12 +91,28 @@ pub enum Diagnostic {
         name: Name,
         location: Location,
     },
-    MethodExportRequiresType {
+    VariantExportRequiresType {
         name: Name,
         type_name: Name,
         location: Location,
     },
     NameNotInScope {
+        name: Name,
+        location: Location,
+    },
+    /// `Type.name` where `name` is a function in the module declaring `Type`, rather than a variant
+    FunctionQualifiedByType {
+        name: Name,
+        location: Location,
+    },
+    /// A callee not found by name was also not found in the module declaring its first argument's type
+    NameNotInArgumentModule {
+        name: Name,
+        typ: String,
+        location: Location,
+    },
+    /// A callee not found by name needs its first argument's type to be looked up
+    ArgumentTypeMustBeKnown {
         name: Name,
         location: Location,
     },
@@ -131,10 +147,6 @@ pub enum Diagnostic {
     },
     NamespaceNotFound {
         name: String,
-        location: Location,
-    },
-    MethodDeclaredOnUnknownType {
-        name: Name,
         location: Location,
     },
     LiteralUsedAsName {
@@ -471,6 +483,7 @@ impl Display for NameKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Hint {
     FieldlessTypesNeedConstructors,
+    NoMethods,
 }
 
 impl Display for Hint {
@@ -478,6 +491,9 @@ impl Display for Hint {
         match self {
             Hint::FieldlessTypesNeedConstructors => {
                 write!(f, "for a fieldless type, define a constructor with no arguments")
+            },
+            Hint::NoMethods => {
+                write!(f, "there are no methods, define a function taking the type as its first argument instead")
             },
         }
     }
@@ -599,11 +615,20 @@ impl Diagnostic {
             Diagnostic::ExportedItemNotFound { name, location: _ } => {
                 format!("`{name}` is not defined")
             },
-            Diagnostic::MethodExportRequiresType { name, type_name, location: _ } => {
+            Diagnostic::VariantExportRequiresType { name, type_name, location: _ } => {
                 format!("`{name}` must be exported as `{type_name}.{name}`")
             },
             Diagnostic::NameNotInScope { name, location: _ } => {
                 format!("`{name}` not found in scope")
+            },
+            Diagnostic::FunctionQualifiedByType { name, location: _ } => {
+                format!("{} is not a variant of this type", color_name(name))
+            },
+            Diagnostic::NameNotInArgumentModule { name, typ, location: _ } => {
+                format!("`{name}` not found in scope or in the module declaring {}", color_type(typ))
+            },
+            Diagnostic::ArgumentTypeMustBeKnown { name, location: _ } => {
+                format!("{} not found in scope", color_name(name))
             },
             Diagnostic::ValueUsedAsType { name, location: _ } => {
                 format!("`{name}` is a value in scope, not a type variable")
@@ -619,9 +644,6 @@ impl Diagnostic {
             },
             Diagnostic::NamespaceNotFound { name, location: _ } => {
                 format!("Namespace `{name}` not found in path")
-            },
-            Diagnostic::MethodDeclaredOnUnknownType { name, location: _ } => {
-                format!("Methods can only be defined on types declared within the same file, which `{name}` was not")
             },
             Diagnostic::LiteralUsedAsName { location: _ } => {
                 "Expected a definition name but found a literal".to_string()
@@ -998,14 +1020,16 @@ impl Diagnostic {
             | Diagnostic::UnknownImportItem { location, .. }
             | Diagnostic::ItemNotExported { location, .. }
             | Diagnostic::ExportedItemNotFound { location, .. }
-            | Diagnostic::MethodExportRequiresType { location, .. }
+            | Diagnostic::VariantExportRequiresType { location, .. }
             | Diagnostic::NameNotInScope { location, .. }
+            | Diagnostic::NameNotInArgumentModule { location, .. }
+            | Diagnostic::FunctionQualifiedByType { location, .. }
+            | Diagnostic::ArgumentTypeMustBeKnown { location, .. }
             | Diagnostic::ValueUsedAsType { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
             | Diagnostic::RecursiveTypeAlias { location, .. }
             | Diagnostic::NamespaceNotFound { location, .. }
-            | Diagnostic::MethodDeclaredOnUnknownType { location, .. }
             | Diagnostic::LiteralUsedAsName { location }
             | Diagnostic::UnexpectedNameKind { location, .. }
             | Diagnostic::TypeError { location, .. }
@@ -1147,6 +1171,12 @@ impl Diagnostic {
             },
             Diagnostic::ImplParameterNotCopy { typ: _, location } => {
                 Some((location, "This restriction is temporary!".to_string()))
+            },
+            Diagnostic::FunctionQualifiedByType { name: _, location } => {
+                Some((location, "Functions are stored in modules, not types".to_string()))
+            },
+            Diagnostic::ArgumentTypeMustBeKnown { name: _, location } => {
+                Some((location, "The first argument's type is unknown so its source module was not searched".to_string()))
             },
             _ => None,
         }

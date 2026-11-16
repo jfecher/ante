@@ -434,10 +434,9 @@ fn pattern_to_expr(pattern: PatternId, context: &mut DesugarContext) -> ExprId {
             let arguments = args.into_iter().map(|arg| Argument::explicit(pattern_to_expr(arg, context))).collect();
             context.push_expr(cst::Expr::Call(cst::Call { function, arguments }), location)
         },
-        cst::Pattern::Or(_)
-        | cst::Pattern::MethodName { .. }
-        | cst::Pattern::Error
-        | cst::Pattern::ConstructorRest(_, _, None) => context.push_expr(cst::Expr::Error, location),
+        cst::Pattern::Or(_) | cst::Pattern::Error | cst::Pattern::ConstructorRest(_, _, None) => {
+            context.push_expr(cst::Expr::Error, location)
+        },
     }
 }
 
@@ -688,7 +687,8 @@ fn push_append(lhs: ExprId, rhs: ExprId, location: &Location, context: &mut Desu
     context.push_expr(call, location.clone())
 }
 
-/// Desugars `x |> foo a b` into `foo x a b` and `foo a b <| x` into `foo x a b`
+/// Desugars `x |> foo a b` into `foo x a b` and `foo a b <| x` into `foo x a b`.
+/// A variable callee, as in `x |> f`, desugars to `f x`.
 ///
 /// Although `|>` and `<|` always slot into the first argument, this can be combined with
 /// explicit currying via `_` to slot into the underscore's position:
@@ -705,12 +705,17 @@ fn desugar_pipeline(expr: ExprId, context: &mut DesugarContext, is_pipe_right: b
         (call.arguments[1], call.arguments[0].expr)
     };
 
-    if let Expr::Call(inner_call) = &context[f] {
-        // Prepend value as the first argument: foo b c => foo(value, b, c)
-        let new_args = std::iter::once(x).chain(inner_call.arguments.iter().copied()).collect();
-        let new_call = cst::Call { function: inner_call.function, arguments: new_args };
-        context.set_expr(expr, Expr::Call(new_call));
-    }
+    // Prepend value as the first argument: foo b c => foo(value, b, c)
+    let new_call = match &context[f] {
+        Expr::Call(inner_call) => {
+            let new_args = std::iter::once(x).chain(inner_call.arguments.iter().copied()).collect();
+            cst::Call { function: inner_call.function, arguments: new_args }
+        },
+        // `x |> f` becomes `f x` so `f` is a callee with a first argument it can be resolved by
+        Expr::Variable(_) => cst::Call { function: f, arguments: vec![x] },
+        _ => return,
+    };
+    context.set_expr(expr, Expr::Call(new_call));
 }
 
 /// Desugars `a; b` into a sequence so that `b` stays in tail position. Left as a call to `;`,

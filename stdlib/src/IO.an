@@ -1,85 +1,10 @@
-import Std.C.fclose, fopen, fwrite, fgetc, fread, ungetc, feof, ferror, malloc, realloc, free, getchar, copy_file, copy_cstring
+import Std.C.fread, malloc, realloc, free, getchar, copy_file, copy_cstring
 import Std.C
-import Std.Fail.Fail, fail, fail_if
-import Std.Stream.iter, stream_fn, stream_once_fn, foldl
-import Std.Mem.transmute, null, array_insert, offset, forget
+import Std.Mem.null, forget
 import Std.String.is_valid_utf8_bytes
-import Std.Iterator.Iterator
+import Std.String
 
-export File, File.open, File.close, drop_file, File.eof, File.write, File.next_char, File.next_line,
-    iterator_file, read_line, read_file, read_file_bytes, print_to_file, create_dir, create_dir_all
-
-type File = c_file: C.File
-
-/// Open the file at `path` with the given `fopen` mode.
-/// Fails if it cannot be opened.
-///
-/// This function is temporary, mode will eventually become a union, and `path` a proper path type.
-File.open (path: String) (mode: String): File can Fs, Fail =
-    c_path = C.String.new path
-    c_mode = C.String.new mode
-    c_file = fopen c_path c_mode
-    free c_path.ptr
-    free c_mode.ptr
-    fail_if (c_file.f == null ())
-    File c_file
-
-File.close (file: File): Unit can Fs =
-    drop file
-
-impl drop_file: Drop File Fs with
-    drop f =
-        _ = fclose f.c_file
-
-/// Convenience function for using feof with better types
-File.eof (f: ref File): Bool can Fs =
-    feof f.c_file != 0
-
-File.write (f: mut File) (text: String): Unit can Fs =
-    fwrite (transmute text.data) 1 (Usz text.length) f.c_file
-    ()
-
-/// Handles `Print` by writing everything printed to `file`
-print_to_file (file: ref File) (f: a can Print, e): a can Fs, e =
-    print_to_sink (fn data len -> ignore (fwrite (transmute data) 1 len file.c_file)) f
-
-/// Read the next character.
-/// Fails if at the end of the file or on a read error.
-File.next_char (f: ref File): Char can Fs, Fail =
-    c = fgetc f.c_file
-    fail_if (c < 0)
-    Char c
-
-File.next_line (f: mut File): String can Fs =
-    if f.eof () then return ""
-
-    len, cstr = loop (len = 0) (capacity = 32) (cstr = malloc 32) ->
-        next = fgetc f.c_file
-        if next < 0 then return (len, cstr)
-        c = Char next
-
-        //Flag feof if eof occurs after terminating newline
-        if c == '\n' then
-            peek = fgetc f.c_file
-            if peek >= 0 then ungetc peek f.c_file
-            return (len, cstr)
-
-        new_capacity, new_cstr = if len + 1 >= capacity then
-            new_cap = capacity * 2
-            (new_cap, realloc cstr new_cap)
-        else (capacity, cstr)
-
-        array_insert new_cstr len c
-        recur (len + 1) new_capacity new_cstr
-
-    array_insert cstr len '\0'
-    String.from_parts cstr (U32 len)
-
-/// Iterating through a File iterates through each line
-impl iterator_file: Iterator (mut File) String Fs with
-    next file =
-        if file.eof () then None
-        else Some (file, file.next_line ())
+export read_line, read_file, read_file_bytes, create_dir, create_dir_all
 
 /// Read a line from stdin, ending with (and not including) a terminating '\n'
 read_line (): String can Fs =
@@ -113,7 +38,7 @@ read_file_bytes (path: String): Vec U8 can Fs, Fail =
         data := realloc data capacity
 
     read_error = data == null () or ferror file.c_file != 0
-    file.close ()
+    close file
     fail_if read_error
     Vec data len capacity
 
@@ -131,7 +56,7 @@ create_dir_: fn C.String -> I32 can Fs = extern "ante_create_dir"
 /// Create the directory at `path`.
 /// Fails if it cannot be created, unless a directory already exists there.
 create_dir (path: String): Unit can Fs, Fail =
-    c_path = C.String.new path
+    c_path = C.from_string path
     result = create_dir_ c_path
     free c_path.ptr
     fail_if (result != 0)
@@ -139,7 +64,7 @@ create_dir (path: String): Unit can Fs, Fail =
 /// Create each directory in `path` along with any missing parent directories.
 /// Fails if any of them cannot be created.
 create_dir_all (path: String): Unit can Fs, Fail =
-    path.split '/' |> foldl "" fn prefix component ->
+    split path '/' |> foldl "" fn prefix component ->
         if component.length == 0 then
             // An empty first component means the path is absolute.
             if prefix.length == 0 then "/" else prefix

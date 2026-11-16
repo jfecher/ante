@@ -1,8 +1,9 @@
-import Std.HashSet.HashSet, empty, of, clear, contains, insert, remove, len,
+import Std.HashSet.HashSet, clear, contains, insert, remove, len,
     is_empty, extend, retain, merge, keys, stream_set, stream_ref_hashset,
     print_hashset
+import Std.HashSet
 import Std.Hash.hash_u8
-import Std.Stream.iter, stream_array, stream_fn
+import Std.Stream.iter
 import Std.Fail.abort_on_fail, assert
 
 main () =
@@ -19,36 +20,36 @@ is_even (key: U8) = key %% 2
 test_basics () =
     var set: HashSet U8 = HashSet.empty ()
 
-    assert <| set.is_empty ()
-    assert <| set.len () == 0
-    assert <| set.insert 1
-    assert <| not set.insert 1
-    assert <| set.contains 1
-    assert <| set.remove 1
-    assert <| not set.remove 1
-    assert <| set.is_empty ()
+    assert <| is_empty set
+    assert <| len set == 0
+    assert <| insert set 1
+    assert <| not (insert set 1)
+    assert <| contains set 1
+    assert <| remove set 1
+    assert <| not (remove set 1)
+    assert <| is_empty set
 
 
 test_of_extend_retain_merge () =
     var set = HashSet.of [1, 2, 2]
-    assert <| set.len () == 2
+    assert <| len set == 2
 
-    set.extend [2, 3, 4]
-    assert <| set.len () == 4
+    extend set [2, 3, 4]
+    assert <| len set == 4
 
-    set.retain fn k -> is_even k.*
-    assert <| set.len () == 2
-    assert <| not set.contains 1
-    assert <| set.contains 2
-    assert <| not set.contains 3
+    retain set fn k -> is_even k.*
+    assert <| len set == 2
+    assert <| not (contains set 1)
+    assert <| contains set 2
+    assert <| not (contains set 3)
 
     other = HashSet.of [3, 5]
-    set.merge other
-    assert <| set.len () == 4
-    assert <| set.contains 5
+    merge set other
+    assert <| len set == 4
+    assert <| contains set 5
 
-    set.clear ()
-    assert <| set.is_empty ()
+    clear set
+    assert <| is_empty set
 
 test_stream_and_print () =
     set = HashSet.of [42]
@@ -56,7 +57,7 @@ test_stream_and_print () =
 
     set2 = HashSet.of [43]
     iter (ref set2) println
-    iter (HashSet.keys set2) println
+    iter (keys set2) println
     println set2
 
 // args: --delete-binary --no-color
@@ -65,3 +66,4 @@ test_stream_and_print () =
 // 43
 // 43
 // [43]
+

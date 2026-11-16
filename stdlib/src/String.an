@@ -1,23 +1,18 @@
 import Std.Vec
 import Std.C
-import Std.C.malloc, memcpy, memcmp, strlen, copy_cstring, free
-import Std.Stream.Emit, emit, Stream, foldl, map, stream_fn
-import Std.Vec.Vec
-import Std.Char.is_whitespace, to_digit, to_ascii_lower, to_ascii_upper
+import Std.C.malloc, memcpy, memcmp, copy_cstring, free
 import Std.Math.CheckedNum, checked_add, checked_sub, checked_mul
 import Std.Math.checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i64, checked_num_isz
 import Std.Math.checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz
-import Std.Fail.Fail, fail, fail_if, assert
-import Std.Mem.transmute, null, offset, offset_bytes, offset_negative, deref_ptr, ptr_store, array_insert, forget
-import Std.Array.array_get_unchecked
+import Std.Mem.transmute, null, forget
 import Std.Bitwise.band, bitwise_u64
 
-export String, String.from_parts, append_string, clone_string, drop_string, is_valid_utf8, is_valid_utf8_bytes, eq_string, cmp_string, String.reverse, String.split, String.split_str, String.lines, String.substr, String.string_of,
-    join, String.bytes, String.chars, String.starts_with, String.ends_with, String.contains, String.trim_start, String.trim_end, String.trim,
-    String.parse_i8, String.parse_i16, String.parse_i32, String.parse_i64, String.parse_isz, String.parse_u8, String.parse_u16, String.parse_u32, String.parse_u64, String.parse_usz,
-    String.parse_signed_int, String.parse_unsigned_int,
+export String, from_parts, append_string, clone_string, drop_string, is_valid_utf8, is_valid_utf8_bytes, eq_string, cmp_string, reverse, split, split_str, lines, substr, string_of,
+    join, bytes, chars, starts_with, ends_with, contains, trim_start, trim_end, trim,
+    parse_i8, parse_i16, parse_i32, parse_i64, parse_isz, parse_u8, parse_u16, parse_u32, parse_u64, parse_usz,
+    parse_signed_int, parse_unsigned_int,
     try_cast_string_i8, try_cast_string_i16, try_cast_string_i32, try_cast_string_i64, try_cast_string_isz, try_cast_string_u8, try_cast_string_u16, try_cast_string_u32, try_cast_string_u64, try_cast_string_usz,
-    String.from_c_string, String.to_ascii_lowercase, String.to_ascii_uppercase
+    from_c_string, to_ascii_lowercase, to_ascii_uppercase
 
 type String =
     data: Ptr Char
@@ -27,7 +22,7 @@ type String =
     offset: U32
 
 /// Construct a fresh, unaliased string from an owned pointer to characters and a length.
-String.from_parts (pointer: Ptr Char) (length: U32): String =
+from_parts (pointer: Ptr Char) (length: U32): String =
     rc: Ptr U32 = malloc 4
     ptr_store rc 1
     String pointer rc length 0
@@ -105,7 +100,7 @@ impl eq_string: Eq String pure with
         l.length == r.length and
             memcmp l.data r.data (Usz l.length) == 0
 
-String.reverse (var s: String): String =
+reverse (var s: String): String =
     // String literals have a null refcount and read-only data, so we must
     // copy them. Only attempt the in-place reverse when the buffer is heap
     // owned and uniquely referenced.
@@ -124,26 +119,26 @@ String.reverse (var s: String): String =
         len = Usz s.length
         for i in 0 .. len do
             array_insert buf i (deref_ptr (offset s.data (len - i - 1)))
-        String.from_parts buf s.length
+        from_parts buf s.length
 
 /// Split a string at the given character. Emits substrings
 /// separated by the given character.
 ///
 /// For example `split "foo bar  baz "` will emit all of:
 /// ["foo", "bar", "", "baz", ""]
-String.split (s: String) (c: Char) = move fn () can Emit String ->
+split (s: String) (c: Char) = move fn () can Emit String ->
     var subend = 0
     var substart = 0
     while U32 subend < s.length do
         ch: Char = s.data.[Usz subend]
         if ch == c then
-            emit ((clone s).substr substart subend)
+            emit (clone s |> substr substart subend)
             substart := subend + 1
         subend += 1
 
-    emit (s.substr substart subend)
+    emit (substr s substart subend)
 
-String.split_str (s: String) (separator: String) = move fn () can Emit String ->
+split_str (s: String) (separator: String) = move fn () can Emit String ->
     separator_len = Usz separator.length
     len = Usz s.length
     var start = 0usz
@@ -151,20 +146,20 @@ String.split_str (s: String) (separator: String) = move fn () can Emit String ->
 
     while separator_len != 0 and i + separator_len <= len do
         if memcmp (offset_bytes s.data i) separator.data separator_len == 0 then
-            emit ((clone s).substr start i)
+            emit (clone s |> substr start i)
             i += separator_len
             start := i
         else
             i += 1
 
-    emit (s.substr start len)
+    emit (substr s start len)
 
 /// Emit each line of a string. Excludes the newline character.
 /// Empty lines are emitted as empty strings.
 ///
 /// Shorthand for `s.split '\n'`
-String.lines (s: String) =
-    s.split '\n'
+lines (s: String) =
+    split s '\n'
 
 /// Returns a substring into the given string. The given
 /// `begin..end` range represents an end-exclusive byte range
@@ -172,7 +167,7 @@ String.lines (s: String) =
 ///
 /// This function does not allocate - the resulting substring
 /// increments the reference count of the original string.
-String.substr (var s: String) (begin: Usz) (end: Usz): String =
+substr (var s: String) (begin: Usz) (end: Usz): String =
     if end > Usz s.length or begin >= Usz s.length then
         return ""
 
@@ -185,11 +180,11 @@ String.substr (var s: String) (begin: Usz) (end: Usz): String =
 /// Collect each character from the given stream into a String
 ///
 /// This fails if all bytes are not valid UTF-8
-String.string_of (stream: s) {Stream s Char e}: String can Panic, Fail, e =
+string_of (stream: s) {Stream s Char e}: String can Panic, Fail, e =
     var chars = Vec.of stream
     assert <| is_valid_utf8_bytes (transmute chars.data) (Usz chars.len)
 
-    result = String.from_parts (chars.data) (U32 chars.len)
+    result = from_parts (chars.data) (U32 chars.len)
 
     // Leak the Vec, it has been transferred to the String.
     forget chars
@@ -203,7 +198,7 @@ join (stream: s) {Stream s String e}: String can e =
     foldl stream "" (++)
 
 /// Emits each byte in this string
-String.bytes (s: String) = move fn () can Emit U8 ->
+bytes (s: String) = move fn () can Emit U8 ->
     var data = transmute s.data : Usz
     for i in 0 .. s.length do
         ptr = data + Usz i
@@ -211,23 +206,23 @@ String.bytes (s: String) = move fn () can Emit U8 ->
         emit c
 
 /// Emits each character in this string
-String.chars (s: String) =
-    s.bytes () |> map (fn b -> Char b)
+chars (s: String) =
+    bytes s |> map (fn b -> Char b)
 
 /// True if `s` begins with `prefix`.
-String.starts_with (s: ref String) (prefix: ref String): Bool =
+starts_with (s: ref String) (prefix: ref String): Bool =
     if prefix.length > s.length then false
     else memcmp s.data prefix.data (Usz prefix.length) == 0
 
 /// True if `s` ends with `suffix`.
-String.ends_with (s: ref String) (suffix: ref String): Bool =
+ends_with (s: ref String) (suffix: ref String): Bool =
     if suffix.length > s.length then false
     else
         skip = Usz (s.length - suffix.length)
         memcmp (offset_bytes s.data skip) suffix.data (Usz suffix.length) == 0
 
 /// True if `needle` appears anywhere in `s`. O(n*m) naive scan.
-String.contains (s: ref String) (needle: ref String): Bool =
+contains (s: ref String) (needle: ref String): Bool =
     if needle.length == 0 then return true
     if needle.length > s.length then return false
     nlen = Usz needle.length
@@ -238,63 +233,63 @@ String.contains (s: ref String) (needle: ref String): Bool =
     false
 
 /// Return a substring with leading ASCII whitespace removed.
-String.trim_start (s: String): String =
+trim_start (s: String): String =
     len = Usz s.length
     for i in 0 .. len do
         c: Char = s.data.[i]
         if not is_whitespace c then
-            return s.substr i len
+            return substr s i len
     ""
 
 /// Return a substring with trailing ASCII whitespace removed.
-String.trim_end (s: String): String =
+trim_end (s: String): String =
     len = Usz s.length
     var i = len
     while i > 0 do
         c: Char = s.data.[i - 1]
         if not is_whitespace c then
-            return s.substr 0 i
+            return substr s 0 i
         i -= 1
     ""
 
 /// Return a substring with both leading and trailing ASCII whitespace removed.
-String.trim (s: String): String =
-    s.trim_start () |> String.trim_end
+trim (s: String): String =
+    trim_start s |> trim_end
 
-String.parse_i8 (s: String): I8 can Fail =
-    s.parse_signed_int ()
+parse_i8 (s: String): I8 can Fail =
+    parse_signed_int s
 
-String.parse_i16 (s: String): I16 can Fail =
-    s.parse_signed_int ()
+parse_i16 (s: String): I16 can Fail =
+    parse_signed_int s
 
 /// Parse a base-10 I32 from a string.
 ///
 /// Fails for empty strings, sign-only strings, non-digits, or overflow.
-String.parse_i32 (s: String): I32 can Fail =
-    s.parse_signed_int ()
+parse_i32 (s: String): I32 can Fail =
+    parse_signed_int s
 
-String.parse_i64 (s: String): I64 can Fail =
-    s.parse_signed_int ()
+parse_i64 (s: String): I64 can Fail =
+    parse_signed_int s
 
-String.parse_isz (s: String): Isz can Fail =
-    s.parse_signed_int ()
+parse_isz (s: String): Isz can Fail =
+    parse_signed_int s
 
-String.parse_u8 (s: String): U8 can Fail =
-    s.parse_unsigned_int ()
+parse_u8 (s: String): U8 can Fail =
+    parse_unsigned_int s
 
-String.parse_u16 (s: String): U16 can Fail =
-    s.parse_unsigned_int ()
+parse_u16 (s: String): U16 can Fail =
+    parse_unsigned_int s
 
-String.parse_u32 (s: String): U32 can Fail =
-    s.parse_unsigned_int ()
+parse_u32 (s: String): U32 can Fail =
+    parse_unsigned_int s
 
-String.parse_u64 (s: String): U64 can Fail =
-    s.parse_unsigned_int ()
+parse_u64 (s: String): U64 can Fail =
+    parse_unsigned_int s
 
-String.parse_usz (s: String): Usz can Fail =
-    s.parse_unsigned_int ()
+parse_usz (s: String): Usz can Fail =
+    parse_unsigned_int s
 
-String.parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Copy t}: t can Fail, e =
+parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Copy t}: t can Fail, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -329,7 +324,7 @@ String.parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Co
 
     result
 
-String.parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {Copy t}: t can Fail, e =
+parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {Copy t}: t can Fail, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -356,65 +351,65 @@ String.parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {C
     result
 
 impl try_cast_string_i8: TryCast String I8 pure with
-    try_cast s = s.parse_i8 ()
+    try_cast s = parse_i8 s
 
 impl try_cast_string_i16: TryCast String I16 pure with
-    try_cast s = s.parse_i16 ()
+    try_cast s = parse_i16 s
 
 impl try_cast_string_i32: TryCast String I32 pure with
-    try_cast s = s.parse_i32 ()
+    try_cast s = parse_i32 s
 
 impl try_cast_string_i64: TryCast String I64 pure with
-    try_cast s = s.parse_i64 ()
+    try_cast s = parse_i64 s
 
 impl try_cast_string_isz: TryCast String Isz pure with
-    try_cast s = s.parse_isz ()
+    try_cast s = parse_isz s
 
 impl try_cast_string_u8: TryCast String U8 pure with
-    try_cast s = s.parse_u8 ()
+    try_cast s = parse_u8 s
 
 impl try_cast_string_u16: TryCast String U16 pure with
-    try_cast s = s.parse_u16 ()
+    try_cast s = parse_u16 s
 
 impl try_cast_string_u32: TryCast String U32 pure with
-    try_cast s = s.parse_u32 ()
+    try_cast s = parse_u32 s
 
 impl try_cast_string_u64: TryCast String U64 pure with
-    try_cast s = s.parse_u64 ()
+    try_cast s = parse_u64 s
 
 impl try_cast_string_usz: TryCast String Usz pure with
-    try_cast s = s.parse_usz ()
+    try_cast s = parse_usz s
 
 /// Copy a null-terminated C string into a new string.
 ///
 /// Fails if the C string contains invalid UTF-8.
-String.from_c_string (cstr: C.String): String can Fail =
+from_c_string (cstr: C.String): String can Fail =
     len = strlen cstr
     assert <| is_valid_utf8_bytes (transmute cstr.ptr) len
 
     buf = malloc len
     memcpy buf cstr.ptr len
-    String.from_parts buf (U32 len)
+    from_parts buf (U32 len)
 
 /// Returns the given string with each ASCII letter converted to lowercase.
 /// The original string is never mutated.
 // TODO: Return the original string if it was already lowercase
-String.to_ascii_lowercase (s: ref String): String =
+to_ascii_lowercase (s: ref String): String =
     len = Usz s.length
     buf = malloc len
     for i in 0 .. len do
         array_insert buf i (to_ascii_lower s.data.[i])
-    String.from_parts buf s.length
+    from_parts buf s.length
 
 /// Returns the given string with each ASCII letter converted to uppercase.
 /// The original string is never mutated.
 // TODO: Return the original string if it was already uppercase
-String.to_ascii_uppercase (s: ref String): String =
+to_ascii_uppercase (s: ref String): String =
     len = Usz s.length
     buf = malloc len
     for i in 0 .. len do
         array_insert buf i (to_ascii_upper s.data.[i])
-    String.from_parts buf s.length
+    from_parts buf s.length
 
 impl cmp_string: Cmp String with
     (<) l r =
@@ -436,7 +431,7 @@ impl append_string: Append String with
         buf_offset = cast (Usz buf + Usz s1.length)
 
         memcpy buf_offset (s2.data) (Usz s2.length)
-        String.from_parts buf len
+        from_parts buf len
 
 impl clone_string: Clone String with
     clone (s: ref String) =

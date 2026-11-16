@@ -1,6 +1,6 @@
 // A handler which either resumes in tail position or returns without resuming handles any
 // number of effects without the stack growing, as `take_while`, `any`, `all` and `find` rely on.
-import Std.Stream.iota, take_while, any, all, find, nth, stream_fn
+import Std.Stream.iota, take_while, any, all, find, nth
 
 effect Tick =
     tick: fn Usz -> Unit

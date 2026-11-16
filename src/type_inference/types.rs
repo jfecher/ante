@@ -2342,6 +2342,7 @@ where
                 }
             },
             Origin::TypeResolution => write!(f, "TypeResolution"),
+            Origin::ArgumentResolution => write!(f, "ArgumentResolution"),
             Origin::Builtin(builtin) => write!(f, "{builtin}"),
         }
     }

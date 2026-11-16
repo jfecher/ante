@@ -1,10 +1,14 @@
-import Std.Sync.Thread, spawn, join, Mutex, with_lock, drop_mutex, Arc, as_ref, clone_arc, drop_arc
+import Std.Sync.Thread.spawn
+import Std.Sync.Mutex
+import Std.Sync.Mutex.Mutex
+import Std.Sync.Arc
+import Std.Sync.Arc.Arc, clone_arc
 
 // Two threads each increment a value guarded by a Mutex 1000 times.
 // with_lock provides mutual exclusion, so the final value is exactly 2000.
 worker (m: Arc (Mutex U32)): Unit =
     for _i in 0..1000 do
-        Mutex.with_lock (Arc.as_ref m) fn v ->
+        with_lock (as_ref m) fn v ->
             v += 1
 
 main () =
@@ -16,7 +20,7 @@ main () =
     t2 = spawn (do worker c2)
     join t1
     join t2
-    println (Mutex.with_lock (Arc.as_ref m) deref)
+    println (with_lock (as_ref m) deref)
 
 // args: --delete-binary --no-color
 // expected stdout: 2000

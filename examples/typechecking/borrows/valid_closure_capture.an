@@ -1,15 +1,15 @@
-import Std.Vec.Vec
+import Std.Vec
 
 same_scope () =
     var y = 10
     var v = Vec.empty ()
-    v.push do y
+    push v do y
 
 inner_scope () =
     if true then
         var y = 10
         var v = Vec.empty ()
-        v.push (do y)
+        push v (do y)
 
 main () = ()
 

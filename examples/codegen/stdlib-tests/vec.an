@@ -1,9 +1,9 @@
-import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
-    remove_index, remove_first, remove_indices, remove_all, swap_last,
-    print_vec, extract_vec, stream_ref_vec, eq_vec
+import Std.Vec.is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
+    remove_index, remove_first, remove_indices, remove_all, swap_last
+import Std.Vec
 
 import Std.Fail.on_fail, panic_on_fail, assert, abort_on_fail
-import Std.Stream.iter, stream_array
+import Std.Stream.iter
 
 main () =
     print_to_stdout do
@@ -28,50 +28,50 @@ main () =
 
 test_basics () =
     var v = Vec.empty ()
-    assert <| v.is_empty ()
+    assert <| is_empty v
 
-    v.push 3i32
-    v.push 4
-    v.push 5
-    v.remove_index 1 ~> panic_on_fail
+    push v 3i32
+    push v 4
+    push v 5
+    remove_index v 1 ~> panic_on_fail
     assert <| v == Vec.of [3, 5]
 
-    v.pop ()
+    pop v
     assert <| v == Vec.of [3]
 
-    assert <| ((v.get 0).* ~> on_fail (do 0)) == 3
-    assert <| not v.is_empty ()
-    assert <| v.len () == 1
-    assert <| v.capacity () >= v.len ()
+    assert <| ((get v 0).* ~> on_fail (do 0)) == 3
+    assert <| not (is_empty v)
+    assert <| len v == 1
+    assert <| capacity v >= len v
 
-    v.reserve 32
-    assert <| v.capacity () >= 32
-    assert <| v.get_unchecked 0 == 3
+    reserve v 32
+    assert <| capacity v >= 32
+    assert <| get_unchecked v 0 == 3
 
 test_remove_first () =
     var v = Vec.empty ()
-    v.push 3
-    v.push 5
-    v.push 5
-    assert <| v.remove_first 5 is Some 1
+    push v 3
+    push v 5
+    push v 5
+    assert <| remove_first v 5 is Some 1
     assert <| v == Vec.of [3, 5]
-    assert <| v.remove_first 99 is None
+    assert <| remove_first v 99 is None
 
 test_remove_indices () =
     var v = Vec.of [10, 20, 30, 40, 50]
-    v.remove_indices (Vec.of [1, 3]) ~> panic_on_fail
+    remove_indices v (Vec.of [1, 3]) ~> panic_on_fail
     assert <| v == Vec.of [10, 30, 50]
 
 test_remove_all () =
     var v = Vec.of [1, 2, 1, 1, 3]
-    assert <| v.remove_all 1 == 3
+    assert <| remove_all v 1 == 3
     assert <| v == Vec.of [2, 3]
 
 test_swap_last () =
     var v = Vec.of [10, 20, 30, 40]
-    assert <| v.swap_last 1
+    assert <| swap_last v 1
     assert <| v == Vec.of [10, 40, 30]
-    assert <| not v.swap_last 2
+    assert <| not (swap_last v 2)
 
 test_indexing () =
     v = Vec.of [10, 40, 30]
@@ -88,43 +88,43 @@ test_eq () =
 
 test_reverse () =
     var v = Vec.of [1, 2, 3, 4]
-    v.reverse ()
+    reverse v
     assert <| v == Vec.of [4, 3, 2, 1]
 
 test_swap () =
     var v = Vec.of [10, 20, 30]
-    v.swap 0 2 ~> panic_on_fail
+    swap v 0 2 ~> panic_on_fail
     assert <| v == Vec.of [30, 20, 10]
 
 test_insert () =
     panic_on_fail do
     var v = Vec.of [1, 3, 5]
-    v.insert 1 2
-    v.insert 3 4
+    insert v 1 2
+    insert v 3 4
     assert <| v == Vec.of [1, 2, 3, 4, 5]
 
 test_dedup () =
     var v = Vec.of [1, 1, 2, 2, 2, 3, 1]
-    v.dedup ()
+    dedup v
     assert <| v == Vec.of [1, 2, 3, 1]
 
 test_truncate_clear () =
     var v = Vec.of [1, 2, 3, 4]
-    v.truncate 2
+    truncate v 2
     assert <| v == Vec.of [1, 2]
-    Vec.clear (mut v)
-    assert <| v.is_empty ()
+    clear (mut v)
+    assert <| is_empty v
 
 test_sort () =
     var v = Vec.of [4, 1, 3, 2, 5]
     // `Expected Cmp _ but found Unit` when doing `v.sort ()`
     // TODO: Investigate why this happens for `v.sort ()` but not `v.dedup ()`
-    Vec.sort (mut v)
+    sort (mut v)
     assert <| v == Vec.of [1, 2, 3, 4, 5]
 
 test_sort_by () =
     var v = Vec.of [4, 1, 3, 2]
-    v.sort_by (>)
+    sort_by v (>)
     assert <| v == Vec.of [4, 3, 2, 1]
 
 // args: --delete-binary --no-color
@@ -132,3 +132,4 @@ test_sort_by () =
 // 7
 // 8
 // 9
+

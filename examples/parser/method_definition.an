@@ -1,0 +1,18 @@
+// Methods have been removed! Trying to define one is an error now
+type Box = val: I32
+
+Box.get (b: Box) = b.val
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/parser/method_definition.an:4:4
+//   | // error: Expected a parameter or `=` but found `.`
+//   | // note: there are no methods, define a function taking the type as its first argument instead
+// 4 | Box.get (b: Box) = b.val
+//   |    ^
+// 
+// Found 1 error and 0 warnings
+

@@ -1,4 +1,5 @@
-import Std.Mem.Type, MkType, size_of, transmute, offset, ptr_to_ref, ptr_store
+import Std.Mem.Type, transmute
+import Std.Slice
 import Std.Slice.Slice
 
 array_len (_array: ref Array n t): Usz =
@@ -30,13 +31,13 @@ slice (array: ref 'a Array n t): Slice 'a t =
     Slice.from_parts (transmute array) (array_len array)
 
 slice_range (array: ref 'a Array n t) (start: Usz) (end: Usz): Slice 'a t can Panic =
-    (slice array).slice_range start end
+    slice array |> Slice.slice_range start end
 
 slice_from (array: ref 'a Array n t) (start: Usz): Slice 'a t can Panic =
-    (slice array).slice_from start
+    slice array |> Slice.slice_from start
 
 slice_until (array: ref 'a Array n t) (end: Usz): Slice 'a t can Panic =
-    (slice array).slice_until end
+    slice array |> Slice.slice_until end
 
 impl extract_array: Extract (ref 'a Array n t) Usz (ref 'a t) Panic with
     (.[]) = array_get

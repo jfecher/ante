@@ -1,5 +1,3 @@
-import Std.Mem.transmute
-
 // // Huge block of intrinsic numeric operators incoming
 trait Add n = (+): fn n n -> n
 impl add_i8: Add I8 with (+) x y = intrinsic "AddInt" x y

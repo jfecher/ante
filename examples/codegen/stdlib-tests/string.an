@@ -1,13 +1,14 @@
-import Std.String.from_c_string, to_ascii_lowercase, to_ascii_uppercase, eq_string
+import Std.String.to_ascii_lowercase, to_ascii_uppercase
 import Std.C
 import Std.String.bytes, chars, substr, string_of, join, split, reverse
 import Std.String.parse_i8, parse_i16, parse_i32, parse_i64, parse_isz
 import Std.String.parse_u8, parse_u16, parse_u32, parse_u64, parse_usz
 import Std.String.try_cast_string_i8, try_cast_string_i16, try_cast_string_i32, try_cast_string_i64, try_cast_string_isz
 import Std.String.try_cast_string_u8, try_cast_string_u16, try_cast_string_u32, try_cast_string_u64, try_cast_string_usz
-import Std.Stream.iter, intersperse, stream_fn, Emit, emit
+import Std.Stream.iter, intersperse, Emit, emit
 import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
 import Std.Fail.try, panic_on_fail, assert, abort_on_fail
+import Std.String
 
 main () =
     print_to_stdout do
@@ -41,8 +42,8 @@ main () =
     test_parse ()
 
     // C strings:
-    assert <| from_c_string (C.String.new "round trip") == "round trip"
-    assert <| C.strlen (C.String.new "abc") == 3
+    assert <| String.from_c_string (C.from_string "round trip") == "round trip"
+    assert <| C.strlen (C.from_string "abc") == 3
 
     // case conversion:
     assert <| to_ascii_lowercase "Std.HashMap 123" == "std.hashmap 123"

@@ -37,12 +37,19 @@ pub fn init_db(db: &mut Db, local_crate_root: &Path) {
 pub fn set_file_content(db: &mut Db, roots: &CrateRoots, path: &Path, rope: &Rope) {
     let (crate_id, relative_path, canonical_path) = roots.find_owning_crate(path);
     let file_id = SourceFileId::new(crate_id, &relative_path);
+    let key = Arc::new(relative_path);
+    let registered = GetCrateGraph.get(db).get(&crate_id).is_some_and(|c| c.source_files.contains_key(&key));
+
     // Store the canonical path, matching the initial scan in `find_files`, so the same
     // file always maps to a single URI regardless of how the editor spelled the path.
-    file_id.set(db, Arc::new(SourceFile::new(Arc::new(canonical_path), rope.to_string())));
+    let mut source_file = SourceFile::new(Arc::new(canonical_path), rope.to_string());
+    // A file `X.an` with an `X/` directory beside it keeps the submodules `find_files` gave it
+    if registered {
+        source_file.submodules = file_id.get(db).submodules.clone();
+    }
+    file_id.set(db, Arc::new(source_file));
 
-    let key = Arc::new(relative_path);
-    if GetCrateGraph.get(db).get(&crate_id).is_some_and(|c| c.source_files.contains_key(&key)) {
+    if registered {
         return;
     }
 

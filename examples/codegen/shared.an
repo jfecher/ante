@@ -1,4 +1,4 @@
-import Std.Stream.foldl, iota, stream_fn
+import Std.Stream.iota
 
 shared type Color = | R | B
 

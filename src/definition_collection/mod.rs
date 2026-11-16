@@ -8,8 +8,8 @@ use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{
         self, AllDefinitions, AllTypes, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph,
-        GetImports, Methods, Parse, TypeDefinitions, ValidateExports, VisibleDefinitions, VisibleDefinitionsResult,
-        VisibleTypes,
+        GetImports, Parse, Submodules, TypeDefinitions, TypeMembers, ValidateExports, VisibleDefinitions,
+        VisibleDefinitionsResult, VisibleTypes,
     },
     name_resolution::namespace::SourceFileId,
     parser::{
@@ -62,9 +62,9 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
             }
         }
 
-        // Import methods as if they were defined in their parent module as free functions
-        for methods in exported.methods.values() {
-            for (exported_name, exported_id) in methods {
+        // Import variants as if they were defined in their parent module
+        for members in exported.type_members.values() {
+            for (exported_name, exported_id) in members {
                 if !import.items.iter().any(|(item, _)| item == exported_name) {
                     continue;
                 }
@@ -77,16 +77,22 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         // Report errors for any explicitly requested items not found in the module
         let exported_types = ExportedTypes(import_file_id).get(db);
         for (name, item_location) in &import.items {
-            let in_definitions = exported.definitions.contains_key(name);
-            let in_types = exported_types.contains_key(name);
-            let in_methods = exported.methods.values().any(|m| m.contains_key(name));
+            let found = exported.definitions.contains_key(name)
+                || exported_types.contains_key(name)
+                || exported.type_members.values().any(|m| m.contains_key(name));
 
-            if !in_definitions && !in_types && !in_methods {
+            if !found {
+                // `import Std.IO.File` may name the `IO/File.an` submodule of the `IO.an` file module
+                if let Some(&submodule) = Submodules(import_file_id).get(db).get(name.as_str()) {
+                    visible.imported_modules.insert(name.clone(), submodule);
+                    continue;
+                }
+
                 // Check if the name exists but isn't exported
                 let all_defs = AllDefinitions(import_file_id).get(db);
                 let exists_in_all = all_defs.definitions.contains_key(name)
                     || AllTypes(import_file_id).get(db).contains_key(name)
-                    || all_defs.methods.values().any(|m| m.contains_key(name));
+                    || all_defs.type_members.values().any(|m| m.contains_key(name));
 
                 let name = name.clone();
                 let module = import.module_path.clone();
@@ -108,8 +114,8 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         for (exported_name, exported_id) in &prelude.definitions {
             visible.definitions.entry(exported_name.clone()).or_insert(*exported_id);
         }
-        for (id, methods) in &prelude.methods {
-            visible.methods.entry(*id).or_default().extend(methods.iter().map(|(k, v)| (k.clone(), *v)));
+        for (id, members) in &prelude.type_members {
+            visible.type_members.entry(*id).or_default().extend(members.iter().map(|(k, v)| (k.clone(), *v)));
         }
     }
 
@@ -271,10 +277,10 @@ pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions>
 }
 
 /// The names listed in a file's `export` clause.
-/// Any qualified names refer to methods or union variants.
+/// Any qualified names refer to union variants or trait members.
 struct ExportSet<'a> {
     names: HashSet<&'a Name>,
-    /// `(type name, method name)` pairs.
+    /// `(type name, member name)` pairs.
     qualified: HashSet<(&'a Name, &'a Name)>,
 }
 
@@ -332,9 +338,9 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
             ItemName::None => (),
         }
 
-        let mut declare_method = |type_name, item_name| {
+        let mut declare_type_member = |type_name, item_name| {
             let context = &result.top_level_data[&item.id];
-            declarer.declare_method(type_name, item_name, item.id, context);
+            declarer.declare_type_member(type_name, item_name, item.id, context);
         };
 
         // Declare internal items
@@ -345,13 +351,13 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
             TopLevelItemKind::TypeDefinition(type_definition) => {
                 if let TypeDefinitionBody::Enum(variants, _) = &type_definition.body {
                     for (name, _) in variants {
-                        declare_method(type_definition.name, *name);
+                        declare_type_member(type_definition.name, *name);
                     }
                 }
             },
             TopLevelItemKind::TraitDefinition(ability) | TopLevelItemKind::EffectDefinition(ability) => {
                 for declaration in &ability.body {
-                    declare_method(ability.name, declaration.name);
+                    declare_type_member(ability.name, declaration.name);
                 }
             },
             _ => (),
@@ -370,7 +376,7 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
     incremental::exit_query();
     Arc::new(VisibleDefinitionsResult {
         definitions: declarer.definitions,
-        methods: declarer.methods,
+        type_members: declarer.type_members,
         imported_modules: BTreeMap::new(),
     })
 }
@@ -392,24 +398,24 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
     let qualified: HashSet<(TopLevelId, &Name)> = export_set
         .qualified
         .iter()
-        .filter_map(|(type_name, method)| {
+        .filter_map(|(type_name, member)| {
             let type_id = all.definitions.get(*type_name)?;
-            Some((type_id.top_level_item, *method))
+            Some((type_id.top_level_item, *member))
         })
         .collect();
 
-    let methods = all.methods.iter().map(|(type_id, methods)| {
-        let filtered = methods
+    let members = all.type_members.iter().map(|(type_id, members)| {
+        let filtered = members
             .iter()
             .filter(|(name, _)| qualified.contains(&(*type_id, *name)))
             .map(|(k, v)| (k.clone(), *v))
             .collect::<BTreeMap<_, _>>();
         (*type_id, filtered)
     });
-    let methods = methods.filter(|(_, methods)| !methods.is_empty()).collect();
+    let type_members = members.filter(|(_, members)| !members.is_empty()).collect();
 
     incremental::exit_query();
-    Arc::new(VisibleDefinitionsResult { definitions, methods, imported_modules: BTreeMap::new() })
+    Arc::new(VisibleDefinitionsResult { definitions, type_members, imported_modules: BTreeMap::new() })
 }
 
 /// Map each name in `export_set` to its item in `local` or, failing that, the imported item it re-exports.
@@ -458,15 +464,15 @@ fn find_exported(
                 return Some(*found);
             }
 
-            // Methods are importable as free functions if they're exported
-            let method = match exports {
-                None => all.methods.values().find_map(|methods| methods.get(name)),
+            // Variants are importable by name if they're exported
+            let member = match exports {
+                None => all.type_members.values().find_map(|members| members.get(name)),
                 Some(exports) => exports.iter().filter(|e| e.name == *name).find_map(|e| {
                     let type_id = all.definitions.get(&e.qualifier.as_ref()?.0)?;
-                    all.methods.get(&type_id.top_level_item)?.get(name)
+                    all.type_members.get(&type_id.top_level_item)?.get(name)
                 }),
             };
-            if let Some(found) = method {
+            if let Some(found) = member {
                 return Some(*found);
             }
         },
@@ -509,9 +515,9 @@ pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
             match &entry.qualifier {
                 Some((qualifier, qualifier_location)) => match defs.definitions.get(qualifier) {
                     Some(type_id) => {
-                        let has_method =
-                            defs.methods.get(&type_id.top_level_item).is_some_and(|m| m.contains_key(&entry.name));
-                        if !has_method {
+                        let has_member =
+                            defs.type_members.get(&type_id.top_level_item).is_some_and(|m| m.contains_key(&entry.name));
+                        if !has_member {
                             let name = entry.name.clone();
                             let location = entry.location.clone();
                             db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
@@ -531,12 +537,12 @@ pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
                         continue;
                     }
 
-                    let owner = defs.methods.iter().find(|(_, m)| m.contains_key(&entry.name));
+                    let owner = defs.type_members.iter().find(|(_, m)| m.contains_key(&entry.name));
                     let name = entry.name.clone();
                     let location = entry.location.clone();
                     match owner.and_then(|(type_id, _)| type_name_of(&parse, *type_id)) {
                         Some(type_name) => {
-                            db.accumulate(Diagnostic::MethodExportRequiresType { name, type_name, location });
+                            db.accumulate(Diagnostic::VariantExportRequiresType { name, type_name, location });
                         },
                         None => db.accumulate(Diagnostic::ExportedItemNotFound { name, location }),
                     }
@@ -561,13 +567,13 @@ fn type_name_of(parse: &ParseResult, type_id: TopLevelId) -> Option<Name> {
 
 struct Declarer<'local, 'db> {
     definitions: Definitions,
-    methods: Methods,
+    type_members: TypeMembers,
     db: &'local DbHandle<'db>,
 }
 
 impl<'local, 'db> Declarer<'local, 'db> {
     fn new(db: &'local DbHandle<'db>) -> Self {
-        Self { definitions: Default::default(), methods: Default::default(), db }
+        Self { definitions: Default::default(), type_members: Default::default(), db }
     }
 
     /// This is only called in top-level patterns since that is all definition
@@ -598,9 +604,6 @@ impl<'local, 'db> Declarer<'local, 'db> {
             Pattern::TypeAnnotation(pattern, _) => {
                 self.declare_names_in_pattern(*pattern, id, context);
             },
-            Pattern::MethodName { type_name, item_name } => {
-                self.declare_method(*type_name, *item_name, id, context);
-            },
             // `declare_names_in_pattern` is only for top-level patterns, which must be irrefutable
             Pattern::Or(_) => {
                 let location = context.pattern_locations[pattern].clone();
@@ -624,21 +627,14 @@ impl<'local, 'db> Declarer<'local, 'db> {
         insert_unique_name(self.db, definitions(self), id, name_id, context);
     }
 
-    fn declare_method(
+    /// Declare a variant or trait member in the namespace of the type declaring it
+    fn declare_type_member(
         &mut self, type_name_id: NameId, item_name_id: NameId, id: TopLevelId, context: &TopLevelContext,
     ) {
         let type_name = &context.names[type_name_id];
-
-        // Methods can only be declared on a type declared in the same file, so look in the same file for the type.
-        if let Some(object_type) = self.definitions.get(type_name) {
-            let object_type = object_type.top_level_item;
-            self.declare_single_helper(item_name_id, id, context, |this| this.methods.entry(object_type).or_default());
-        } else if id.source_file == SourceFileId::prelude() {
-            // Let the prelude define methods on builtin types
-        } else {
-            let name = type_name.clone();
-            let location = context.name_locations[type_name_id].clone();
-            self.db.accumulate(Diagnostic::MethodDeclaredOnUnknownType { name, location });
+        if let Some(owner) = self.definitions.get(type_name) {
+            let owner = owner.top_level_item;
+            self.declare_single_helper(item_name_id, id, context, |this| this.type_members.entry(owner).or_default());
         }
     }
 }

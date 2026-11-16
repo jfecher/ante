@@ -1,5 +1,3 @@
-import Std.Stream.Emit, emit
-
 outer_fn (f: once fn Unit => Unit can e): Unit can Emit I32, e =
     emit 1
     f ()

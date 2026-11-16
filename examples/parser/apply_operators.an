@@ -5,10 +5,13 @@ main () =
     a |> foo b c |> bar d e
     bar d e <| foo b c <| a
 
-    1, 2 |> baz
+    (1, 2) |> baz
     baz <| 1, 2
 
-    1, 2 |> baz <| 3, 4
+    (1, 2) |> baz <| 3, 4
+
+    v |> len + 1 >= 0
+    v |> get 0 * 2
 
 // args: -e ast --no-color
 // expected stdout:
@@ -20,4 +23,6 @@ main () =
 //     (1 , 2) |> baz
 //     baz <| (1 , 2)
 //     ((1 , 2) |> baz) <| (3 , 4)
+//     ((v |> len) + 1) >= 0
+//     (v |> get 0) * 2
 

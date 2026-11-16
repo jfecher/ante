@@ -1,0 +1,42 @@
+export Atomic, of, load, store, swap, compare_and_swap, fetch_add, fetch_sub, fetch_and, fetch_or, fetch_xor, drop_atomic
+
+// Atomics: all use SeqCst internally currently
+// TODO: Remove hard-coded SeqCst in the compiler
+atomic_ptr_load (p: ref t): t = intrinsic "AtomicLoad" p
+atomic_ptr_store (p: ref t) (value: t): Unit = intrinsic "AtomicStore" p value
+atomic_ptr_swap (p: ref t) (value: t): t = intrinsic "AtomicSwap" p value
+atomic_ptr_cas (p: ref t) (current: t) (desired: t): t = intrinsic "AtomicCompareAndSwap" p current desired
+atomic_ptr_fetch_add (p: ref t) (delta: t): t = intrinsic "AtomicFetchAdd" p delta
+atomic_ptr_fetch_sub (p: ref t) (delta: t): t = intrinsic "AtomicFetchSub" p delta
+atomic_ptr_fetch_and (p: ref t) (mask: t): t = intrinsic "AtomicFetchAnd" p mask
+atomic_ptr_fetch_or (p: ref t) (mask: t): t = intrinsic "AtomicFetchOr" p mask
+atomic_ptr_fetch_xor (p: ref t) (mask: t): t = intrinsic "AtomicFetchXor" p mask
+
+type Atomic t = value: t
+
+of (value: t): Atomic t =
+    Atomic value
+
+impl drop_atomic {Drop t e}: Drop (Atomic t) e with
+    drop _ = ()
+
+load (a: ref Atomic t): t =
+    atomic_ptr_load a.value
+
+store (a: ref Atomic t) (value: t): Unit =
+    atomic_ptr_store a.value value
+
+/// Replace the value, returning the previous one.
+swap (a: ref Atomic t) (value: t): t =
+    atomic_ptr_swap a.value value
+
+/// If the current value equals `current`, replace it with `desired`.
+/// Returns the previous value.
+compare_and_swap (a: ref Atomic t) (current: t) (desired: t): t =
+    atomic_ptr_cas a.value current desired
+
+fetch_add (a: ref Atomic t) (delta: t): t = atomic_ptr_fetch_add a.value delta
+fetch_sub (a: ref Atomic t) (delta: t): t = atomic_ptr_fetch_sub a.value delta
+fetch_and (a: ref Atomic t) (mask: t): t = atomic_ptr_fetch_and a.value mask
+fetch_or (a: ref Atomic t) (mask: t): t = atomic_ptr_fetch_or a.value mask
+fetch_xor (a: ref Atomic t) (mask: t): t = atomic_ptr_fetch_xor a.value mask

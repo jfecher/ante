@@ -100,29 +100,29 @@ mod tests {
         );
     }
 
-    /// A type qualifier in an explicit method path resolves to the type's definition.
+    /// A type qualifier in an explicit variant path resolves to the type's definition.
     #[test]
     fn definition_of_type_qualifier() {
-        let source = "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    Box.get b\n";
+        let source = "type Shape =\n   | Circle\n   | Square\n\nmain () =\n    s = Shape.Circle\n    ()\n";
         let (db, file_id) = db_with_source(source, "def_type_qualifier.an");
-        let use_offset = source.rfind("Box.get").unwrap();
+        let use_offset = source.rfind("Shape.Circle").unwrap();
         let loc = definition_at(&db, file_id, use_offset).expect("type qualifier should resolve");
-        assert_eq!(loc.span.start.byte_index, source.find("Box").unwrap(), "must resolve to the type declaration");
+        assert_eq!(loc.span.start.byte_index, source.find("Shape").unwrap(), "must resolve to the type declaration");
     }
 
     /// Goto-definition on an export entry: the qualifier jumps to the type, the
-    /// entry name to the method's declaration.
+    /// entry name to the variant's declaration.
     #[test]
     fn definition_of_export_entry_parts() {
-        let source = "export Box, Box.get\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () = ()\n";
+        let source = "export Shape, Shape.Circle\n\ntype Shape =\n   | Circle\n   | Square\n\nmain () = ()\n";
         let (db, file_id) = db_with_source(source, "def_export_entry.an");
-        let entry_offset = source.find("Box.get").unwrap();
+        let entry_offset = source.find("Shape.Circle").unwrap();
 
         let loc = definition_at(&db, file_id, entry_offset).expect("export qualifier should resolve");
-        assert_eq!(loc.span.start.byte_index, source.find("type Box").unwrap() + 5, "must jump to the type");
+        assert_eq!(loc.span.start.byte_index, source.find("type Shape").unwrap() + 5, "must jump to the type");
 
-        let loc = definition_at(&db, file_id, entry_offset + 4).expect("export entry name should resolve");
-        assert_eq!(loc.span.start.byte_index, source.find("Box.get (").unwrap() + 4, "must jump to the method");
+        let loc = definition_at(&db, file_id, entry_offset + 6).expect("export entry name should resolve");
+        assert_eq!(loc.span.start.byte_index, source.find("| Circle").unwrap() + 2, "must jump to the variant");
     }
 
     /// The one-byte end bias also applies to goto-definition.
@@ -135,20 +135,19 @@ mod tests {
         assert_eq!(loc.span.start.byte_index, source.find('x').unwrap());
     }
 
-    /// A field access resolves to the field/method's declaration
+    /// A field access resolves to the field's declaration and a pipe call to the function's
     #[test]
     fn definition_of_member_accesses() {
-        let source =
-            "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n    ()\n";
+        let source = "type Box = val: I32\n\nget (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b |> get\n    ()\n";
         let (db, file_id) = db_with_source(source, "def_members.an");
 
         let field = source.find("b.val").unwrap() + 2;
         let loc = definition_at(&db, file_id, field).expect("field access should resolve");
         assert_eq!(loc.span.start.byte_index, source.find("val").unwrap(), "must jump to the field declaration");
 
-        let method = source.rfind("get").unwrap();
-        let loc = definition_at(&db, file_id, method).expect("dot-syntax call should resolve");
-        assert_eq!(loc.span.start.byte_index, source.find("Box.get").unwrap() + 4, "must jump to the method");
+        let call = source.rfind("get").unwrap();
+        let loc = definition_at(&db, file_id, call).expect("pipe call should resolve");
+        assert_eq!(loc.span.start.byte_index, source.find("get").unwrap(), "must jump to the function");
     }
 
     /// A field in a named constructor resolves to the field's declaration

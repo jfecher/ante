@@ -1,5 +1,3 @@
-import Std.Stream.Emit, emit
-
 apply (f: once fn Unit => a): a = f ()
 
 // Passing `g` to `apply` widens its effect row. Type inference must record a coercion

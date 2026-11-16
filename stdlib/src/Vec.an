@@ -1,13 +1,12 @@
 import Std.C.malloc, realloc, memcpy, free, calloc
-import Std.Stream.Stream, iter, emit
-import Std.Fail.Fail, fail, panic_on_fail
-import Std.Mem.Type, MkType, size_of, transmute, null, offset, deref_ptr, ptr_to_ref, array_insert, forget
+import Std.Mem.Type, null, forget
+import Std.Slice
 import Std.Slice.Slice
 
-export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
-    Vec.remove_index, Vec.remove_first, Vec.remove_indices, Vec.remove_all, Vec.swap_last,
-    Vec.reverse, Vec.swap, Vec.insert, Vec.dedup, Vec.truncate, Vec.clear, Vec.sort_by, Vec.sort,
-    Vec.slice, Vec.slice_range, Vec.slice_from, Vec.slice_until, Vec.windows, Vec.chunks, Vec.permutations,
+export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
+    remove_index, remove_first, remove_indices, remove_all, swap_last,
+    reverse, swap, insert, dedup, truncate, clear, sort_by, sort,
+    slice, slice_range, slice_from, slice_until, windows, chunks, permutations,
     print_vec, extract_vec, stream_vec, stream_ref_vec, eq_vec, cmp_vec, clone_vec, drop_vec, insert_vec
 
 type Vec t =
@@ -15,25 +14,25 @@ type Vec t =
     len: Usz
     cap: Usz
 
-Vec.empty () = Vec (null ()) 0 0
+empty () = Vec (null ()) 0 0
 
-Vec.is_empty (v: ref Vec a) = v.len == 0
+is_empty (v: ref Vec a) = v.len == 0
 
-Vec.len (v: ref Vec a) = v.len
+len (v: ref Vec a) = v.len
 
-Vec.capacity (v: ref Vec a) = v.cap
+capacity (v: ref Vec a) = v.cap
 
 /// Create a new Vec with the elements from the given stream
-Vec.of (stream: s) {Stream s t e}: Vec t can Panic, e =
-    var vec = Vec.empty ()
-    vec.extend stream
+of (stream: s) {Stream s t e}: Vec t can Panic, e =
+    var vec = empty ()
+    extend vec stream
     vec
 
-Vec.extend (vec: mut Vec t) (stream: s) {Stream s t e}: Unit can Panic, e, Mutate 'vec =
-    iter stream (vec.push _)
+extend (vec: mut Vec t) (stream: s) {Stream s t e}: Unit can Panic, e, Mutate 'vec =
+    iter stream (push vec _)
 
 /// Reserve space for `numElems` more elements in `v`. The new slots are uninitialized.
-Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic, Mutate 'v =
+reserve (v: mut Vec t) (numElems: Usz): Unit can Panic, Mutate 'v =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * size_of (MkType: Type t)
         ptr = realloc v.data size
@@ -46,39 +45,39 @@ Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic, Mutate 'v =
 
 /// Push an element onto the end of the vector.
 /// Resizes if necessary.
-Vec.push (v: mut Vec t) (elem: t): Unit can Panic, Mutate 'v =
+push (v: mut Vec t) (elem: t): Unit can Panic, Mutate 'v =
     if v.len >= v.cap then
-        v.reserve (if v.cap == 0 then 1 else v.cap)
+        reserve v (if v.cap == 0 then 1 else v.cap)
 
     array_insert v.data v.len elem
     v.len += 1
 
 /// Removes the last element of this vector and returns it.
 /// Returns None if the vector is empty.
-Vec.pop (v: mut Vec t): Maybe t can Mutate 'v =
-    if v.is_empty () then None
+pop (v: mut Vec t): Maybe t can Mutate 'v =
+    if is_empty v then None
     else
         v.len -= 1
         Some (deref_ptr (offset v.data v.len))
 
 /// Retrieves a reference to the element at the given 0-based index.
 /// Fails if the index is out of bounds
-Vec.get (v: ref Vec t) (i: Usz): ref! t can Fail =
+get (v: ref Vec t) (i: Usz): ref! t can Fail =
     if i < v.len
-    then v.get_unchecked i
+    then get_unchecked v i
     else fail ()
 
 /// An unsafe function to retrieve an element at the given index
 /// without checking if the index is inbounds
-Vec.get_unchecked (v: ref Vec t) (i: Usz): ref! t =
+get_unchecked (v: ref Vec t) (i: Usz): ref! t =
     ptr = offset v.data i
     transmute ptr
 
 /// Remove the element at the given index and return it.
 /// will Fail if the index is out of bounds.
-Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail, Mutate 'v =
+remove_index (v: mut Vec t) (idx: Usz): t can Fail, Mutate 'v =
     if idx >= 0 and idx < v.len then
-        item = v.get_unchecked idx |> deref
+        item = get_unchecked v idx |> deref
         for i in idx .. v.len - 1 do
             array_insert v.data i (deref_ptr (offset v.data (i+1)))
 
@@ -89,17 +88,17 @@ Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail, Mutate 'v =
 
 /// Removes the first instance of the given element from the vector,
 /// returning the index it was found at. Returns `None` if the element was not found.
-Vec.remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Panic, e, Mutate 'v =
+remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Panic, e, Mutate 'v =
     for i in 0 .. v.len do
         if elem == v.data.[i] then
-            v.remove_index i ~> panic_on_fail
+            remove_index v i ~> panic_on_fail
             return Some i
     None
 
 /// Remove the given indices from the vector
 /// Expects the indices to be in sorted order.
 /// Will Fail if any index is out of bounds.
-Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Mutate 'v =
+remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Mutate 'v =
     var moved = 0usz
     for i in 0 .. idxs.len do
         cur = idxs.data.[i]
@@ -112,33 +111,33 @@ Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Mutate 'v =
             nxt = idxs.data.[i + 1]
             for j in 0 .. (nxt - cur - 1) do
                 j = j + cur + 1
-                array_insert v.data (j - moved) (v.get_unchecked j |> deref)
+                array_insert v.data (j - moved) (get_unchecked v j |> deref)
         else
             for j in 0 .. (v.len - cur - 1) do
                 j = j + cur + 1
-                array_insert v.data (j - moved) (v.get_unchecked j |> deref)
+                array_insert v.data (j - moved) (get_unchecked v j |> deref)
 
     v.len -= moved
 
 /// Remove all matching elements from the vector and
 /// return the number of elements removed.
 /// Uses = to determine element equality.
-Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e, Mutate 'v =
-    var idxs = Vec.empty ()
+remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e, Mutate 'v =
+    var idxs = empty ()
     for i in 0 .. v.len do
         if elem == v.data.[i] then
-            idxs.push i
+            push idxs i
 
     count = idxs.len
-    handle v.remove_indices idxs
-    | fail () -> panic "Vec.remove_all: index out of bounds"
+    handle (remove_indices v idxs)
+    | fail () -> panic "remove_all: index out of bounds"
     count
 
 
 /// Remove an element by swapping it with the last element in O(1) time.
 /// Returns true if a swap was performed or false otherwise.
 /// Will not swap if the given index is the index of the last element.
-Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Mutate 'v =
+swap_last (v: mut Vec t) (idx: Usz) : Bool can Mutate 'v =
     if idx >= v.len or idx + 1 == v.len then false
     else
         v.len := v.len - 1
@@ -146,7 +145,7 @@ Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Mutate 'v =
         true
 
 /// Reverse the elements of this vector in place.
-Vec.reverse (v: mut Vec t): Unit can Mutate 'v! =
+reverse (v: mut Vec t): Unit can Mutate 'v! =
     if v.len < 2 then return ()
     half = v.len / 2
     for i in 0 .. half do
@@ -156,7 +155,7 @@ Vec.reverse (v: mut Vec t): Unit can Mutate 'v! =
         array_insert v.data opposite tmp
 
 /// Swap the elements at indices `i` and `j`. Fails if either index is out of bounds.
-Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Mutate 'v! =
+swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Mutate 'v! =
     if i >= v.len or j >= v.len then fail ()
     if i == j then return ()
     tmp = deref_ptr (offset v.data i)
@@ -165,10 +164,10 @@ Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Mutate 'v! =
 
 /// Insert `elem` at `idx`, shifting elements at `[idx, len)` one position right.
 /// Fails if `idx > len`.
-Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic, Mutate 'v =
+insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic, Mutate 'v =
     if idx > v.len then fail ()
     if v.len >= v.cap then
-        v.reserve (if v.cap == 0 then 1 else v.cap)
+        reserve v (if v.cap == 0 then 1 else v.cap)
     var i = v.len
     while i > idx do
         array_insert v.data i (deref_ptr (offset v.data (i - 1)))
@@ -177,7 +176,7 @@ Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic, Mutate 'v 
     v.len += 1
 
 /// Remove consecutive runs of equal elements, keeping only the first of each run.
-Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can e, Mutate 'v =
+dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can e, Mutate 'v =
     if v.len < 2 then return ()
     var write = 1
     for i in 1 .. v.len do
@@ -189,7 +188,7 @@ Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can e, Mutate 'v =
 
 /// Shrink the vector to at most `new_len` elements, dropping any tail.
 /// Does nothing if `new_len >= v.len`.
-Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
+truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
     if new_len >= v.len then return ()
     for i in new_len .. v.len do
         elem = offset v.data i
@@ -198,8 +197,8 @@ Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
 
 /// Remove and drop every element.
 /// After being cleared, a Vec's length will be zero, but its capacity will be unchanged.
-Vec.clear (v: mut Vec t) {Drop t e}: Unit can e, Mutate 'v =
-    v.truncate 0
+clear (v: mut Vec t) {Drop t e}: Unit can e, Mutate 'v =
+    truncate v 0
 
 insertion_sort (data: Ptr t) (start: Usz) (end: Usz) (cmp: ref (fn (ref t) (ref t) [env] -> Bool can e)): Unit can e =
     for i in (start + 1) .. end do
@@ -259,31 +258,31 @@ merge_sort (data: Ptr t) (n: Usz) (cmp: fn (ref t) (ref t) [env] -> Bool) {Drop 
     free buffer
 
 /// Sort the vector in place using `cmp` to compare elements.
-Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) [env] -> Bool) {Drop env pure}: Unit can Mutate 'v! =
+sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) [env] -> Bool) {Drop env pure}: Unit can Mutate 'v! =
     merge_sort v.data v.len cmp
 
 /// Sort the vector in place using the `Cmp` ordering.
-Vec.sort (v: mut Vec t) {Cmp t}: Unit can Mutate 'v! =
-    v.sort_by (<)
+sort (v: mut Vec t) {Cmp t}: Unit can Mutate 'v! =
+    sort_by v (<)
 
-Vec.slice (v: ref 'v Vec t): Slice 'v! t =
+slice (v: ref 'v Vec t): Slice 'v! t =
     Slice.from_parts v.data v.len
 
-Vec.slice_range (v: ref 'v Vec t) (start: Usz) (end: Usz): Slice 'v! t can Panic =
-    (v.slice ()).slice_range start end
+slice_range (v: ref 'v Vec t) (start: Usz) (end: Usz): Slice 'v! t can Panic =
+    slice v |> Slice.slice_range start end
 
-Vec.slice_from (v: ref 'v Vec t) (start: Usz): Slice 'v! t can Panic =
-    (v.slice ()).slice_from start
+slice_from (v: ref 'v Vec t) (start: Usz): Slice 'v! t can Panic =
+    slice v |> Slice.slice_from start
 
-Vec.slice_until (v: ref 'v Vec t) (end: Usz): Slice 'v! t can Panic =
-    (v.slice ()).slice_until end
+slice_until (v: ref 'v Vec t) (end: Usz): Slice 'v! t can Panic =
+    slice v |> Slice.slice_until end
 
-Vec.windows (v: ref 'v Vec t) (n: Usz) = move fn () can Emit (Slice 'v! t) ->
+windows (v: ref 'v Vec t) (n: Usz) = move fn () can Emit (Slice 'v! t) ->
     if n != 0 and n <= v.len then
         for i in 0 .. v.len - n + 1 do
             emit (Slice.from_parts (offset v.data i) n)
 
-Vec.chunks (v: ref 'v Vec t) (n: Usz) = move fn () can Emit (Slice 'v! t) ->
+chunks (v: ref 'v Vec t) (n: Usz) = move fn () can Emit (Slice 'v! t) ->
     if n != 0 then
         var start = 0usz
         while start < v.len do
@@ -291,7 +290,7 @@ Vec.chunks (v: ref 'v Vec t) (n: Usz) = move fn () can Emit (Slice 'v! t) ->
             emit (Slice.from_parts (offset v.data start) len)
             start += len
 
-Vec.permutations (v: ref 'v Vec t) = move fn () can Emit (Slice 'v! t) ->
+permutations (v: ref 'v Vec t) = move fn () can Emit (Slice 'v! t) ->
     n = v.len
     elem_size = size_of (MkType: Type t)
     buffer: Ptr t = malloc (n * elem_size)
@@ -323,29 +322,29 @@ impl print_vec {p: Display t e}: Display (Vec t) e with
 
         for i in 0 .. v.len do
             if i != 0 then print ", "
-            print (v.get_unchecked i)
+            print (get_unchecked v i)
 
         print "]"
 
 impl extract_vec: Extract (ref 'v Vec t) Usz (ref 'v! t) Panic with
     (.[]) v i =
-        if i >= v.len () then
+        if i >= len v then
             panic "Vec index out of bounds"
         transmute (offset v.data i)
 
-/// Note that this impl is different from `Vec.insert`.
-/// Vec.insert will insert into a slot, moving the previous element and each
+/// Note that this impl is different from `insert`.
+/// insert will insert into a slot, moving the previous element and each
 /// element after to the right. This `Insert` implementation will instead
 /// directly mutate the element at the given index to the new element.
 impl insert_vec {Drop t e}: Insert (mut 'v Vec t) Usz t (Panic & Mutate 'v! & e) with
     (.[]:=) v i e =
-        slot = v.get i ~> panic_on_fail
+        slot = get v i ~> panic_on_fail
         slot := e
 
 impl stream_vec: Stream (Vec a) a pure with
     stream vec =
         for i in 0 .. vec.len do
-            emit (deref (vec.get_unchecked i))
+            emit (deref (get_unchecked vec i))
 
         // Every element was moved out, so only the buffer is left to free
         if vec.cap != 0 then
@@ -355,16 +354,16 @@ impl stream_vec: Stream (Vec a) a pure with
 impl stream_ref_vec: Stream (ref Vec a) (ref a) pure with
     stream vec =
         for i in 0 .. vec.len do
-            emit (vec.get_unchecked i)
+            emit (get_unchecked vec i)
 
 impl clone_vec {Clone t}: Clone (Vec t) with
     clone v =
         if v.len == 0 then
-            return Vec.empty ()
+            return empty ()
 
         data: Ptr t = malloc (v.len * size_of (MkType: Type t))
         for i in 0 .. v.len do
-            array_insert data i (clone (v.get_unchecked i))
+            array_insert data i (clone (get_unchecked v i))
         Vec data v.len v.len
 
 impl drop_vec {Drop t e}: Drop (Vec t) e with
@@ -391,8 +390,8 @@ impl cmp_vec {Cmp t}: Cmp (Vec t) with
     (<) l r =
         n = if l.len < r.len then l.len else r.len
         for i in 0 .. n do
-            a = l.get_unchecked i
-            b = r.get_unchecked i
+            a = get_unchecked l i
+            b = get_unchecked r i
             if a < b then return true
             if b < a then return false
         l.len < r.len

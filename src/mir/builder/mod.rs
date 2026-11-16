@@ -609,7 +609,9 @@ where
                 Some(origin @ Origin::Builtin(_)) => *self.global_variables.get(&origin).unwrap_or_else(|| {
                     panic!("No cached variable for {} with origin {origin}", self.context()[path_id])
                 }),
-                Some(Origin::TypeResolution) => unreachable!("Unresolved TypeResolution origin found"),
+                Some(Origin::TypeResolution | Origin::ArgumentResolution) => {
+                    unreachable!("Unresolved TypeResolution or ArgumentResolution origin found")
+                },
                 Some(Origin::EffectOperation { .. }) => unreachable!("Effect operations are handled above"),
                 Some(Origin::TraitMember(_)) => {
                     unreachable!("Trait members are rewritten to member accesses by type inference")
@@ -1406,9 +1408,7 @@ where
             cst::Pattern::Literal(_) => None,
             cst::Pattern::Constructor(..) => None,
             cst::Pattern::TypeAnnotation(pattern, _) => self.try_find_name(*pattern),
-            cst::Pattern::Variable(name)
-            | cst::Pattern::MethodName { item_name: name, .. }
-            | cst::Pattern::Alias(name, _) => Some((self.context()[*name].clone(), *name)),
+            cst::Pattern::Variable(name) | cst::Pattern::Alias(name, _) => Some((self.context()[*name].clone(), *name)),
             cst::Pattern::ConstructorRest(_, args, name) => {
                 if args.is_empty() {
                     name.map(|name| (self.context()[name].clone(), name))
@@ -1423,7 +1423,7 @@ where
     fn collect_pattern_names(&self, pattern: PatternId, out: &mut Vec<NameId>) {
         match &self.context()[pattern] {
             cst::Pattern::Error | cst::Pattern::Literal(_) => (),
-            cst::Pattern::Variable(name) | cst::Pattern::MethodName { item_name: name, .. } => {
+            cst::Pattern::Variable(name) => {
                 out.push(*name);
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.collect_pattern_names(*pattern, out),
@@ -2620,11 +2620,6 @@ where
                 }
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.bind_pattern(*pattern, value),
-            cst::Pattern::MethodName { type_name: _, item_name } => {
-                if let Some(origin) = self.context().name_origin(*item_name) {
-                    self.define_variable(origin, value);
-                }
-            },
             cst::Pattern::Or(_) => {
                 unreachable!("OR-patterns must be expanded by the decision tree compiler before MIR lowering")
             },

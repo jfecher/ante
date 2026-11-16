@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Returns the default name of the outputted binary file
 /// as a result of compiling the program with the given entry module.
@@ -53,4 +53,11 @@ pub fn stdlib_path() -> PathBuf {
 /// Returns "Prelude.an"
 pub fn prelude_path_relative_to_stdlib_source_folder() -> &'static std::path::Path {
     std::path::Path::new("Prelude.an")
+}
+
+/// Format an import path: `CrateName.module.path.itemName`.
+pub fn format_module_path(crate_name: &str, rel_path: &Path, item_name: &str) -> String {
+    let stem = rel_path.with_extension("");
+    let dotted = stem.to_string_lossy().replace(std::path::MAIN_SEPARATOR, ".");
+    if dotted.is_empty() { format!("{crate_name}.{item_name}") } else { format!("{crate_name}.{dotted}.{item_name}") }
 }

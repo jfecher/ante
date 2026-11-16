@@ -142,10 +142,9 @@ mod tests {
     }
 
     #[test]
-    fn hover_on_dot_syntax_method_call() {
-        let source =
-            "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n    ()\n";
-        let (db, file_id) = db_with_source(source, "hover_method.an");
+    fn hover_on_pipe_call() {
+        let source = "type Box = val: I32\n\nget (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b |> get\n    ()\n";
+        let (db, file_id) = db_with_source(source, "hover_pipe_call.an");
         let call = source.rfind("get").unwrap();
         assert_eq!(hover_at(&db, file_id, call).as_deref(), Some("get : fn Box -> I32 is pure"));
     }

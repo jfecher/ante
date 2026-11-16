@@ -1,17 +1,17 @@
-import Std.Vec.Vec
+import Std.Vec
 
 bad () =
     var v = Vec.empty ()
     var n = 0
     while n < 3 do
         var y = n
-        v.push (fn () -> y)
+        push v (fn () -> y)
         n += 1
 
     var v = Vec.empty ()
     for i in 0 .. 3 do
         // Everything is captured by reference unless the closure is a `move fn`
-        v.push (fn () -> i)
+        push v (fn () -> i)
 
 main () = ()
 
@@ -22,7 +22,7 @@ main () = ()
 //  6 |     while n < 3 do
 //  7 |         var y = n	// note: y is only valid until the end of this scope
 //    |             -
-//  8 |         v.push (fn () -> y)	// error: This reference to y outlives its scope
+//  8 |         push v (fn () -> y)	// error: This reference to y outlives its scope
 //    |                 ^^^^^^^^^^
 //  9 |         n += 1
 // 
@@ -31,7 +31,7 @@ main () = ()
 // 12 |     for i in 0 .. 3 do	// note: i is only valid until the end of this scope
 //    |         -
 // 13 |         // Everything is captured by reference unless the closure is a `move fn`
-// 14 |         v.push (fn () -> i)	// error: This reference to i outlives its scope
+// 14 |         push v (fn () -> i)	// error: This reference to i outlives its scope
 //    |                 ^^^^^^^^^^
 // 
 // Found 2 errors and 0 warnings

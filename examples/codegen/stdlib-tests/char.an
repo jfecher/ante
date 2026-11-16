@@ -1,6 +1,5 @@
 import Std.Char.is_ascii, is_digit, is_alpha, is_alphanumeric, is_whitespace,
     to_ascii_lower, to_ascii_upper, to_digit
-import Std.Fail.abort_on_fail, assert
 
 main () =
     abort_on_fail do

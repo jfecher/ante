@@ -1,8 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
-import Std.Stream.Stream, foldl, emit
-import Std.Mem.Type, MkType, size_of, null, offset, deref_ptr, ptr_store, ptr_to_ref, array_insert
+import Std.Mem.Type, null
 
-export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq, eq_seq, cmp_seq
+export Seq, empty, of, with_capacity, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq, eq_seq, cmp_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -41,14 +40,14 @@ export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_
 /// at every step and push to both the original and the clone to overwrite the same element in both Seqs
 /// at every step, e.g:
 /// ```
-/// var seq = Seq.empty ()
+/// var seq = empty ()
 /// while true do
 ///     other = clone seq // clone seq forcing both this and seq to be shared
 ///     seq = seq.push 0  // push
 ///     other.push 1      // then immediately overwrite the element, forcing a fork
 ///
 /// // Or similarly:
-/// seq = Seq.empty ()
+/// seq = empty ()
 /// seq_view := clone seq
 /// seq_user := seq.push 0
 /// while true do
@@ -81,18 +80,18 @@ type Data t =
     // element3...
 
 /// Return an empty Seq
-Seq.empty (): Seq t =
+empty (): Seq t =
     Seq 0 (null ())
 
 /// Create a Seq holding each item from the given stream
-Seq.of (stream: s) {Stream s t e} {Drop t e}: Seq t can e =
-    seq = Seq.empty ()
-    foldl stream seq Seq.push
+of (stream: s) {Stream s t e} {Drop t e}: Seq t can e =
+    seq = empty ()
+    foldl stream seq push
 
 /// Create a Seq with the given initial capacity
-Seq.with_capacity (capacity: Usz): Seq t =
+with_capacity (capacity: Usz): Seq t =
     if capacity == 0 then
-        Seq.empty ()
+        empty ()
     else
         size = size_of (MkType: Type (Data t)) + (capacity - 1) * size_of (MkType: Type t)
         buffer: Ptr (Data t) = malloc size
@@ -107,7 +106,7 @@ Seq.with_capacity (capacity: Usz): Seq t =
         Seq 0 buffer
 
 /// Push an element to this sequence, returning a new sequence.
-Seq.push (var seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
+push (var seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
         ptr_store data_ptr (Data 1 0 1 1 0 (null ()) elem)
@@ -170,9 +169,9 @@ Seq.push (var seq: Seq t) (elem: t) {Drop t e}: Seq t can e =
 
 /// Return a new `Seq t` without the last element.
 /// Returns the popped element if this seq was non-empty.
-Seq.pop (var seq: Seq t) {Copy t}: (Seq t, Maybe t) =
+pop (var seq: Seq t) {Copy t}: (Seq t, Maybe t) =
     if seq.len != 0 then
-        elem = seq.get_copied (seq.len - 1)
+        elem = get_copied seq (seq.len - 1)
         seq.len -= 1
         seq, elem
     else
@@ -180,23 +179,23 @@ Seq.pop (var seq: Seq t) {Copy t}: (Seq t, Maybe t) =
 
 /// Same as `pop` but does not return the last element, and thus
 /// does not require a `Copy` constraint
-Seq.remove_last (var seq: Seq t): Seq t =
+remove_last (var seq: Seq t): Seq t =
     if seq.len != 0 then
         seq.len -= 1
     seq
 
-Seq.get_copied (seq: ref Seq t) (index: U32) {Copy t}: Maybe t =
-    match seq.get index
+get_copied (seq: ref Seq t) (index: U32) {Copy t}: Maybe t =
+    match get seq index
     | Some x -> Some x.*
     | None -> None
 
-Seq.get (seq: read Seq t) (index: U32): Maybe (read t) =
+get (seq: read Seq t) (index: U32): Maybe (read t) =
     if index < seq.len then
         elem = offset seq.data.elements (Usz index)
         Some (ptr_to_ref elem)
     else None
 
-Seq.iter (seq: ref Seq t) (f: fn (ref 'seq t) [env] -> Unit can e) {Drop env e}: Unit can e =
+iter (seq: ref Seq t) (f: fn (ref 'seq t) [env] -> Unit can e) {Drop env e}: Unit can e =
     for i in 0 .. seq.len do
         elem = offset seq.data.elements (Usz i)
         f (ptr_to_ref elem)

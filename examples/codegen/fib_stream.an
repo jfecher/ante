@@ -1,4 +1,4 @@
-import Std.Stream.Emit, emit, iter, stream_fn, take
+import Std.Stream.take
 
 fibonacci (): Unit can Emit U64 =
     var current, next = 0, 1

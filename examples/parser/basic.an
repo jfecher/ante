@@ -9,7 +9,7 @@ type Foo =
     x: I32
     y: U32
 
-Foo.print self =
+print_foo (self: Foo) =
     print "Foo "
     // Comments are only allowed between statements
     print self.x
@@ -28,7 +28,7 @@ Foo.print self =
 //     x: I32
 //     y: U32
 // 
-// Foo.print self =
+// print_foo (self: Foo) =
 //     print "Foo "
 //     print self.x
 //     print " "

@@ -76,14 +76,10 @@ fn find_top_level_name_at(
 }
 
 /// The name a pattern's export entry needs, in export-list syntax.
-/// Methods are exported qualified with their type, e.g. `Vec.push`.
 fn exportable_pattern_name(pattern_id: PatternId, ctx: &TopLevelContext) -> Option<String> {
     match ctx.get_pattern(pattern_id) {
         Pattern::Variable(name) => Some(to_export_syntax(ctx.get_name(*name)).into_owned()),
         Pattern::TypeAnnotation(inner, _) => exportable_pattern_name(*inner, ctx),
-        Pattern::MethodName { type_name, item_name } => {
-            Some(format!("{}.{}", ctx.get_name(*type_name), to_export_syntax(ctx.get_name(*item_name))))
-        },
         Pattern::Alias(name, _) => Some(to_export_syntax(ctx.get_name(*name)).into_owned()),
         Pattern::Or(_)
         | Pattern::Literal(_)
@@ -202,21 +198,6 @@ mod tests {
     fn non_top_level_name_yields_no_action() {
         let source = "foo x = x\n";
         let byte_offset = source.rfind('x').unwrap();
-        assert!(edit_at(source, byte_offset).is_none());
-    }
-
-    #[test]
-    fn method_export_action_uses_qualified_name() {
-        let source = "export Box\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n";
-        let byte_offset = source.find("Box.get").unwrap();
-        let edit = edit_at(source, byte_offset).expect("expected an edit");
-        assert_eq!(edit.new_text, ", Box.get");
-    }
-
-    #[test]
-    fn already_exported_qualified_method_yields_no_action() {
-        let source = "export Box, Box.get\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n";
-        let byte_offset = source.find("Box.get (").unwrap();
         assert!(edit_at(source, byte_offset).is_none());
     }
 }

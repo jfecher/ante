@@ -2,11 +2,11 @@
 //!
 //! The compiler has no reverse reference index, so references are found by scanning
 //! every top-level item's origin maps for the target. The type checker's extended
-//! context is used since it also covers dot-syntax method calls and other origins
-//! resolved during type inference.
+//! context is used since it also covers callees resolved by their first argument's type
+//! and other origins resolved during type inference.
 //!
 //! Known limitations:
-//! - Type qualifiers inside paths (e.g. `Vec` in `Vec.push v x`) are not rewritten
+//! - Type qualifiers inside paths (e.g. `Shape` in `Shape.Circle`) are not rewritten
 //!   when renaming the type. They are rewritten inside export statements however.
 //! - Renaming modules is not implemented.
 //! - Mentions in comments or strings are not rewritten.
@@ -142,7 +142,7 @@ fn symbol_at_inner(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> 
             | Origin::EffectOperation { name, .. },
         ) => RenameTarget::top_level(name),
         Some(Origin::Builtin(_)) => return Err(RenameError::ExternalCrate),
-        Some(Origin::TypeResolution) | None => return Err(RenameError::NoSymbol),
+        Some(Origin::TypeResolution | Origin::ArgumentResolution) | None => return Err(RenameError::NoSymbol),
     };
 
     Ok(SymbolAtCursor { target, cursor_span, old_name })
@@ -151,7 +151,7 @@ fn symbol_at_inner(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> 
 /// Paths with a type-directed resolution get their final origin from the type checker
 fn origin_with_type_fallback(resolved: Option<Origin>, fallback: impl FnOnce() -> Option<Origin>) -> Option<Origin> {
     match resolved {
-        Some(Origin::TypeResolution) | None => fallback(),
+        Some(Origin::TypeResolution | Origin::ArgumentResolution) | None => fallback(),
         other => other,
     }
 }
@@ -223,14 +223,14 @@ fn import_target_file(
     crate_.source_files.get(&module_file).copied()
 }
 
-/// Every exported definition of `file_id` with the given name. Same-named methods
-/// on different types are distinct exports, so a bare name can match several.
+/// Every exported definition of `file_id` with the given name. Same-named variants
+/// of different types are distinct exports, so a bare name can match several.
 fn exported_targets_with_name(compiler: &Db, file_id: SourceFileId, name: &String) -> Vec<TopLevelName> {
     let exported = ExportedDefinitions(file_id).get(compiler);
     let mut targets = Vec::new();
     targets.extend(exported.definitions.get(name).copied());
-    for methods in exported.methods.values() {
-        targets.extend(methods.get(name).copied());
+    for members in exported.type_members.values() {
+        targets.extend(members.get(name).copied());
     }
     targets.extend(ExportedTypes(file_id).get(compiler).get(name).copied());
 
@@ -251,7 +251,7 @@ fn resolve_export_entry(
     match &entry.qualifier {
         Some((qualifier, _)) => {
             let type_id = all.definitions.get(qualifier)?;
-            all.methods.get(&type_id.top_level_item)?.get(&entry.name).copied()
+            all.type_members.get(&type_id.top_level_item)?.get(&entry.name).copied()
         },
         None => all
             .definitions
@@ -278,21 +278,16 @@ pub fn collect_reference_locations(compiler: &Db, target: &RenameTarget) -> Vec<
         locations.push(declaration);
     }
 
-    let (item, _) = GetItem(name.top_level_item).get(compiler);
+    let (item, item_context) = GetItem(name.top_level_item).get(compiler);
     let target_origin = origin_of_top_level_definition(name, &item.kind);
+    let target_name = item_context.get_name(name.local_name_id);
 
-    // Fields and methods are resolved by type, so an item may refer to one without
-    // the target's item being in its referenced_items. Trait and effect members are not
-    // plain fields and are referred to by path, which referenced_items does cover.
+    // Fields are resolved by type, so an item may refer to one without the target's item being
+    // in its referenced_items. Trait and effect members are not plain fields and are referred
+    // to by path, which referenced_items does cover.
     let is_field = target_origin == Origin::TopLevelDefinition(name)
         && matches!(&item.kind, TopLevelItemKind::TypeDefinition(definition)
             if definition.name != name.local_name_id && definition.body.find_variant(name.local_name_id).is_none());
-    let is_type_directed = is_field
-        || AllDefinitions(name.top_level_item.source_file)
-            .get(compiler)
-            .methods
-            .values()
-            .any(|methods| methods.values().any(|method| *method == name));
 
     let crates = GetCrateGraph.get(compiler);
     let Some(local) = crates.get(&CrateId::LOCAL) else { return locations };
@@ -300,11 +295,13 @@ pub fn collect_reference_locations(compiler: &Db, target: &RenameTarget) -> Vec<
         let parse = Parse(*file_id).get(compiler);
         for item in &parse.cst.top_level_items {
             let resolve = Resolve(item.id).get(compiler);
-            if !is_type_directed {
+            if !is_field {
                 let references_target =
                     item.id == name.top_level_item || resolve.referenced_items.contains(&name.top_level_item);
                 let has_type_resolution = resolve.path_origins.values().any(|o| *o == Origin::TypeResolution);
-                if !references_target && !has_type_resolution {
+                // Callees resolved by their first argument's type are only known after type checking
+                let may_resolve_by_argument = resolve.argument_resolved_names.contains(target_name);
+                if !references_target && !has_type_resolution && !may_resolve_by_argument {
                     continue;
                 }
             }
@@ -349,7 +346,7 @@ pub struct RenameLocations {
 
     /// Import items whose bare name also refers to other same-named exports.
     /// The old item must stay for these, so the new name is inserted after it
-    /// (e.g. `push` becomes `push, append`) instead of replacing it.
+    /// (e.g. `Circle` becomes `Circle, Disc`) instead of replacing it.
     pub insert_after: Vec<AnteLocation>,
 }
 
@@ -377,7 +374,7 @@ pub fn collect_rename_locations(compiler: &Db, target: &RenameTarget, old_name: 
     if let Some(exports) = &def_parse.cst.exports {
         let all = AllDefinitions(defining_file).get(compiler);
         for entry in exports {
-            // Renaming a type must also rewrite it where it qualifies a method export.
+            // Renaming a type must also rewrite it where it qualifies a variant or member export.
             if let Some((qualifier, qualifier_loc)) = &entry.qualifier {
                 if qualifier.as_str() == old_name && all.definitions.get(qualifier) == Some(&name) {
                     locations.replacements.push(qualifier_loc.clone());
@@ -668,26 +665,26 @@ mod tests {
     }
 
     #[test]
-    fn rename_method_rewrites_dot_syntax_calls() {
-        let source = "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n";
-        let (db, ids) = db_with_sources(&[("rename_dot_call.an", source)]);
+    fn rename_function_rewrites_pipe_calls() {
+        let source = "type Box = val: I32\n\nget (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b |> get\n";
+        let (db, ids) = db_with_sources(&[("rename_pipe_call.an", source)]);
         // Renaming from the declaration or from the call site must find the same references
-        for offset in [source.find("Box.get").unwrap() + 4, source.rfind("get").unwrap()] {
+        for offset in [source.find("get").unwrap(), source.rfind("get").unwrap()] {
             let changes = edits_at(&db, ids[0], offset, "value");
-            assert_eq!(total_edits(&changes), 2, "method declaration and dot-syntax call site");
+            assert_eq!(total_edits(&changes), 2, "declaration and pipe call site");
         }
     }
 
     #[test]
-    fn references_include_dot_syntax_calls() {
-        let source = "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n";
-        let (db, ids) = db_with_sources(&[("references_dot_call.an", source)]);
+    fn references_include_pipe_calls() {
+        let source = "type Box = val: I32\n\nget (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b |> get\n";
+        let (db, ids) = db_with_sources(&[("references_pipe_call.an", source)]);
 
-        let symbol = renameable_symbol(&db, ids[0], source.find("Box.get").unwrap() + 4);
+        let symbol = renameable_symbol(&db, ids[0], source.find("get").unwrap());
         let locations = collect_rename_locations(&db, &symbol.target, &symbol.old_name).into_references();
         let document_map = DashMap::new();
         let references = locations_to_lsp(&db, locations, &symbol.old_name, &document_map);
-        assert_eq!(references.len(), 2, "declaration and dot-syntax call site");
+        assert_eq!(references.len(), 2, "declaration and pipe call site");
     }
 
     #[test]
@@ -708,30 +705,55 @@ mod tests {
     }
 
     #[test]
-    fn rename_method_rewrites_qualified_export_entry() {
-        let source = "export Box, Box.get\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n";
-        let (db, ids) = db_with_sources(&[("rename_export_method.an", source)]);
-        let changes = edits_at(&db, ids[0], source.find("Box.get (").unwrap() + 4, "value");
-        assert_eq!(total_edits(&changes), 3, "declaration, dot-syntax call site, and export entry");
+    fn rename_variant_rewrites_qualified_export_entry() {
+        let source = "export Shape, Shape.Circle\n\ntype Shape =\n   | Circle\n   | Square\n\ncheck (s: Shape) =\n    match s\n    | Circle -> 1\n    | Square -> 2\n";
+        let (db, ids) = db_with_sources(&[("rename_export_variant.an", source)]);
+        let changes = edits_at(&db, ids[0], source.find("| Circle").unwrap() + 2, "Disc");
+        assert_eq!(total_edits(&changes), 3, "declaration, match pattern, and export entry");
     }
 
     #[test]
-    fn rename_same_named_method_leaves_the_other_types_method_alone() {
-        let source = "export A, B, A.get, B.get\n\ntype A = x: I32\ntype B = y: I32\n\nA.get (a: A) = a.x\nB.get (b: B) = b.y\n\nmain () =\n    a = A 1\n    b = B 2\n    a.get () + b.get ()\n";
-        let (db, ids) = db_with_sources(&[("rename_same_named.an", source)]);
-        let changes = edits_at(&db, ids[0], source.find("A.get (a").unwrap() + 2, "fetch");
-        assert_eq!(total_edits(&changes), 3, "A.get's declaration, call site, and export entry; B.get untouched");
-    }
-
-    #[test]
-    fn rename_method_rewrites_cross_file_dot_call() {
+    fn rename_same_named_function_leaves_the_other_modules_function_alone() {
         let root = ante_root();
         let mut db = Db::default();
         crate::diagnostics::init_db(&mut db, &root);
         let crate_name = GetCrateGraph.get(&db)[&CrateId::LOCAL].name.clone();
 
-        let def_source = "export Box, Box.get\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n";
-        let use_source = format!("import {crate_name}.CrossFileDef.Box\n\nmain () =\n    b = Box 3\n    b.get ()\n");
+        let a_source = "export A, get\n\ntype A = x: I32\n\nget (a: A) = a.x\n";
+        let b_source = "export B, get\n\ntype B = y: I32\n\nget (b: B) = b.y\n";
+        let use_source = format!(
+            "import {crate_name}.RenameSameNamedA.A\nimport {crate_name}.RenameSameNamedB.B\n\nmain () =\n    a = A 1\n    b = B 2\n    (a |> get) + (b |> get)\n"
+        );
+
+        let roots = crate::diagnostics::CrateRoots::new(&db, root.clone());
+        let a_path = root.join("RenameSameNamedA.an");
+        let b_path = root.join("RenameSameNamedB.an");
+        let use_path = root.join("RenameSameNamedUse.an");
+        crate::diagnostics::set_file_content(&mut db, &roots, &a_path, &Rope::from_str(a_source));
+        crate::diagnostics::set_file_content(&mut db, &roots, &b_path, &Rope::from_str(b_source));
+        crate::diagnostics::set_file_content(&mut db, &roots, &use_path, &Rope::from_str(&use_source));
+        let a_file = crate::diagnostics::file_id_for_path(&roots, &a_path);
+        let use_file = crate::diagnostics::file_id_for_path(&roots, &use_path);
+
+        // Both calls are only found through their first argument's type
+        let changes = edits_at(&db, a_file, a_source.find("get (").unwrap(), "fetch");
+        assert_eq!(changes.len(), 2, "A's file and the calling file must be edited, B's must not");
+        assert_eq!(total_edits(&changes), 3, "A's declaration, export entry, and `a |> get`; `b |> get` untouched");
+
+        let changes = edits_at(&db, use_file, use_source.rfind("get").unwrap(), "fetch");
+        let b_url = Url::from_file_path(&b_path).unwrap();
+        assert!(changes.contains_key(&b_url), "renaming from `b |> get` must target B's function");
+    }
+
+    #[test]
+    fn rename_function_rewrites_cross_file_argument_resolved_call() {
+        let root = ante_root();
+        let mut db = Db::default();
+        crate::diagnostics::init_db(&mut db, &root);
+        let crate_name = GetCrateGraph.get(&db)[&CrateId::LOCAL].name.clone();
+
+        let def_source = "export Box, get\n\ntype Box = val: I32\n\nget (b: Box) = b.val\n";
+        let use_source = format!("import {crate_name}.CrossFileDef.Box\n\nmain () =\n    b = Box 3\n    b |> get\n");
 
         let roots = crate::diagnostics::CrateRoots::new(&db, root.clone());
         let def_path = root.join("CrossFileDef.an");
@@ -740,54 +762,28 @@ mod tests {
         crate::diagnostics::set_file_content(&mut db, &roots, &use_path, &Rope::from_str(&use_source));
         let def_file = crate::diagnostics::file_id_for_path(&roots, &def_path);
 
-        // The dot call is invisible to the resolver's referenced_items, so this
-        // exercises the method-target pruning bypass across files.
-        let changes = edits_at(&db, def_file, def_source.find("Box.get (").unwrap() + 4, "value");
+        // `get` is not imported, so the call is invisible to the resolver's referenced_items
+        // and is only found through the type of its first argument.
+        let changes = edits_at(&db, def_file, def_source.find("get (").unwrap(), "value");
         assert_eq!(changes.len(), 2, "both the defining and the calling file must be edited");
-        assert_eq!(total_edits(&changes), 3, "declaration, export entry, and cross-file dot call");
+        assert_eq!(total_edits(&changes), 3, "declaration, export entry, and cross-file call");
     }
 
     #[test]
-    fn symbol_at_export_entry_resolves_method_and_qualifier() {
-        let source = "export Box, Box.get\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () = ()\n";
+    fn symbol_at_export_entry_resolves_variant_and_qualifier() {
+        let source = "export Shape, Shape.Circle\n\ntype Shape =\n   | Circle\n   | Square\n\nmain () = ()\n";
         let (db, ids) = db_with_sources(&[("export_entry_symbols.an", source)]);
-        let entry_offset = source.find("Box.get").unwrap();
+        let entry_offset = source.find("Shape.Circle").unwrap();
 
         let on_qualifier = renameable_symbol(&db, ids[0], entry_offset);
-        assert_eq!(on_qualifier.old_name, "Box", "the entry qualifier must resolve to the type");
+        assert_eq!(on_qualifier.old_name, "Shape", "the entry qualifier must resolve to the type");
 
-        let on_method = renameable_symbol(&db, ids[0], entry_offset + 4);
-        assert_eq!(on_method.old_name, "get", "the entry name must resolve to the method");
+        let on_variant = renameable_symbol(&db, ids[0], entry_offset + 6);
+        assert_eq!(on_variant.old_name, "Circle", "the entry name must resolve to the variant");
 
         // Renaming from the export entry rewrites the same sites as from the declaration.
-        let changes = edits_at(&db, ids[0], entry_offset + 4, "value");
-        assert_eq!(total_edits(&changes), 2, "export entry and method declaration");
-    }
-
-    #[test]
-    fn rename_shared_import_item_inserts_new_name_alongside() {
-        let root = ante_root();
-        let mut db = Db::default();
-        crate::diagnostics::init_db(&mut db, &root);
-        let crate_name = GetCrateGraph.get(&db)[&CrateId::LOCAL].name.clone();
-
-        let def_source =
-            "export A, B, A.get, B.get\n\ntype A = x: I32\ntype B = y: I32\n\nA.get (a: A) = a.x\nB.get (b: B) = b.y\n";
-        let use_source =
-            format!("import {crate_name}.RenameSharedDef.get, A\n\nmain () =\n    a = A 1\n    a.get ()\n");
-
-        let roots = crate::diagnostics::CrateRoots::new(&db, root.clone());
-        let def_path = root.join("RenameSharedDef.an");
-        let use_path = root.join("RenameSharedUse.an");
-        crate::diagnostics::set_file_content(&mut db, &roots, &def_path, &Rope::from_str(def_source));
-        crate::diagnostics::set_file_content(&mut db, &roots, &use_path, &Rope::from_str(&use_source));
-        let def_file = crate::diagnostics::file_id_for_path(&roots, &def_path);
-
-        let changes = edits_at(&db, def_file, def_source.find("A.get (a").unwrap() + 2, "fetch");
-        // The bare `import ...get` also names B.get, so it keeps `get` and gains `, fetch`.
-        let insertions: Vec<_> = changes.values().flatten().filter(|edit| edit.new_text == ", fetch").collect();
-        assert_eq!(insertions.len(), 1, "the shared import item must gain the new name alongside the old");
-        assert_eq!(total_edits(&changes), 4, "declaration, export entry, dot call site, and import insertion");
+        let changes = edits_at(&db, ids[0], entry_offset + 6, "Disc");
+        assert_eq!(total_edits(&changes), 2, "export entry and variant declaration");
     }
 
     #[test]
@@ -819,23 +815,16 @@ mod tests {
 
     #[test]
     fn rename_type_rewrites_export_qualifier() {
-        let source = "export Box, Box.get\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box 3\n    b.get ()\n";
+        let source = "export Shape, Shape.Circle\n\ntype Shape =\n   | Circle\n   | Square\n\narea (_s: Shape) = 1\n";
         let (db, ids) = db_with_sources(&[("rename_export_qualifier.an", source)]);
-        let changes = edits_at(&db, ids[0], source.find("type Box").unwrap() + 5, "Crate2");
-        let expected = [
-            "type declaration",
-            "method declaration qualifier",
-            "annotation",
-            "constructor",
-            "bare export entry",
-            "export qualifier",
-        ];
+        let changes = edits_at(&db, ids[0], source.find("type Shape").unwrap() + 5, "Figure");
+        let expected = ["type declaration", "annotation", "bare export entry", "export qualifier"];
         assert_eq!(total_edits(&changes), expected.len(), "expected edits: {expected:?}");
     }
 
     #[test]
     fn rename_field_rewrites_accesses_and_constructor_fields() {
-        let source = "type Box = val: I32\n\nBox.get (b: Box) = b.val\n\nmain () =\n    b = Box with val = 3\n    x = b.val + b.get ()\n    ()\n";
+        let source = "type Box = val: I32\n\nget (b: Box) = b.val\n\nmain () =\n    b = Box with val = 3\n    x = b.val + (b |> get)\n    ()\n";
         let (db, ids) = db_with_sources(&[("rename_field.an", source)]);
         // Renaming from the declaration or from an access site must find the same references
         for offset in [source.find("val").unwrap(), source.rfind("b.val").unwrap() + 2] {

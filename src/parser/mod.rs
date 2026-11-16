@@ -377,7 +377,7 @@ impl<'tokens> Parser<'tokens> {
     /// Create a new TopLevelId from the name of a given top level item.
     fn new_top_level_id_from_pattern_id(&mut self, pattern: PatternId) -> TopLevelId {
         let hash = match &self.current_context.patterns[pattern] {
-            Pattern::Variable(name) | Pattern::MethodName { type_name: _, item_name: name } => {
+            Pattern::Variable(name) => {
                 let data = &self.current_context.names[*name];
                 Self::hash_top_level_data(&mut self.top_level_item_hashes, data)
             },
@@ -783,6 +783,10 @@ impl<'tokens> Parser<'tokens> {
     fn parse_definition(&mut self) -> Result<Definition> {
         match self.current_token() {
             Token::Var => self.parse_non_function_definition(),
+            Token::TypeName(_) if self.at_method_definition() => {
+                self.advance();
+                self.expected("a parameter or `=`").map_err(|error| error.with_hint(Hint::NoMethods))
+            },
             _ => {
                 if let Ok(function) = self.try_(Self::parse_function_definition) {
                     Ok(function)
@@ -791,6 +795,12 @@ impl<'tokens> Parser<'tokens> {
                 }
             },
         }
+    }
+
+    /// Is this the start of a definition in the removed method syntax, `Type.name ...`?
+    fn at_method_definition(&self) -> bool {
+        *self.peek_next_token() == Token::MemberAccess
+            && matches!(self.tokens.get(self.token_index + 2), Some((Token::Identifier(_), _)))
     }
 
     /// non_function_definition: 'implicit'? 'mut'? pattern '=' expression
@@ -841,15 +851,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_function_name_pattern(&mut self) -> Result<PatternId> {
         self.with_pattern_id_and_location(|this| match this.current_token() {
             Token::Identifier(_) | Token::ParenthesisLeft => this.parse_ident_id().map(Pattern::Variable),
-            Token::TypeName(_) => {
-                let type_name = this.parse_type_name_id()?;
-                if this.accept(Token::MemberAccess) {
-                    let item_name = this.parse_ident_id()?;
-                    Ok(Pattern::MethodName { type_name, item_name })
-                } else {
-                    Ok(Pattern::Variable(type_name))
-                }
-            },
+            Token::TypeName(_) => this.parse_type_name_id().map(Pattern::Variable),
             _ => this.expected("a definition name"),
         })
     }
@@ -1925,7 +1927,7 @@ impl<'tokens> Parser<'tokens> {
             | Token::DivAssign
             | Token::ModAssign => Some((2, true)),
             Token::ApplyLeft => Some((3, true)),
-            Token::ApplyRight | Token::TildeArrow => Some((4, false)),
+            Token::TildeArrow => Some((4, false)),
             Token::Comma if !ban_comma => Some((5, true)),
             Token::Or => Some((6, false)),
             Token::And => Some((7, false)),
@@ -1943,8 +1945,17 @@ impl<'tokens> Parser<'tokens> {
             Token::Multiply | Token::Divide | Token::Modulus => Some((13, false)),
             Token::Index => Some((14, false)),
             Token::As => Some((15, false)),
+            Token::ApplyRight => Some((16, false)),
             _ => None,
         }
+    }
+
+    /// The precedence compared against the `min_prec` floor of a trailing lambda, `do`, or
+    /// `return` body. `|>` binds tighter than other binary operators but still keeps its old
+    /// low floor so that `xs |> filter fn x -> x > 0 |> count` keeps `x > 0` in the lambda body
+    /// while ending the body at the next `|>`.
+    fn body_floor_precedence(token: &Token, prec: i8) -> i8 {
+        if *token == Token::ApplyRight { 4 } else { prec }
     }
 
     /// Should we push this operator onto our operator stack and keep parsing our expression?
@@ -2025,7 +2036,8 @@ impl<'tokens> Parser<'tokens> {
 
         // loop while the next token is an operator that binds tighter than our floor
         while let Some((prec, right_associative)) = Self::precedence(self.current_token(), ban_comma) {
-            if prec <= min_prec {
+            let floor_prec = Self::body_floor_precedence(self.current_token(), prec);
+            if floor_prec <= min_prec {
                 break;
             }
             while !operator_stack.is_empty()
@@ -2049,7 +2061,7 @@ impl<'tokens> Parser<'tokens> {
 
             // Terms can contain trailing expressions (notably unparenthesized lambdas).
             // Ensure those are limited to the current precedence level too, see issue #233.
-            let new_min_prec = if right_associative { prec - 1 } else { prec };
+            let new_min_prec = if right_associative { floor_prec - 1 } else { floor_prec };
             let value = self.parse_term(new_min_prec, ban_do)?;
             results.push(value);
         }
@@ -2374,7 +2386,7 @@ impl<'tokens> Parser<'tokens> {
         let Some((prec, _)) = Self::precedence(self.current_token(), false) else {
             return;
         };
-        if prec > min_prec {
+        if Self::body_floor_precedence(self.current_token(), prec) > min_prec {
             return;
         }
         let body_location = self.expr_location(body);

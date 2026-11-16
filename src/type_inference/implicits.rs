@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::path::Path;
 use std::sync::Arc;
 
 use rustc_hash::FxHashSet;
@@ -1526,7 +1525,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     }
 
                     suggestions.push(ImportSuggestion {
-                        qualified_path: format_module_path(&crate_.name, rel_path, name),
+                        qualified_path: crate::paths::format_module_path(&crate_.name, rel_path, name),
                         location: top_level_name.location(self.compiler),
                     });
                     if suggestions.len() >= SUGGESTION_CAP {
@@ -1742,13 +1741,6 @@ fn missing_implicits(
     });
     let missing = missing.collect::<Option<Vec<_>>>()?;
     Some((missing, expected.next().is_some()))
-}
-
-/// Format an import path: `CrateName.module.path.itemName`.
-fn format_module_path(crate_name: &str, rel_path: &Path, item_name: &str) -> String {
-    let stem = rel_path.with_extension("");
-    let dotted = stem.to_string_lossy().replace(std::path::MAIN_SEPARATOR, ".");
-    if dotted.is_empty() { format!("{crate_name}.{item_name}") } else { format!("{crate_name}.{dotted}.{item_name}") }
 }
 
 /// Walk a type and collect the crate ids of any type it references.

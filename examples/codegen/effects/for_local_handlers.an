@@ -1,7 +1,6 @@
 // Test the local handler optimization, which turns break_/continue_/emit calls
 // in for_ loops into direct jumps when the handlers are visible after inlining.
-import Std.Stream.for_, iota, map, filter, enumerate, Loop, break_, continue_, Emit, emit, stream_fn, foldl, reduce, sum, stream, stream_array
-import Std.Fail.assert, abort_on_fail
+import Std.Stream.for_, iota, enumerate, Loop, break_, continue_, reduce, sum
 
 /// Recursive, so it is never inlined: its `Loop` calls must go through a residual handle
 countdown_breaking (n: Usz) (limit: Usz): Unit can Loop =

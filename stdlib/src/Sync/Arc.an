@@ -1,0 +1,36 @@
+import Std.C.malloc, free
+import Std.Mem.Type
+import Std.Sync.Atomic
+import Std.Sync.Atomic.Atomic
+
+export Arc, of, as_ref, clone_arc, drop_arc
+
+type ArcInner t =
+    count: Atomic U32
+    value: t
+
+type Arc t = ptr: Ptr (ArcInner t)
+
+of (value: t): Arc t =
+    ptr = malloc (size_of (MkType: Type (ArcInner t)))
+    count = Atomic.of 1
+    ptr_store ptr (ArcInner count value)
+    Arc ptr
+
+as_ref (a: ref 'a Arc t): ref 'a t =
+    inner = ptr_to_ref a.ptr
+    inner.value
+
+impl clone_arc: Clone (Arc t) with
+    clone (a: ref Arc t) =
+        inner = ptr_to_ref a.ptr
+        fetch_add inner.count 1
+        deref a
+
+impl drop_arc {Drop t e}: Drop (Arc t) e with
+    drop (a: Arc t) =
+        inner = ptr_to_ref a.ptr
+        previous = fetch_sub inner.count 1
+        if previous == 1 then
+            drop (deref inner.value)
+            free a.ptr

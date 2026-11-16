@@ -1,4 +1,5 @@
 import Std.Mem.forget
+import Std.Vec
 
 // A value of a generic type can only be dropped with a `Drop` constraint for it. Without
 // one it must be moved elsewhere or consumed with `forget`, which runs no `drop`.
@@ -30,8 +31,8 @@ main () =
 
     // Collections drop their elements
     var tags = Vec.empty ()
-    tags.push (Tag 5)
-    tags.push (Tag 6)
+    push tags (Tag 5)
+    push tags (Tag 6)
     tags.[0] := Tag 7
     println "replaced"
 

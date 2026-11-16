@@ -1,0 +1,18 @@
+import Std.C.Clock, clock_gettime
+import Std.Mem.transmute
+import Std.Time.Duration.Duration
+
+/// A monotonic time point in nanoseconds since an arbitrary epoch.
+/// Only meaningful relative to another `Instant`.
+type Instant = nanos: I64
+
+impl copy_instant: Copy Instant with (.*) = deref
+
+// TODO: None of this is platform agnostic
+now (): Instant can Fs =
+    var ts = Clock 0 0
+    clock_gettime 1 (transmute (mut ts) : Ptr Clock)
+    Instant (ts.sec * 1_000_000_000 + ts.nsec)
+
+elapsed (start: Instant): Duration can Fs =
+    Duration ((now ()).nanos - start.nanos)

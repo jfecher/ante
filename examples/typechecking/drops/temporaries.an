@@ -1,3 +1,5 @@
+import Std.Vec
+
 // A temporary is dropped at the end of its statement, so nothing may keep a reference to it
 make (): String = "temporary" ++ "!"
 
@@ -11,7 +13,7 @@ held () =
 
 pushed () =
     var strings = Vec.empty ()
-    strings.push (ref make ())
+    push strings (ref make ())
 
 // A temporary borrowed by the definition itself lives as long as the definition's name
 extended () =
@@ -23,19 +25,19 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/drops/temporaries.an:9:40
-//  8 |     kept = "kept"
+// examples/typechecking/drops/temporaries.an:11:40
+// 10 |     kept = "kept"
 //    |     // error: This reference to a temporary value outlives its scope
 //    |     // note: this value is only valid until the end of this scope
-//  9 |     dangling = longest (ref kept) (ref make ())
+// 11 |     dangling = longest (ref kept) (ref make ())
 //    |                                        ^^^^^^^
-// 10 |     println dangling
+// 12 |     println dangling
 // 
-// examples/typechecking/drops/temporaries.an:14:23
-// 13 |     var strings = Vec.empty ()
+// examples/typechecking/drops/temporaries.an:16:23
+// 15 |     var strings = Vec.empty ()
 //    |     // error: This reference to a temporary value outlives its scope
 //    |     // note: this value is only valid until the end of this scope
-// 14 |     strings.push (ref make ())
+// 16 |     push strings (ref make ())
 //    |                       ^^^^^^^
 // 
 // Found 2 errors and 0 warnings

@@ -1,4 +1,4 @@
-import Std.Vec.Vec
+import Std.Vec
 
 type Person =
     name: String
@@ -7,38 +7,38 @@ type Person =
 autoref () =
     var vec = Vec.empty ()
     hello = "Hello"
-    vec.push (ref hello)
+    push vec (ref hello)
 
     if true then
         world = "World"
-        vec.push world
+        push vec world
 
 annotated () =
     var v = Vec.empty ()
-    v.push (ref 1)
+    push v (ref 1)
     if true then
         y = 10
         // We weren't seeing through type annotation exprs previously so the
         // previous location reported for this error was worse
-        v.push (ref (y: I32))
+        push v (ref (y: I32))
 
 member_path () =
     var v = Vec.empty ()
     seed = "seed"
-    v.push (ref seed)
+    push v (ref seed)
     if true then
         p = Person "ann" 3
-        v.push (ref p.name)
+        push v (ref p.name)
 
 innocent_borrow_not_blamed () =
     var v = Vec.empty ()
-    v.push (ref 1)
+    push v (ref 1)
     if true then
         y = 10
         _ = ref y
         yref = ref y
         _ = ref y
-        v.push yref
+        push v yref
         _ = ref y
         _ = ref y
 
@@ -54,7 +54,7 @@ impl drop_person: Drop Person pure with
 // 12 |     if true then
 // 13 |         world = "World"	// note: world is only valid until the end of this scope
 //    |         -----
-// 14 |         vec.push world	// error: This reference to world outlives its scope
+// 14 |         push vec world	// error: This reference to world outlives its scope
 //    |                  ^^^^^
 // 
 // examples/typechecking/borrows/push_into_outer_vec.an:23:17
@@ -63,14 +63,14 @@ impl drop_person: Drop Person pure with
 //    |         -
 // 21 |         // We weren't seeing through type annotation exprs previously so the
 // 22 |         // previous location reported for this error was worse
-// 23 |         v.push (ref (y: I32))	// error: This reference to y outlives its scope
+// 23 |         push v (ref (y: I32))	// error: This reference to y outlives its scope
 //    |                 ^^^^^^^^^^^
 // 
 // examples/typechecking/borrows/push_into_outer_vec.an:31:17
 // 29 |     if true then
 // 30 |         p = Person "ann" 3	// note: p.name is only valid until the end of this scope
 //    |         -
-// 31 |         v.push (ref p.name)	// error: This reference to p.name outlives its scope
+// 31 |         push v (ref p.name)	// error: This reference to p.name outlives its scope
 //    |                 ^^^^^^^^^^
 // 
 // examples/typechecking/borrows/push_into_outer_vec.an:41:16
@@ -80,7 +80,7 @@ impl drop_person: Drop Person pure with
 // 38 |         _ = ref y
 // .. | 
 // 40 |         _ = ref y
-// 41 |         v.push yref	// error: This reference to y outlives its scope
+// 41 |         push v yref	// error: This reference to y outlives its scope
 //    |                ^^^^
 // 42 |         _ = ref y
 // 

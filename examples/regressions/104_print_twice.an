@@ -1,12 +1,12 @@
 import Std.HashMap
 import Std.HashMap.print_hashmap
-import Std.Hash.Hash, hash_u8
+import Std.Hash.hash_u8
 
 main () =
     print_to_stdout do
     abort_on_panic do
     var map = HashMap.empty ()
-    map.insert 1u8 3u16
+    insert map 1u8 3u16
 
     println (ref map)
     println (ref map)

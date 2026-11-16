@@ -1,0 +1,43 @@
+import Std.C.malloc, free, VoidPtr
+import Std.Mem.transmute, null
+
+export Mutex, of, with_lock, drop_mutex
+
+pthread_mutex_init: fn VoidPtr VoidPtr -> I32 = extern "pthread_mutex_init"
+pthread_mutex_lock: fn VoidPtr -> I32 = extern "pthread_mutex_lock"
+pthread_mutex_unlock: fn VoidPtr -> I32 = extern "pthread_mutex_unlock"
+pthread_mutex_destroy: fn VoidPtr -> I32 = extern "pthread_mutex_destroy"
+
+// This size should be large enough on mac & linux gcc at least.
+// TODO: Remove hard-coded sizes
+mutex_buf_size: Usz = 64
+
+type Mutex t =
+    // Actually a pthread_mutex_t
+    raw: VoidPtr
+    value: t
+
+of (value: t): Mutex t =
+    raw = malloc mutex_buf_size
+    pthread_mutex_init raw (null ())
+    Mutex raw value
+
+/// Acquires the lock, blocking until it can be acquired, then runs `f`, then releases the
+/// lock, returning the result of `f`.
+///
+/// This may deadlock 
+with_lock (m: ref Mutex t) (f: once fn (mut t) => r): r =
+    pthread_mutex_lock m.raw
+
+    // We have to use an unsafe conversion for the internal mutability here
+    ref_to_mut: fn (ref t) -> mut t = transmute
+    result = f (ref_to_mut m.value)
+
+    pthread_mutex_unlock m.raw
+    result
+
+impl drop_mutex {Drop t e}: Drop (Mutex t) e with
+    drop (m: Mutex t) =
+        pthread_mutex_destroy m.raw
+        free m.raw
+        drop m.value

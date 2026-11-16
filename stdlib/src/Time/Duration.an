@@ -1,0 +1,14 @@
+/// A duration in nanoseconds
+type Duration = nanos: I64
+
+impl copy_duration: Copy Duration with (.*) = deref
+
+from_secs (s: I64): Duration = Duration (s * 1_000_000_000)
+from_millis (ms: I64): Duration = Duration (ms * 1_000_000)
+from_micros (us: I64): Duration = Duration (us * 1000)
+from_nanos (ns: I64): Duration = Duration ns
+
+as_secs (d: Duration): I64 = d.nanos / 1_000_000_000
+as_millis (d: Duration): I64 = d.nanos / 1_000_000
+as_micros (d: Duration): I64 = d.nanos / 1000
+as_nanos (d: Duration): I64 = d.nanos

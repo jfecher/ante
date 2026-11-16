@@ -1,10 +1,12 @@
-import Std.Sync.Thread, spawn, join, Arc, as_ref, clone_arc, drop_arc, Atomic, fetch_add, load
+import Std.Sync.Thread.spawn
+import Std.Sync.Atomic
+import Std.Sync.Atomic.Atomic
 
 // Two threads each increment a shared lock-free atomic 1000 times.
 // The final value is exactly 2000 (no lost updates).
 worker (counter: ref Atomic U32): Unit =
     for _i in 0..1000 do
-        counter.fetch_add 1
+        fetch_add counter 1
         ()
 
 main () =

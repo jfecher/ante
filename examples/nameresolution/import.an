@@ -17,8 +17,7 @@ main () =
 // // id = c1m27_1944
 // main_c1m27_1944_0 () =
 //     foo_c1m27_3132_0 4 library_int_?
-//     foo_c1m27_3132_0 5 (library_fn_? ())
-
+//     foo_c1m27_3132_0 5 (library_fn_ad ())
 
 // expected stderr:
 // examples/nameresolution/import.an:1:8
@@ -31,10 +30,5 @@ main () =
 //   |           ^^^^^^^^^^^
 // 7 |     foo 5 (library_fn ())
 // 
-// examples/nameresolution/import.an:7:12
-// 6 |     foo 4 library_int
-// 7 |     foo 5 (library_fn ())	// error: `library_fn` not found in scope
-//   |            ^^^^^^^^^^
-// 
-// Found 3 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

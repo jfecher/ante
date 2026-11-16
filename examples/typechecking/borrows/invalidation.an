@@ -1,13 +1,13 @@
-import Std.Vec.Vec, of, get, clear, push
-import Std.Stream.stream_array
+import Std.Vec.Vec, get, clear, push
 import Std.Fail.Fail
+import Std.Vec
 
 use (_x: ref t): Unit = ()
 
 // Example from website
 bad (a: mut Vec I32) (b: mut Maybe String) (c: mut (String, String)) =
-    elem = a.get 1
-    a.clear ()
+    elem = get a 1
+    clear a
     use elem
 
     s = if b is Some s then s else panic ""
@@ -20,15 +20,15 @@ bad (a: mut Vec I32) (b: mut Maybe String) (c: mut (String, String)) =
     use name
 
 example2 (v: mut Vec String) =
-    a: ref 'v! String = v.get 0
-    b: mut 'v! String = v.get 0
+    a: ref 'v! String = get v 0
+    b: mut 'v! String = get v 0
     use a
 
     // Mutating 'v! only invalidates 'v!!
     b := "foo"
     use b
 
-    v.clear ()
+    clear v
     use b
 
 write_through (b: mut Maybe String) =
@@ -54,104 +54,104 @@ reassigned (b: mut Maybe String) =
 
 local () =
     var v = Vec.of [1, 2, 3]
-    first = v.get 0
-    v.push 4
+    first = get v 0
+    push v 4
     use first
 
 // Calling a closure performs its effects, like `Mutate 'v` here
 closure () =
     var v = Vec.of [1, 2, 3]
-    clear_v = fn () -> v.clear ()
-    first = v.get 0
+    clear_v = fn () -> clear v
+    first = get v 0
     clear_v ()
     use first
 
 closure_unused () =
     var v = Vec.of [1, 2, 3]
-    first = v.get 0
-    clear_v = fn () -> v.clear ()
+    first = get v 0
+    clear_v = fn () -> clear v
     use first
     clear_v ()
 
 apply (f: once fn Unit => Unit can e): Unit can e = f ()
 
 inferred_effect_variable (v: mut Vec I32) =
-    a = v.get 0
+    a = get v 0
     apply do use a
     use a
-    v.clear ()
+    clear v
 
 declared_effect_variable (v: mut Vec I32): Unit can Mutate 'v, Fail =
-    a = v.get 0
+    a = get v 0
     apply do use a
     use a
-    v.clear ()
+    clear v
 
 mutate_through_effect_variable (v: mut Vec I32): Unit can Mutate 'v, Fail =
-    a = v.get 0
-    apply do v.clear ()
+    a = get v 0
+    apply do clear v
     use a
 
 missing_mutate (v: mut 'v Vec I32): Unit can Panic =
-    v.push 1
+    push v 1
 
 declared_mutate (v: mut 'v Vec I32): Unit can Mutate 'v, Panic =
-    v.push 1
+    push v 1
 
 // An elided place is named after its parameter
 elided_missing_mutate (v: mut Vec I32): Unit can Panic =
-    v.push 1
+    push v 1
 
 elided_declared_mutate (v: mut Vec I32): Unit can Mutate 'v, Panic =
-    v.push 1
+    push v 1
 
-clear_inferred (v: mut Vec I32) = v.clear ()
+clear_inferred (v: mut Vec I32) = clear v
 
 through_inferred () =
     var v = Vec.of [1, 2, 3]
-    first = v.get 0
+    first = get v 0
     clear_inferred (mut v)
     use first
 
 // Mutating while computing a binding's value doesn't invalidate it
 mutated_in_initializer (v: mut Vec I32) =
     first =
-        v.push 1
-        v.get 0
+        push v 1
+        get v 0
     use first
 
 // Only the parts of a value holding an unstable reference are invalidated
 unrelated_field (v: mut Vec I32) =
-    pair = v.get 0, 5
-    v.clear ()
+    pair = get v 0, 5
+    clear v
     use pair.second
     use pair.first
 
 reassigned_in_both_branches (v: mut Vec I32) (c: Bool) =
-    var first = v.get 0
-    v.clear ()
+    var first = get v 0
+    clear v
     if c then
-        first := v.get 0
+        first := get v 0
     else
-        first := v.get 1
+        first := get v 1
     use first
 
 reassigned_then_mutated_in_one_branch (v: mut Vec I32) (c: Bool) =
-    var first = v.get 0
+    var first = get v 0
     if c then
-        first := v.get 0
-        v.clear ()
+        first := get v 0
+        clear v
     else
-        first := v.get 1
+        first := get v 1
     use first
 
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
 // examples/typechecking/borrows/invalidation.an:11:9
-//  9 |     elem = a.get 1
-// 10 |     a.clear ()	// note: elem may be invalidated by this mutation
-//    |      ---------
+//  9 |     elem = get a 1
+// 10 |     clear a	// note: elem may be invalidated by this mutation
+//    |     -------
 // 11 |     use elem	// error: elem may have been invalidated by an earlier mutation
 //    |         ^^^^
 // 
@@ -163,8 +163,8 @@ reassigned_then_mutated_in_one_branch (v: mut Vec I32) (c: Bool) =
 //    |         ^
 // 
 // examples/typechecking/borrows/invalidation.an:32:9
-// 31 |     v.clear ()	// note: b may be invalidated by this mutation
-//    |      ---------
+// 31 |     clear v	// note: b may be invalidated by this mutation
+//    |     -------
 // 32 |     use b	// error: b may have been invalidated by an earlier mutation
 //    |         ^
 // 
@@ -190,57 +190,57 @@ reassigned_then_mutated_in_one_branch (v: mut Vec I32) (c: Bool) =
 //    |         ^
 // 
 // examples/typechecking/borrows/invalidation.an:59:9
-// 57 |     first = v.get 0
-// 58 |     v.push 4	// note: first may be invalidated by this mutation
-//    |      -------
+// 57 |     first = get v 0
+// 58 |     push v 4	// note: first may be invalidated by this mutation
+//    |     --------
 // 59 |     use first	// error: first may have been invalidated by an earlier mutation
 //    |         ^^^^^
 // 
 // examples/typechecking/borrows/invalidation.an:67:9
-// 65 |     first = v.get 0
+// 65 |     first = get v 0
 // 66 |     clear_v ()	// note: first may be invalidated by this mutation
 //    |     ----------
 // 67 |     use first	// error: first may have been invalidated by an earlier mutation
 //    |         ^^^^^
 // 
 // examples/typechecking/borrows/invalidation.an:93:9
-// 91 |     a = v.get 0
-// 92 |     apply do v.clear ()	// note: a may be invalidated by this mutation
-//    |     -------------------
+// 91 |     a = get v 0
+// 92 |     apply do clear v	// note: a may be invalidated by this mutation
+//    |     ----------------
 // 93 |     use a	// error: a may have been invalidated by an earlier mutation
 //    |         ^
 // 
-// examples/typechecking/borrows/invalidation.an:96:6
+// examples/typechecking/borrows/invalidation.an:96:5
 // 95 | missing_mutate (v: mut 'v Vec I32): Unit can Panic =
-// 96 |     v.push 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
-//    |      ^^^^^
+// 96 |     push v 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
+//    |     ^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:103:6
+// examples/typechecking/borrows/invalidation.an:103:5
 // 102 | elided_missing_mutate (v: mut Vec I32): Unit can Panic =
-// 103 |     v.push 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
-//     |      ^^^^^
+// 103 |     push v 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
+//     |     ^^^^
 // 
 // examples/typechecking/borrows/invalidation.an:114:9
-// 112 |     first = v.get 0
+// 112 |     first = get v 0
 // 113 |     clear_inferred (mut v)	// note: first may be invalidated by this mutation
 //     |     ---------------------
 // 114 |     use first	// error: first may have been invalidated by an earlier mutation
 //     |         ^^^^^
 // 
 // examples/typechecking/borrows/invalidation.an:128:13
-// 125 |     pair = v.get 0, 5
-// 126 |     v.clear ()	// note: pair.first may be invalidated by this mutation
-//     |      ---------
+// 125 |     pair = get v 0, 5
+// 126 |     clear v	// note: pair.first may be invalidated by this mutation
+//     |     -------
 // 127 |     use pair.second
 // 128 |     use pair.first	// error: pair.first may have been invalidated by an earlier mutation
 //     |             ^^^^^^
 // 
 // examples/typechecking/borrows/invalidation.an:146:9
-// 142 |         first := v.get 0
-// 143 |         v.clear ()	// note: first may be invalidated by this mutation
-//     |          ---------
+// 142 |         first := get v 0
+// 143 |         clear v	// note: first may be invalidated by this mutation
+//     |         -------
 // 144 |     else
-// 145 |         first := v.get 1
+// 145 |         first := get v 1
 // 146 |     use first	// error: first may have been invalidated by an earlier mutation
 //     |         ^^^^^
 // 

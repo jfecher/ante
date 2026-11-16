@@ -44,7 +44,7 @@ a7 = choose id auto
 //     (f: fn a -> a can _) 42 (,: fn a a -> a, a is pure) (f: fn a -> a can _) true
 // 
 // (f9: _) =
-//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) -> _ can _) = (revapp: fn Unit -> (fn (fn (fn _ -> _ is pure) -> _, _ is pure) -> _ can _) can _) (error)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) -> _ can _) = (error) (error)
 //     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) -> _ can _) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
 // 
 // (choose: fn a a -> a is pure) (x: a) (y: a) =
@@ -90,7 +90,9 @@ a7 = choose id auto
 // 
 // examples/typechecking/impredicativity.an:19:9
 // 18 | f9 =
-// 19 |     f = revapp (freeze id)	// error: `revapp` not found in scope
+//    |     // error: revapp not found in scope
+//    |     // note: The first argument's type is unknown so its source module was not searched
+// 19 |     f = revapp (freeze id)
 //    |         ^^^^^^
 // 20 |     f poly
 // 

@@ -1340,19 +1340,6 @@ impl<'a> CstDisplay<'a> {
                 }
                 Ok(())
             },
-            Pattern::MethodName { type_name, item_name } => {
-                if self.config.show_types {
-                    write!(f, "(")?;
-                }
-                self.fmt_type_name(*type_name, context, f)?;
-                write!(f, ".")?;
-                self.fmt_name_helper(*item_name, context, f, false)?;
-                if self.config.show_types {
-                    self.fmt_name_type(*item_name, context, f)?;
-                    write!(f, ")")?;
-                }
-                Ok(())
-            },
             Pattern::Or(alts) => {
                 let mut first = true;
                 for alt in alts {
@@ -1442,7 +1429,7 @@ impl<'a> CstDisplay<'a> {
     fn is_pattern_atom(&self, pattern: PatternId, context: &impl IdStore) -> bool {
         use Pattern::*;
         match context.get_pattern(pattern) {
-            Error | Variable(_) | Literal(_) | MethodName { .. } => true,
+            Error | Variable(_) | Literal(_) => true,
             Constructor(_, args) => args.is_empty(),
             ConstructorRest(_, _, _) => false,
             TypeAnnotation(inner, _) => self.config.show_types && matches!(context.get_pattern(*inner), Variable(_)),
@@ -1599,7 +1586,8 @@ impl Display for Origin {
             | Origin::TraitMember(crate::name_resolution::TraitMember { name: top_level_id, .. })
             | Origin::EffectOperation { name: top_level_id, .. } => write!(f, "{top_level_id}"),
             Origin::Local(name_id) => write!(f, "{name_id}"),
-            Origin::TypeResolution => write!(f, "td"), // type-directed
+            Origin::TypeResolution => write!(f, "td"),     // type-directed
+            Origin::ArgumentResolution => write!(f, "ad"), // argument-directed
             Origin::Builtin(builtin) => write!(f, "b{builtin}"),
         }
     }

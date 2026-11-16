@@ -17,7 +17,7 @@ type Person =
     name: Name
     age: I32
 
-Person.get_name (p: Person): String = p.name
+person_name (p: Person): String = p.name
 
 // Ensure struct aliases can also be used in constructor positions
 type Point =
@@ -72,7 +72,7 @@ impl drop_point: Drop Point pure with
 //     name: Name
 //     age: I32
 // 
-// (Person.get_name: fn Person -> String is pure) (p: Person): String = (p: Person).name
+// (person_name: fn Person -> String is pure) (p: Person): String = (p: Person).name
 // 
 // type Point =
 //     x: I32

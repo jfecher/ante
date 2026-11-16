@@ -9,33 +9,22 @@ u x = t x
 // import U.u
 // 
 // // id = c1m885_9396
-// t_c1m885_9396_0 x_1 = u_? x_1
+// t_c1m885_9396_0 x_1 = u_ad x_1
 // 
 // 
 // import T.t
 // 
 // // id = c1m690_3723
-// u_c1m690_3723_0 x_1 = t_? x_1
-
+// u_c1m690_3723_0 x_1 = t_ad x_1
 
 // expected stderr:
 // examples/nameresolution/U.an:1:8
 // 1 | import T.t	// error: Could not find crate `T`
 //   |        ^^^
 // 
-// examples/nameresolution/U.an:4:7
-// 3 | // Module imports can form a cycle!
-// 4 | u x = t x	// error: `t` not found in scope
-//   |       ^
-// 
 // examples/nameresolution/T.an:1:8
 // 1 | import U.u	// error: Could not find crate `U`
 //   |        ^^^
 // 
-// examples/nameresolution/T.an:4:7
-// 3 | // Recursive module imports are allowed!
-// 4 | t x = u x	// error: `u` not found in scope
-//   |       ^
-// 
-// Found 4 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

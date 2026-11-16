@@ -1,9 +1,9 @@
 import Std.Stream.last
-import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, any, foldl, foldr,
+import Std.Stream.iota, enumerate, map, filter, iter, all, any, foldl, foldr,
     filter_map, reduce, map2, zip, intersperse, intersperse_with, chain, count,
-    find, find_map, take, take_while, skip, skip_while, sum, product, for_, Loop,
-    break_, continue_, Emit, emit
-import Std.Fail.Fail, try, assert, abort_on_fail
+    find, find_map, take, take_while, skip, skip_while, sum, product, for_,
+    break_, continue_, emit
+import Std.Fail.try, assert, abort_on_fail
 import Std.Mem.transmute
 
 main () =

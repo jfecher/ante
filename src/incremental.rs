@@ -252,7 +252,7 @@ define_intermediate!(500, VisibleDefinitions -> Arc<VisibleDefinitionsResult>, D
 #[derive(Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VisibleDefinitionsResult {
     pub definitions: Definitions,
-    pub methods: BTreeMap<TopLevelId, Definitions>,
+    pub type_members: BTreeMap<TopLevelId, Definitions>,
     pub imported_modules: BTreeMap<Name, SourceFileId>,
 }
 
@@ -289,9 +289,9 @@ pub type Definitions = BTreeMap<Name, TopLevelName>;
 /// Maps type names to their TopLevelName.
 pub type TypeDefinitions = BTreeMap<Name, TopLevelName>;
 
-/// A map from each top-level type in a file to the methods defined on it.
-/// If a type in a file does not have any methods defined on it, it may not be in the map.
-pub type Methods = BTreeMap<TopLevelId, Definitions>;
+/// A map from each top-level type or trait in a file to its variants or members.
+/// A type without any may not be in the map.
+pub type TypeMembers = BTreeMap<TopLevelId, Definitions>;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Collect all definitions in a file (unfiltered by export list). This is used so a file can

@@ -212,11 +212,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Pattern::ConstructorRest(constructor, arguments, *name)
             },
             cst::Pattern::TypeAnnotation(pattern, _) => return self.convert_pattern(*pattern),
-            cst::Pattern::MethodName { .. } => {
-                let location = pattern.locate(self);
-                self.compiler.accumulate(Diagnostic::InvalidPattern { location });
-                return None;
-            },
             cst::Pattern::Or(alts) => Pattern::Or(opt_mapvec(alts, |alt| self.convert_pattern(*alt))?),
             cst::Pattern::Alias(name, inner) => {
                 let (name, inner) = (*name, *inner);
@@ -244,7 +239,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     // The type checker should hold the origin of paths that require type resolution
                     origin = self.current_extended_context().path_origin(path)?;
                 },
-                Origin::TraitMember(_) | Origin::EffectOperation { .. } | Origin::Builtin(_) => {
+                Origin::TraitMember(_)
+                | Origin::EffectOperation { .. }
+                | Origin::Builtin(_)
+                | Origin::ArgumentResolution => {
                     let location = self.current_context().path_location(path).clone();
                     self.compiler.accumulate(Diagnostic::InvalidPattern { location });
                     return None;
@@ -1005,7 +1003,11 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                         TypeBody::Sum(variants) => variants[variant_index].1.clone(),
                     }
                 },
-                Origin::Local(_) | Origin::TypeResolution | Origin::TraitMember(_) | Origin::EffectOperation { .. } => {
+                Origin::Local(_)
+                | Origin::TypeResolution
+                | Origin::ArgumentResolution
+                | Origin::TraitMember(_)
+                | Origin::EffectOperation { .. } => {
                     unreachable!()
                 },
                 Origin::Builtin(builtin) => Arc::new(builtin.to_string()),
@@ -1093,9 +1095,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             Origin::TraitMember(_) | Origin::EffectOperation { .. } => {
                 unreachable!("Ability member used as a type in classify_type_origin")
             },
-            Origin::TypeResolution => {
+            Origin::TypeResolution | Origin::ArgumentResolution => {
                 unreachable!(
-                    "Origin::TypeResolution encountered in classify_type_origin, should be unreachable in a type position"
+                    "Origin::TypeResolution or ArgumentResolution encountered in classify_type_origin, should be unreachable in a type position"
                 )
             },
             Origin::Builtin(_) => None,

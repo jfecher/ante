@@ -396,7 +396,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     /// alternative of an or-pattern
     fn record_names_in_pattern(&mut self, pattern: PatternId, depth: ScopeDepth, owns: bool, in_or: bool) {
         match self.tc.pattern_of(pattern).as_ref() {
-            Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
+            Pattern::Variable(name) => {
                 // Wildcards in one alternative aren't bound by the others, so there's nothing to
                 // drop them with once the alternatives join. Whatever they match is leaked.
                 let owns = owns && !(in_or && self.is_wildcard(*name));
@@ -484,7 +484,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     fn pattern_binds_name(&self, pattern: PatternId) -> bool {
         match self.tc.pattern_of(pattern).as_ref() {
             Pattern::Variable(name) => !self.is_wildcard(*name),
-            Pattern::MethodName { .. } | Pattern::Alias(..) => true,
+            Pattern::Alias(..) => true,
             Pattern::Constructor(_, args) => args.iter().any(|arg| self.pattern_binds_name(*arg)),
             Pattern::ConstructorRest(_, args, name) => {
                 name.is_some() || args.iter().any(|arg| self.pattern_binds_name(*arg))

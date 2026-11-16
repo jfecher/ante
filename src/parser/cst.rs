@@ -104,9 +104,6 @@ impl PatternId {
             Pattern::ConstructorRest(_, _, Some(name)) => context.get_name(*name).to_string(),
             Pattern::ConstructorRest(_, _, None) => "#constructor".to_string(),
             Pattern::TypeAnnotation(pattern, _) => pattern.name(context),
-            Pattern::MethodName { type_name, item_name } => {
-                format!("{}.{}", context.get_name(*type_name), context.get_name(*item_name))
-            },
             Pattern::Or(alts) => match alts.first() {
                 Some(alt) => alt.name(context),
                 None => "#or".to_string(),
@@ -806,7 +803,6 @@ pub enum Pattern {
     // E.g. `Circle ..`, `Circle ..c`, `Circle a b ..`, `Circle a b ..c`
     ConstructorRest(PathId, Vec<PatternId>, Option<NameId>),
     TypeAnnotation(PatternId, Type),
-    MethodName { type_name: NameId, item_name: NameId },
     Or(Vec<PatternId>),
     Alias(NameId, PatternId),
 }

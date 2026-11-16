@@ -176,7 +176,7 @@ fn register_directory_modules(
         while !dir.as_os_str().is_empty() {
             let parent = dir.parent().map(Path::to_path_buf).unwrap_or_default();
             let dir_name = dir.file_name().unwrap().to_string_lossy().into_owned();
-            let dir_id = SourceFileId::new(crate_id, &dir);
+            let dir_id = file_beside_directory(&dir, source_files).unwrap_or_else(|| SourceFileId::new(crate_id, &dir));
             dir_children.entry(parent.clone()).or_default().insert(dir_name, dir_id);
             dir = parent;
         }
@@ -186,12 +186,24 @@ fn register_directory_modules(
         if dir.as_os_str().is_empty() {
             continue; // crate root is resolved specially, it has no backing SourceFile
         }
+        if let Some(file_id) = file_beside_directory(&dir, source_files) {
+            let file = file_id.get(compiler);
+            let source_file =
+                SourceFile { path: file.path.clone(), contents: file.contents.clone(), submodules: children };
+            file_id.set(compiler, Arc::new(source_file));
+            continue;
+        }
         let dir_id = SourceFileId::new(crate_id, &dir);
         let mut source_file = SourceFile::new(Arc::new(dir.clone()), String::new());
         source_file.submodules = children;
         dir_id.set(compiler, Arc::new(source_file));
         source_files.insert(Arc::new(dir), dir_id);
     }
+}
+
+/// A directory `X/` beside a file `X.an` extends that file's module instead of shadowing it
+fn file_beside_directory(dir: &Path, source_files: &BTreeMap<Arc<PathBuf>, SourceFileId>) -> Option<SourceFileId> {
+    source_files.get(&dir.with_extension("an")).copied()
 }
 
 fn read_file_data(file: PathBuf) -> SourceFile {

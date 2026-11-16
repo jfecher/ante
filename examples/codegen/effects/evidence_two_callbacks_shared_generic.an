@@ -1,5 +1,3 @@
-import Std.Fail.Fail, fail, on_fail
-
 // Both callbacks share `e`, so `e` should have both Panic and Fail and both calls should have duplicated capabilities
 run (f: once fn Unit => a can Fail, e) (g: once fn Unit [env] -> a can Panic, e) {Drop env e}: a can Panic, e =
     on_fail f g

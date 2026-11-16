@@ -1,6 +1,5 @@
-import Std.EarlyReturn.EarlyReturn, with_early_return, early_return
-import Std.Stream.iota, iter, stream_fn
-import Std.Fail.assert, abort_on_fail
+import Std.EarlyReturn.with_early_return, early_return
+import Std.Stream.iota
 
 main () =
     // Early return out of a stream consumer
