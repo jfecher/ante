@@ -189,6 +189,7 @@ fn compile(request: CompileRequest) {
     let opt_level = optimization_level(options);
     let generics = generics_strategy(options, opt_level);
 
+    let mut program_status = 0;
     let diagnostics = match request.emit {
         _ if request.check => time_phase("Diagnostics", options.show_time, || collect_all_diagnostics(&mut compiler)),
         Some(EmitTarget::Tokens) => {
@@ -207,7 +208,8 @@ fn compile(request: CompileRequest) {
         },
         None => {
             let link_options = build_link_options(&mut compiler, options);
-            codegen_all(
+            let diagnostics;
+            (diagnostics, program_status) = codegen_all(
                 &mut compiler,
                 resolve_backend(options.backend),
                 &program_name,
@@ -219,7 +221,8 @@ fn compile(request: CompileRequest) {
                 options.bin.as_deref(),
                 &link_options,
                 &request.program_args,
-            )
+            );
+            diagnostics
         },
     };
 
@@ -241,6 +244,9 @@ fn compile(request: CompileRequest) {
 
     if error_count != 0 {
         std::process::exit(1);
+    }
+    if program_status != 0 {
+        std::process::exit(program_status);
     }
 }
 
@@ -502,10 +508,10 @@ fn codegen_all(
     compiler: &mut Db, backend: cli::Backend, program_name: &str, run: bool, delete_binary: bool, show_time: bool,
     opt_level: OptLevel, generics: GenericsStrategy, bin: Option<&str>, link_options: &codegen::LinkOptions,
     program_args: &[OsString],
-) -> BTreeSet<Diagnostic> {
+) -> (BTreeSet<Diagnostic>, i32) {
     let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
         Ok(ok) => ok,
-        Err(diagnostics) => return diagnostics,
+        Err(diagnostics) => return (diagnostics, 0),
     };
 
     let ready = match backend {
@@ -527,10 +533,8 @@ fn codegen_all(
         _ => unreachable!("resolve_backend only returns backends this compiler can run"),
     };
 
-    if ready && run {
-        run_binary(program_name, delete_binary, program_args);
-    }
-    diagnostics
+    let status = if ready && run { run_binary(program_name, delete_binary, program_args) } else { 0 };
+    (diagnostics, status)
 }
 
 /// Collect diagnostics and pick the `main` function to use if there are multiple or 0.
@@ -545,8 +549,8 @@ fn check_and_select_main(
     Ok((diagnostics, selected))
 }
 
-/// Run the binary then optionally delete it.
-fn run_binary(program_name: &str, delete_binary: bool, program_args: &[OsString]) {
+/// Run the binary then optionally delete it. Returns the program's exit status.
+fn run_binary(program_name: &str, delete_binary: bool, program_args: &[OsString]) -> i32 {
     let binary_path = binary_name(program_name);
     let run_path =
         if binary_path.components().count() == 1 { Path::new(".").join(&binary_path) } else { binary_path.clone() };
@@ -560,6 +564,7 @@ fn run_binary(program_name: &str, delete_binary: bool, program_args: &[OsString]
     if status.code().is_none() || windows_crash {
         eprintln!("{} exited with {status}", binary_path.display());
     }
+    status.code().unwrap_or(1)
 }
 
 /// Return the default name of the program given the source files.
