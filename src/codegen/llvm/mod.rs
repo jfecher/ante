@@ -974,6 +974,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.builder.build_int_add(a, b, "").unwrap().as_basic_value_enum()
             },
             mir::Instruction::OverflowingAddInt(a, b) => self.overflowing_int_op(function, a, b, OverflowingIntOp::Add),
+            mir::Instruction::TrappingAddInt(a, b) => self.trapping_int_op(function, a, b, OverflowingIntOp::Add),
             mir::Instruction::AddFloat(a, b) => {
                 let a = self.lookup_value(a).into_float_value();
                 let b = self.lookup_value(b).into_float_value();
@@ -985,6 +986,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.builder.build_int_sub(a, b, "").unwrap().as_basic_value_enum()
             },
             mir::Instruction::OverflowingSubInt(a, b) => self.overflowing_int_op(function, a, b, OverflowingIntOp::Sub),
+            mir::Instruction::TrappingSubInt(a, b) => self.trapping_int_op(function, a, b, OverflowingIntOp::Sub),
             mir::Instruction::SubFloat(a, b) => {
                 let a = self.lookup_value(a).into_float_value();
                 let b = self.lookup_value(b).into_float_value();
@@ -996,6 +998,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.builder.build_int_mul(a, b, "").unwrap().as_basic_value_enum()
             },
             mir::Instruction::OverflowingMulInt(a, b) => self.overflowing_int_op(function, a, b, OverflowingIntOp::Mul),
+            mir::Instruction::TrappingMulInt(a, b) => self.trapping_int_op(function, a, b, OverflowingIntOp::Mul),
             mir::Instruction::MulFloat(a, b) => {
                 let a = self.lookup_value(a).into_float_value();
                 let b = self.lookup_value(b).into_float_value();
@@ -1264,6 +1267,73 @@ impl<'ctx> ModuleContext<'ctx> {
             .unwrap_or_else(|| self.module.add_function(&intrinsic_name, fn_type, None));
 
         self.builder.build_call(intrinsic, &[a.into(), b.into()], "").unwrap().try_as_basic_value().basic().unwrap()
+    }
+
+    fn trapping_int_op(
+        &mut self, function: &mir::Definition, a: &mir::Value, b: &mir::Value, op: OverflowingIntOp,
+    ) -> BasicValueEnum<'ctx> {
+        let pair = self.overflowing_int_op(function, a, b, op).into_struct_value();
+        let result = self.builder.build_extract_value(pair, 0, "").unwrap();
+        let overflowed = self.builder.build_extract_value(pair, 1, "").unwrap().into_int_value();
+
+        let current_function = self.current_function_value.unwrap();
+        let trap_block = self.llvm.append_basic_block(current_function, "overflow");
+        let continue_block = self.llvm.append_basic_block(current_function, "");
+        self.builder.build_conditional_branch(overflowed, trap_block, continue_block).unwrap();
+
+        self.builder.position_at_end(trap_block);
+        let trap = self.overflow_trap_function();
+        self.builder.build_call(trap, &[], "").unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(continue_block);
+        result
+    }
+
+    /// A function printing an overflow error and exiting. Defined privately in each module so
+    /// parallel debug partitions don't clash.
+    fn overflow_trap_function(&self) -> FunctionValue<'ctx> {
+        const NAME: &str = "ante_integer_overflow";
+        if let Some(function) = self.module.get_function(NAME) {
+            return function;
+        }
+        let void = self.llvm.void_type();
+        let i32_type = self.llvm.i32_type();
+        let ptr_type = self.llvm.ptr_type(Default::default());
+
+        let function = self.module.add_function(NAME, void.fn_type(&[], false), Some(Linkage::Private));
+        function.add_attribute(AttributeLoc::Function, self.enum_attribute("noreturn"));
+        function.add_attribute(AttributeLoc::Function, self.enum_attribute("cold"));
+        function.add_attribute(AttributeLoc::Function, self.enum_attribute("noinline"));
+
+        // Other modules may declare these with Ante's own signatures, so call through pointers
+        let write_type = void.fn_type(&[ptr_type.into(), self.pointer_sized_int.into()], false);
+        let write = self.declared_function("ante_write_stderr", write_type);
+        let exit_type = void.fn_type(&[i32_type.into()], false);
+        let exit = self.declared_function("exit", exit_type);
+
+        let builder = self.llvm.create_builder();
+        builder.position_at_end(self.llvm.append_basic_block(function, ""));
+        let message = b"Integer overflow\n";
+        let data = self.llvm.const_string(message, false);
+        let global = self.module.add_global(data.get_type(), None, "ante_integer_overflow_message");
+        global.set_linkage(Linkage::Private);
+        global.set_constant(true);
+        global.set_initializer(&data);
+
+        let length = self.pointer_sized_int.const_int(message.len() as u64, false);
+        let arguments = [global.as_pointer_value().into(), length.into()];
+        builder.build_indirect_call(write_type, write, &arguments, "").unwrap();
+        let status = i32_type.const_int(1, false).into();
+        builder.build_indirect_call(exit_type, exit, &[status], "").unwrap();
+        builder.build_unreachable().unwrap();
+        function
+    }
+
+    /// A pointer to the external function `name`, declaring it with `typ` if this module hasn't yet
+    fn declared_function(&self, name: &str, typ: FunctionType<'ctx>) -> PointerValue<'ctx> {
+        let function = self.module.get_function(name).unwrap_or_else(|| self.module.add_function(name, typ, None));
+        function.as_global_value().as_pointer_value()
     }
 
     fn transmute(&mut self, value: &mir::Value, function: &mir::Definition, id: InstructionId) -> BasicValueEnum<'ctx> {

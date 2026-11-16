@@ -9,7 +9,7 @@ use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    incremental::{GetItem, GetItemRaw, GetTypeBody, RawItem, TypeCheck},
+    incremental::{GetItem, GetItemRaw, GetTypeBody, OverflowChecks, RawItem, TypeCheck},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
@@ -61,7 +61,7 @@ pub(crate) fn lookup_definition_id(name: &TopLevelName) -> Option<DefinitionId> 
 /// Builds the MIR with the default shared global [SharedIdsMap].
 pub(crate) fn build_initial_mir_with_shared_map<T>(compiler: &T, item_id: TopLevelId) -> Option<Mir>
 where
-    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
+    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody> + DbGet<OverflowChecks>,
 {
     build_initial_mir(compiler, &NAME_IDS, item_id)
 }
@@ -75,11 +75,11 @@ where
 /// which will pass around unsized values by reference.
 pub(crate) fn build_initial_mir<T>(compiler: &T, ids: &SharedIdsMap, item_id: TopLevelId) -> Option<Mir>
 where
-    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
+    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody> + DbGet<OverflowChecks>,
 {
     let types = TypeCheck(item_id).get(compiler);
     let (item, _) = GetItem(item_id).get(compiler);
-    let mut context = Context::new(compiler, &types, item_id, ids);
+    let mut context = Context::new(compiler, &types, item_id, ids, OverflowChecks.get(compiler));
 
     match &item.kind {
         cst::TopLevelItemKind::Definition(definition) => {
@@ -233,12 +233,15 @@ struct Context<'local, Db> {
 
     /// The evidence value holding this function's own row generics
     own_evidence: Option<Value>,
+
+    /// Lower the `AddInt`/`SubInt`/`MulInt` intrinsics to their trapping instructions
+    overflow_checks: bool,
 }
 
 impl<'local, Db> Context<'local, Db> {
     fn new(
         compiler: &'local Db, types: &'local TypeCheckResult, top_level_id: TopLevelId,
-        name_mappings: &'local SharedIdsMap,
+        name_mappings: &'local SharedIdsMap, overflow_checks: bool,
     ) -> Self {
         Self {
             compiler,
@@ -260,6 +263,7 @@ impl<'local, Db> Context<'local, Db> {
             effect_op_indices: Default::default(),
             capabilities: Default::default(),
             own_evidence: None,
+            overflow_checks,
         }
     }
 

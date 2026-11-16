@@ -38,6 +38,7 @@ where
         + DbGet<GetCrateGraph>
         + DbGet<Parse>
         + DbGet<TargetPointerSize>
+        + DbGet<crate::incremental::OverflowChecks>
         + Sync,
 {
     let initial_mir = build_effect_lowered_mir(compiler, GenericsStrategy::Mono);

@@ -68,6 +68,7 @@ pub struct DbStorage {
     submodules: HashMapStorage<Submodules>,
     crate_graph: SingletonStorage<GetCrateGraph>,
     ptr_size: SingletonStorage<TargetPointerSize>,
+    overflow_checks: SingletonStorage<OverflowChecks>,
 
     parse_results: HashMapStorage<Parse>,
     visible_definitions: HashMapStorage<VisibleDefinitions>,
@@ -183,6 +184,11 @@ define_intermediate!(150, Submodules -> Arc<BTreeMap<String, SourceFileId>>, DbS
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct TargetPointerSize;
 define_input!(101, TargetPointerSize -> u32, DbStorage);
+
+/// Whether integer arithmetic traps on overflow. When false it wraps.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct OverflowChecks;
+define_input!(102, OverflowChecks -> bool, DbStorage);
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Crate {

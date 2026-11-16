@@ -844,6 +844,25 @@ impl Builder {
         let _ = write!(self.current_item, ", &{id}._0);");
     }
 
+    /// `<result> vN; if (__builtin_<op>_overflow(a, b, &vN)) ANTE_INTEGER_OVERFLOW();`
+    fn write_trapping_binary(
+        &mut self, id: InstructionId, definition: &mir::Definition, mir: &mir::Mir, op: OverflowingIntOp,
+        a: &mir::Value, b: &mir::Value,
+    ) {
+        let result = definition.instruction_result_type(id);
+        self.write_declarator(result, &|this| {
+            let _ = write!(this.current_item, "{id}");
+        });
+        self.record_extern_use("ante_write_stderr", &mir::Type::function(vec![mir::Type::POINTER, mir::Type::int(IntegerKind::Usz)], mir::Type::UNIT));
+        self.record_extern_use("exit", &mir::Type::function(vec![mir::Type::int(IntegerKind::I32)], mir::Type::UNIT));
+        let builtin_name = op.c_builtin_name();
+        let _ = write!(self.current_item, "; if ({builtin_name}(");
+        self.write_value(a, mir);
+        self.write(", ");
+        self.write_value(b, mir);
+        let _ = write!(self.current_item, ", &{id})) ANTE_INTEGER_OVERFLOW();");
+    }
+
     /// Like [Self::write_binary] but casts each operand to its width's signed or unsigned C
     /// type first. C's integer promotions would otherwise force a signedness that's wrong for
     /// `DivUnsigned`/`LessSigned`/etc on sub-`int` widths.
@@ -1188,15 +1207,24 @@ impl Builder {
             mir::Instruction::OverflowingAddInt(a, b) => {
                 self.write_overflowing_binary(id, definition, mir, OverflowingIntOp::Add, a, b)
             },
+            mir::Instruction::TrappingAddInt(a, b) => {
+                self.write_trapping_binary(id, definition, mir, OverflowingIntOp::Add, a, b)
+            },
             mir::Instruction::AddFloat(a, b) => self.write_binary(id, definition, mir, a, " + ", b),
             mir::Instruction::SubInt(a, b) => self.write_binary(id, definition, mir, a, " - ", b),
             mir::Instruction::OverflowingSubInt(a, b) => {
                 self.write_overflowing_binary(id, definition, mir, OverflowingIntOp::Sub, a, b)
             },
+            mir::Instruction::TrappingSubInt(a, b) => {
+                self.write_trapping_binary(id, definition, mir, OverflowingIntOp::Sub, a, b)
+            },
             mir::Instruction::SubFloat(a, b) => self.write_binary(id, definition, mir, a, " - ", b),
             mir::Instruction::MulInt(a, b) => self.write_binary(id, definition, mir, a, " * ", b),
             mir::Instruction::OverflowingMulInt(a, b) => {
                 self.write_overflowing_binary(id, definition, mir, OverflowingIntOp::Mul, a, b)
+            },
+            mir::Instruction::TrappingMulInt(a, b) => {
+                self.write_trapping_binary(id, definition, mir, OverflowingIntOp::Mul, a, b)
             },
             mir::Instruction::MulFloat(a, b) => self.write_binary(id, definition, mir, a, " * ", b),
             mir::Instruction::DivSigned(a, b) => self.write_binary_signed(id, definition, mir, a, " / ", b, true),

@@ -53,16 +53,22 @@ where
         };
 
         Some(match intrinsic.as_ref() {
-            "AddInt" => push_2arg_ins(self, Instruction::AddInt),
+            "AddInt" if self.overflow_checks => push_2arg_ins(self, Instruction::TrappingAddInt),
+            "AddInt" | "WrappingAddInt" => push_2arg_ins(self, Instruction::AddInt),
             "OverflowingAddInt" => push_2arg_ins(self, Instruction::OverflowingAddInt),
+            "TrappingAddInt" => push_2arg_ins(self, Instruction::TrappingAddInt),
             "AddFloat" => push_2arg_ins(self, Instruction::AddFloat),
 
-            "SubInt" => push_2arg_ins(self, Instruction::SubInt),
+            "SubInt" if self.overflow_checks => push_2arg_ins(self, Instruction::TrappingSubInt),
+            "SubInt" | "WrappingSubInt" => push_2arg_ins(self, Instruction::SubInt),
             "OverflowingSubInt" => push_2arg_ins(self, Instruction::OverflowingSubInt),
+            "TrappingSubInt" => push_2arg_ins(self, Instruction::TrappingSubInt),
             "SubFloat" => push_2arg_ins(self, Instruction::SubFloat),
 
-            "MulInt" => push_2arg_ins(self, Instruction::MulInt),
+            "MulInt" if self.overflow_checks => push_2arg_ins(self, Instruction::TrappingMulInt),
+            "MulInt" | "WrappingMulInt" => push_2arg_ins(self, Instruction::MulInt),
             "OverflowingMulInt" => push_2arg_ins(self, Instruction::OverflowingMulInt),
+            "TrappingMulInt" => push_2arg_ins(self, Instruction::TrappingMulInt),
             "MulFloat" => push_2arg_ins(self, Instruction::MulFloat),
 
             "DivSigned" => push_2arg_ins(self, Instruction::DivSigned),

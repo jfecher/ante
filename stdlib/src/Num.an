@@ -278,3 +278,58 @@ impl num_f64: Num F64 add_f64 sub_f64 mul_f64 div_f64 eq_f64 cmp_f64 with
     cmp = cmp_f64
     zero = 0.0
     one = 1.0
+
+trait Wrapping n =
+    wrapping_add: fn n n -> n
+    wrapping_sub: fn n n -> n
+    wrapping_mul: fn n n -> n
+
+impl wrapping_i8: Wrapping I8 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_i16: Wrapping I16 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_i32: Wrapping I32 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_i64: Wrapping I64 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_isz: Wrapping Isz with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_u8: Wrapping U8 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_u16: Wrapping U16 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_u32: Wrapping U32 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_u64: Wrapping U64 with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y
+
+impl wrapping_usz: Wrapping Usz with
+    wrapping_add x y = intrinsic "WrappingAddInt" x y
+    wrapping_sub x y = intrinsic "WrappingSubInt" x y
+    wrapping_mul x y = intrinsic "WrappingMulInt" x y

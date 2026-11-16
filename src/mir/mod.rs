@@ -107,6 +107,7 @@ where
         + inc_complete::DbGet<crate::incremental::GetCrateGraph>
         + inc_complete::DbGet<crate::incremental::Parse>
         + inc_complete::DbGet<crate::incremental::TargetPointerSize>
+        + inc_complete::DbGet<crate::incremental::OverflowChecks>
         + Sync,
 {
     match strategy {
@@ -144,6 +145,7 @@ where
         + DbGet<GetTypeBody>
         + DbGet<GetCrateGraph>
         + DbGet<Parse>
+        + DbGet<crate::incremental::OverflowChecks>
         + Sync,
 {
     collect_all_items(compiler)
@@ -743,12 +745,16 @@ pub enum Instruction {
 
     AddInt(Value, Value),
     OverflowingAddInt(Value, Value),
+    /// Like [Instruction::AddInt] but exits the program on overflow
+    TrappingAddInt(Value, Value),
     AddFloat(Value, Value),
     SubInt(Value, Value),
     OverflowingSubInt(Value, Value),
+    TrappingSubInt(Value, Value),
     SubFloat(Value, Value),
     MulInt(Value, Value),
     OverflowingMulInt(Value, Value),
+    TrappingMulInt(Value, Value),
     MulFloat(Value, Value),
     DivSigned(Value, Value),
     DivUnsigned(Value, Value),
@@ -896,12 +902,15 @@ macro_rules! for_each_instruction_value {
             Instruction::Id(value) => f(value),
             Instruction::AddInt(a, b) => two(a, b),
             Instruction::OverflowingAddInt(a, b) => two(a, b),
+            Instruction::TrappingAddInt(a, b) => two(a, b),
             Instruction::AddFloat(a, b) => two(a, b),
             Instruction::SubInt(a, b) => two(a, b),
             Instruction::OverflowingSubInt(a, b) => two(a, b),
+            Instruction::TrappingSubInt(a, b) => two(a, b),
             Instruction::SubFloat(a, b) => two(a, b),
             Instruction::MulInt(a, b) => two(a, b),
             Instruction::OverflowingMulInt(a, b) => two(a, b),
+            Instruction::TrappingMulInt(a, b) => two(a, b),
             Instruction::MulFloat(a, b) => two(a, b),
             Instruction::DivSigned(a, b) => two(a, b),
             Instruction::DivUnsigned(a, b) => two(a, b),

@@ -1,7 +1,7 @@
-test_int (x: t) {Add t} {Sub t} {Mul t} {Div t} {Mod t} {Display t e} {Copy t} =
+test_int (x: t) {Add t} {Sub t} {Wrapping t} {Mul t} {Div t} {Mod t} {Display t e} {Copy t} =
     print (x + x)
     print " "
-    print (x - x - x)
+    print (wrapping_sub (x - x) x)
     print " "
     print (x * x)
     print " "

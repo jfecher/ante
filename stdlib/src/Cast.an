@@ -172,12 +172,12 @@ decimal_string (var magnitude: U64) (negative: Bool): String =
     if negative then
         ptr_store buf '-'
 
-    var pos = Usz (len - 1)
+    var pos = Usz len
     while
+        pos -= 1
         digit = magnitude % 10 + U64 '0'
         array_insert buf pos (Char digit)
         magnitude /= 10
-        pos -= 1
         magnitude > 0
     do ()
     String.from_parts buf len

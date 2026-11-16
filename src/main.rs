@@ -60,7 +60,7 @@ use crate::{
     cli::{CommandError, EmitTarget, GenericsStrategy, OptLevel},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
     files::{make_compiler, write_metadata},
-    incremental::{TargetPointerSize, TypeCheck, ValidateExports},
+    incremental::{OverflowChecks, TargetPointerSize, TypeCheck, ValidateExports},
     mir::collect_all_items,
     paths::binary_name,
 };
@@ -188,6 +188,7 @@ fn compile(request: CompileRequest) {
 
     let opt_level = optimization_level(options);
     let generics = generics_strategy(options, opt_level);
+    OverflowChecks.set(&mut compiler, opt_level == OptLevel::O0);
 
     let mut program_status = 0;
     let diagnostics = match request.emit {
@@ -475,7 +476,6 @@ fn display_ir(
                 codegen_llvm(compiler, show_time, opt_level, generics, true, None);
             },
             cli::Backend::C => {
-                let _ = opt_level;
                 let mir = mir::lower_generics(compiler, generics);
                 print!("{}", codegen::c::build_c_file(&mir, TargetPointerSize.get(compiler), None));
             },

@@ -4,7 +4,6 @@ import Std.Stream.iota, enumerate, map, filter, iter, all, any, foldl, foldr,
     find, find_map, take, take_while, skip, skip_while, sum, product, for_,
     break_, continue_, emit
 import Std.Fail.try, assert, abort_on_fail
-import Std.Mem.transmute
 
 main () =
     print_to_stdout do
@@ -24,11 +23,10 @@ main () =
     extra_tests ()
 
 fold_tests () =
-    foldl_result = iota 5 |> foldl 0 (-) // (((0 - 1) - 2) - 3) - 4 = -10
-    foldr_result = iota 5 |> foldr 0 (-) // 0 - (1 - (2 - (3 - 4))) = 2
+    foldl_result = iota 5 |> map (fn x -> I64 x) |> foldl 0 (-)
+    foldr_result = iota 5 |> map (fn x -> I64 x) |> foldr 0 (-)
 
-    // pain point: No `Cast Usz I64` nor a `TryCast Usz I64`
-    assert <| (transmute foldl_result : I64) == -10
+    assert <| foldl_result == -10
     assert <| foldr_result == 2
 
 extra_tests () =

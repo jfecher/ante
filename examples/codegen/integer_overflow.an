@@ -1,0 +1,15 @@
+main () =
+    print_to_stdout do
+    println (wrapping_add 2147483647 1)
+    println (wrapping_sub 0u8 1)
+    x: I32 = 2000000000
+    println (x + x)
+
+// args: --delete-binary
+// expected exit status: 1
+// expected stdout:
+// -2147483648
+// 255
+
+// expected stderr:
+// Integer overflow
