@@ -388,16 +388,19 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    /// Start walking the body of a lambda. If `owns_captures` is true, the lambda owns what it captures.
-    pub(super) fn enter_closure(&mut self, lambda: ExprId, owns_captures: bool) {
+    /// Start walking the body of a lambda. If it is a closure owning any of its captures, track
+    /// the non-Copy ones it owns.
+    pub(super) fn enter_closure(&mut self, lambda: ExprId, is_closure: bool) {
+        let context = self.tc.current_extended_context();
+        let owns_captures = is_closure && (context.is_move_closure(lambda) || context.moved_captures(lambda).is_some());
         let state = owns_captures.then(|| {
-            let captured = self.tc.current_extended_context().get_closure_environment(lambda).cloned();
-            let mut captures = Vec::new();
-            for name in captured.unwrap_or_default() {
-                if !self.tc.copy_impl_found(&Owned::new(OwnedRoot::Name(name)), &self.tc.name_types[&name]) {
-                    captures.push(name);
-                }
-            }
+            let captured = context.get_closure_environment(lambda).into_iter().flatten().copied();
+            let captures = captured
+                .filter(|name| {
+                    context.captures_by_value(lambda, *name)
+                        && !self.tc.copy_impl_found(&Owned::new(OwnedRoot::Name(*name)), &self.tc.name_types[name])
+                })
+                .collect();
             ClosureState { captures, move_scopes: self.moves.scope_count() - 1, returns: Vec::new() }
         });
         self.closures.push(state);

@@ -43,7 +43,7 @@ use_before_branch (cond: Bool) =
     then consume r
     else ()
 
-// A closure captures `r` by reference, so it cannot move `r`
+// A closure whose body moves `r` captures it by value, moving it out of the enclosing scope
 capture_then_use () =
     r = Resource 5
     _f () = consume r
@@ -168,12 +168,12 @@ impl drop_two {Drop t d}: Drop (Two t) d with
 //    |                  ^
 // 44 |     else ()
 // 
-// examples/typechecking/affine.an:49:21
+// examples/typechecking/affine.an:50:13
 // 48 |     r = Resource 5
-//    |     // error: Cannot move r because this closure captures it by reference. Use a move fn to capture it by value
-// 49 |     _f () = consume r
-//    |                     ^
-// 50 |     consume r
+// 49 |     _f () = consume r	// note: r was previously moved here
+//    |     --
+// 50 |     consume r	// error: Use of moved value r
+//    |             ^
 // 
 // examples/typechecking/affine.an:63:16
 // 62 |     r = Resource 6

@@ -35,7 +35,7 @@ main () =
 // 
 // // id = c1m723_1944
 // main_c1m723_1944_0 () =
-//     print_to_stdout_c0m21_1603_0 (move fn __4 ->
+//     print_to_stdout_c0m21_1603_0 (fn __4 ->
 //         unused_1 = 1
 //         used_2 = 2
 //         print_c0m21_3948_3 used_2

@@ -44,7 +44,6 @@ use crate::{
 use super::{
     free_variables::FreeVars,
     generics::Generic,
-    patterns::WILDCARD_PATTERN,
     places::{EntryRoot, Place, PlaceEntry, PlaceRoot, ScopeDepth},
     types::{GenericSubstitutions, PrimitiveType, Type, TypeBindings},
 };
@@ -399,7 +398,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             Pattern::Variable(name) => {
                 // Wildcards in one alternative aren't bound by the others, so there's nothing to
                 // drop them with once the alternatives join. Whatever they match is leaked.
-                let owns = owns && !(in_or && self.is_wildcard(*name));
+                let owns = owns && !(in_or && self.tc.is_wildcard(*name));
                 self.bind_name(*name, depth, owns);
             },
             Pattern::Alias(name, inner) => {
@@ -431,10 +430,6 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             },
             Pattern::Error | Pattern::Literal(_) => {},
         }
-    }
-
-    fn is_wildcard(&self, name: NameId) -> bool {
-        self.tc.current_extended_context()[name].as_str() == WILDCARD_PATTERN
     }
 
     /// False if `pattern` matches a `Copy` value such as a `shared` type or a reference. In
@@ -478,21 +473,6 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     /// of which are never moved or dropped.
     fn reads_in_place(&self, expr: ExprId) -> bool {
         self.tc.classify_place(expr).is_some_and(|place| place.is_named())
-    }
-
-    /// Whether `pattern` binds any part of the value it matches. Wildcards are excluded.
-    fn pattern_binds_name(&self, pattern: PatternId) -> bool {
-        match self.tc.pattern_of(pattern).as_ref() {
-            Pattern::Variable(name) => !self.is_wildcard(*name),
-            Pattern::Alias(..) => true,
-            Pattern::Constructor(_, args) => args.iter().any(|arg| self.pattern_binds_name(*arg)),
-            Pattern::ConstructorRest(_, args, name) => {
-                name.is_some() || args.iter().any(|arg| self.pattern_binds_name(*arg))
-            },
-            Pattern::TypeAnnotation(inner, _) => self.pattern_binds_name(*inner),
-            Pattern::Or(alts) => alts.iter().any(|alt| self.pattern_binds_name(*alt)),
-            Pattern::Error | Pattern::Literal(_) => false,
-        }
     }
 
     fn walk_and_check_escapes(&mut self, expr: ExprId, depth: ScopeDepth, usage: Use) {
@@ -995,31 +975,39 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     fn check_moves_in_repeated_context(
         &mut self, body_scope: &MoveScope, body_depth: ScopeDepth, context: RepeatedContext,
     ) {
-        self.report_outer_moves(body_scope, body_depth, |name, location| Diagnostic::MoveInRepeatedContext {
+        self.report_outer_moves(body_scope, body_depth, &[], |name, location| Diagnostic::MoveInRepeatedContext {
             name,
             context,
             location,
         });
     }
 
-    /// Emit `diagnostic` for each place declared outside `body_scope` that was moved within it
+    /// Emit `diagnostic` for each place declared outside `body_scope` that was moved within it,
+    /// other than those within `owned`
     fn report_outer_moves(
-        &mut self, body_scope: &MoveScope, body_depth: ScopeDepth, diagnostic: impl Fn(String, Location) -> Diagnostic,
+        &mut self, body_scope: &MoveScope, body_depth: ScopeDepth, owned: &[Place],
+        diagnostic: impl Fn(String, Location) -> Diagnostic,
     ) {
-        let moved =
-            body_scope.moved_paths().filter(|(path, _)| self.atom_depth(path).is_some_and(|depth| depth < body_depth));
+        let moved = body_scope.moved_paths().filter(|(path, _)| {
+            self.atom_depth(path).is_some_and(|depth| depth < body_depth)
+                && !owned.iter().any(|place| path.is_within(place))
+        });
         for (path, location) in mapvec(moved, |(path, location)| (path.clone(), location.clone())) {
             let name = path.display_name(self.tc.current_extended_context());
             self.tc.compiler.accumulate(diagnostic(name, location));
         }
     }
 
-    /// Closures other than `move` closures capture by reference, so each captured variable still
-    /// owns its value. Emit an error for each such variable moved within the closure's body.
-    fn check_moves_out_of_reference_captures(&mut self, body_scope: &MoveScope, body_depth: ScopeDepth) {
-        self.report_outer_moves(body_scope, body_depth, |name, location| Diagnostic::MoveOutOfReferenceCapture {
-            name,
-            location,
+    /// Closures other than `move` closures capture by reference whatever their body doesn't move.
+    /// Emit an error for each variable moved within the closure's body, which happens if a move
+    /// was only found by the borrow walk.
+    fn check_moves_out_of_reference_captures(
+        &mut self, lambda: ExprId, body_scope: &MoveScope, body_depth: ScopeDepth,
+    ) {
+        let moved = self.tc.current_extended_context().moved_captures(lambda).cloned().unwrap_or_default();
+        let owned = mapvec(moved, |name| self.tc.binding_place(name));
+        self.report_outer_moves(body_scope, body_depth, &owned, |name, location| {
+            Diagnostic::MoveOutOfReferenceCapture { name, location }
         });
     }
 
@@ -1039,8 +1027,8 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    /// A `move` closure captures its free variables by value. Record a move for each
-    /// non-Copy free variable against the outer move tracker.
+    /// Record a move against the outer move tracker for each non-Copy free variable the closure
+    /// `id` captures by value
     fn record_move_captures(&mut self, id: ExprId, self_name: Option<NameId>) {
         let mut context = FreeVars::default();
         if let Some(name) = self_name {
@@ -1050,6 +1038,9 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
         let location = id.locate(self.tc);
         for name in &context.free_vars {
+            if !self.tc.current_extended_context().captures_by_value(id, *name) {
+                continue;
+            }
             let typ = self.tc.name_types[name].clone();
             if !self.tc.expr_is_copy(context.use_sites[name], &typ) {
                 let move_path = self.tc.binding_place(*name);
@@ -1204,7 +1195,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         let new_depth = depth.deeper();
 
         // Only patterns which bind part of the pattern move it, e.g. `x is None` does not move `x`
-        let binds = match_.cases.iter().any(|(pattern, _)| self.pattern_binds_name(*pattern));
+        let binds = match_.cases.iter().any(|(pattern, _)| self.tc.pattern_binds_name(*pattern));
         let scrutinee_usage = if binds { usage } else { usage.without_move() };
         if self.walk_operand(match_.expression, new_depth, scrutinee_usage) && !binds {
             self.own_temporary(match_.expression);
@@ -1387,7 +1378,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         let old_function_depth = self.function_depth.replace(body_depth);
         self.enter_body();
         let is_closure = kind == LambdaKind::Closure && !self.tc.is_impl_method(lambda_expr);
-        self.enter_closure(lambda_expr, is_closure && lambda.is_move);
+        self.enter_closure(lambda_expr, is_closure);
         if is_closure {
             self.infer_called_once(&lambda);
         }
@@ -1405,10 +1396,11 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.exit_closure(lambda_expr, lambda.body, &body, is_closure, completes);
         self.function_rows.pop();
 
-        if lambda.is_move {
+        if is_closure {
             self.record_move_captures(lambda_expr, self_name);
-        } else if is_closure {
-            self.check_moves_out_of_reference_captures(&body, body_depth);
+            if !lambda.is_move {
+                self.check_moves_out_of_reference_captures(lambda_expr, &body, body_depth);
+            }
         }
         (body, completes)
     }

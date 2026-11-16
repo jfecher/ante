@@ -10,7 +10,7 @@ bad () =
 
     var v = Vec.empty ()
     for i in 0 .. 3 do
-        // Everything is captured by reference unless the closure is a `move fn`
+        // What the body doesn't move is captured by reference unless the closure is a `move fn`
         push v (fn () -> i)
 
 main () = ()
@@ -30,7 +30,7 @@ main () = ()
 // 11 |     var v = Vec.empty ()
 // 12 |     for i in 0 .. 3 do	// note: i is only valid until the end of this scope
 //    |         -
-// 13 |         // Everything is captured by reference unless the closure is a `move fn`
+// 13 |         // What the body doesn't move is captured by reference unless the closure is a `move fn`
 // 14 |         push v (fn () -> i)	// error: This reference to i outlives its scope
 //    |                 ^^^^^^^^^^
 // 

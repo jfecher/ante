@@ -119,13 +119,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.record_kinds(&typ, &Kind::Type);
 
         // An unannotated function's type is taken from the shape of its lambda. That doesn't tell
-        // us whether a `move` closure is a `once fn`, so we leave that to the borrow checker
+        // us whether a closure is a `once fn`, which depends on what it captures by value
         let unannotated = matches!(&self.current_extended_context()[definition.pattern], Pattern::Variable(_));
-        let is_move =
-            matches!(&self.current_extended_context()[definition.rhs], Expr::Lambda(lambda) if lambda.is_move);
+        let is_lambda = matches!(&self.current_extended_context()[definition.rhs], Expr::Lambda(_));
         if !is_top_level
             && unannotated
-            && is_move
+            && is_lambda
             && let Type::Function(function) = &typ
         {
             let once = self.next_once_variable();
@@ -1003,12 +1002,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let delayed = self.pop_implicits_scope();
         self.discharge_effects(deferred_effects, &function_type, expr, delayed);
-
-        // Only `move` closures own their captures, so no other closure can move them. Whether a
-        // `move` closure does is left for the borrow checker to decide.
-        if !lambda.is_move {
-            self.bind_if_unbound(&function_type.once, Type::MANY);
-        }
 
         // pop_implicits_scope modifies the function by inserting implicit arguments, we need
         // to check captures only after that step in case any of those arguments are captured.

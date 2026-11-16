@@ -13,7 +13,7 @@
 //! The borrow walk only reads the results, see [TypeChecker::copy_impl_found] and
 //! [TypeChecker::drop_dictionary]. It never searches for implicits itself.
 
-use std::rc::Rc;
+use std::{collections::BTreeSet, rc::Rc};
 
 use rustc_hash::FxHashMap;
 
@@ -224,11 +224,11 @@ impl TypeChecker<'_, '_> {
     }
 
     /// Add to the free variables of `lambda` whatever the `Drop` impls of values it may drop refer
-    /// to. These values are those it owns, plus what it captures if it is a `move` closure. We have
+    /// to. These values are those it owns, plus what it captures by value. We have
     /// to do this here since drops are only inserted once the lambda is borrow checked, after its
     /// environment is decided. If we can't search for a value's impl yet, any local `Drop` impl in
     /// its scope could drop it, so we capture them all.
-    pub(super) fn capture_drop_impls(&mut self, lambda: &mut FreeVars, is_move: bool) {
+    pub(super) fn capture_drop_impls(&mut self, lambda: &mut FreeVars, is_move: bool, moved: &BTreeSet<NameId>) {
         // Dictionaries only refer to locals that are implicits in scope, so we only need to
         // capture those visible outside of the lambda
         if self.implicits_in_scope().all(|name| lambda.defined_in_fn.contains(&name)) {
@@ -237,9 +237,8 @@ impl TypeChecker<'_, '_> {
         let values = lambda.exprs.iter().flat_map(|expr| [OwnedRoot::Value(*expr), OwnedRoot::Referent(*expr)]);
         let mut roots: Vec<_> = values.collect();
         roots.extend(lambda.defined_in_fn.iter().map(|name| OwnedRoot::Name(*name)));
-        if is_move {
-            roots.extend(lambda.free_vars.iter().map(|name| OwnedRoot::Name(*name)));
-        }
+        let by_value = lambda.free_vars.iter().filter(|name| is_move || moved.contains(name));
+        roots.extend(by_value.map(|name| OwnedRoot::Name(*name)));
         for root in roots {
             // We only know the value's parts once we know its type
             for owned in self.values_with_impls(root) {

@@ -1,5 +1,3 @@
-// A closure captures by reference unless it is a `move` closure, so each value it captures is
-// still dropped once by the scope owning it.
 type R = x: I32
 
 impl drop_r: Drop R Print with

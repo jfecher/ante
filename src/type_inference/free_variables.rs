@@ -45,34 +45,51 @@ impl TypeChecker<'_, '_> {
             }
         }
 
-        self.capture_drop_impls(&mut context, is_move);
+        let is_handle_lambda = self.item.handle_lambdas.contains(&id);
+        let moved = if is_move || is_handle_lambda || context.free_vars.is_empty() || self.is_impl_method(id) {
+            BTreeSet::new()
+        } else {
+            self.moved_captures(id, &context.free_vars)
+        };
+
+        self.capture_drop_impls(&mut context, is_move, &moved);
 
         // The body or a branch of a `handle` may need to capture more once it is borrow checked, so
         // we leave its environment to [Self::bind_handle_environment]
-        if !self.item.handle_lambdas.contains(&id) {
-            let env_type = self.environment_type(id, &context.free_vars, is_move);
+        if !is_handle_lambda {
+            let env_type = self.environment_type(id, &context.free_vars, is_move, &moved);
             self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
+        }
+
+        // Only a closure which owns some of its captures can move them. Whether it does is left
+        // for the borrow checker to decide.
+        if !is_move
+            && moved.is_empty()
+            && let Some(function) = self.expr_function_type(id)
+        {
+            self.bind_if_unbound(&function.once, Type::MANY);
         }
 
         if !context.free_vars.is_empty() {
             if is_move {
                 self.current_extended_context_mut().mark_move_closure(id);
             }
+            if !moved.is_empty() {
+                self.current_extended_context_mut().insert_moved_captures(id, moved);
+            }
             self.current_extended_context_mut().insert_closure_environment(id, context.free_vars);
         }
     }
 
     /// Returns the environment type of the lambda `id` capturing `free_vars`. A `move` closure
-    /// captures everything by value. Other closures capture a `var` by mutable reference and
-    /// everything else by shared reference regardless of type, so that the variable still owns its
-    /// value.
-    ///
-    /// A name captured by reference has the same type inside the closure as outside of it since
-    /// each use reads the value through the reference.
-    fn environment_type(&mut self, id: ExprId, free_vars: &BTreeSet<NameId>, is_move: bool) -> Type {
+    /// captures everything by value. Other closures capture what their body may move by value,
+    /// a `var` by mutable reference, and everything else by read-only reference.
+    fn environment_type(
+        &mut self, id: ExprId, free_vars: &BTreeSet<NameId>, is_move: bool, moved: &BTreeSet<NameId>,
+    ) -> Type {
         let captures = mapvec(free_vars, |name| {
             let typ = self.name_types[name].clone();
-            if is_move {
+            if is_move || moved.contains(name) {
                 return typ;
             }
             let kind = match self.item.mutable_definitions.contains(name) {
@@ -120,7 +137,7 @@ impl TypeChecker<'_, '_> {
         let free_vars = context.get_closure_environment(id).cloned().unwrap_or_default();
         let is_move = context.is_move_closure(id);
         let Some(Type::Function(function)) = self.expr_types.get(&id).cloned() else { return };
-        let env_type = self.environment_type(id, &free_vars, is_move);
+        let env_type = self.environment_type(id, &free_vars, is_move, &BTreeSet::new());
         self.unify(&env_type, &function.environment, TypeErrorKind::ClosureEnv, id);
     }
 

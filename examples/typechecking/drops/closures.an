@@ -1,5 +1,5 @@
-// A closure borrows the values it captures unless they are `Copy` or it is a `move` closure.
-// A borrowed value has the same type within the closure but cannot be moved out of it.
+// A closure borrows the values it captures unless its body moves them or it is a `move` closure.
+// A borrowed value has the same type within the closure.
 make (): String = "captured" ++ "!"
 
 consume (_s: String): Unit = ()
@@ -11,6 +11,7 @@ escapes () =
 moves_out () =
     s = make ()
     _f = fn () -> consume s
+    println s
 
 moves_out_of_move_closure () =
     s = make ()
@@ -31,6 +32,15 @@ clones () =
     s = make ()
     move fn () -> consume (clone s)
 
+moves_some () =
+    s = make ()
+    t = make ()
+    f = fn () ->
+        println t
+        consume s
+    f ()
+    println t
+
 main () = ()
 
 // args: --check --no-color
@@ -43,11 +53,12 @@ main () = ()
 //  9 |     fn () -> println s	// error: This reference to s outlives its scope
 //    |     ^^^^^^^^^^^^^^^^^^
 // 
-// examples/typechecking/drops/closures.an:13:27
+// examples/typechecking/drops/closures.an:14:13
 // 12 |     s = make ()
-//    |     // error: Cannot move s because this closure captures it by reference. Use a move fn to capture it by value
-// 13 |     _f = fn () -> consume s
-//    |                           ^
+// 13 |     _f = fn () -> consume s	// note: s was previously moved here
+//    |          ------------------
+// 14 |     println s	// error: Use of moved value s
+//    |             ^
 // 
 // Found 2 errors and 0 warnings
 

@@ -1,16 +1,11 @@
 bad_mutable_capture () =
     var v = 5
-    // Closures hold refs to variables by default unless they're move closures
+    // Variables are captured by reference by default
     fn () -> v
 
 bad_returns_ref () =
     x = 5
     fn () -> ref x
-
-// An immutable local is captured by reference as well, even one which is `Copy`
-immutable_capture () =
-    v = 5
-    fn () -> v
 
 main () = ()
 
@@ -21,7 +16,7 @@ main () = ()
 // 1 | bad_mutable_capture () =
 // 2 |     var v = 5	// note: v is only valid until the end of this scope
 //   |         -
-// 3 |     // Closures hold refs to variables by default unless they're move closures
+// 3 |     // Closures hold refs to variables their body doesn't move unless they're move closures
 // 4 |     fn () -> v	// error: This reference to v outlives its scope
 //   |     ^^^^^^^^^^
 // 
@@ -32,12 +27,5 @@ main () = ()
 //  8 |     fn () -> ref x	// error: This reference to x outlives its scope
 //    |     ^^^^^^^^^^^^^^
 // 
-// examples/typechecking/borrows/closure_capture_escape.an:13:5
-// 11 | immutable_capture () =
-// 12 |     v = 5	// note: v is only valid until the end of this scope
-//    |     -
-// 13 |     fn () -> v	// error: This reference to v outlives its scope
-//    |     ^^^^^^^^^^
-// 
-// Found 3 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

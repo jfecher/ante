@@ -1,0 +1,44 @@
+// A closure captures what its body moves by value and everything else by reference
+import Std.String.parse_i32
+
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop (r: R) = println "drop ${r.x}"
+
+show (r: ref R) = println "show ${r.x}"
+
+take (r: R) = println "take ${r.x}"
+
+main () = print_to_stdout do
+    a = R 1
+    b = R 2
+    f = fn () ->
+        show b
+        take a
+    f ()
+    show b
+
+    // A closure that is never called drops what it owns
+    c = R 3
+    _g = fn () -> take c
+    println "g unused"
+
+    // Regression: `~>` wraps its lhs in a closure, we used to require `clone s` when it was captured by reference
+    s: String = "12"
+    i = parse_i32 s ~> on_fail do 0
+    println i
+    println "end"
+
+// args: --delete-binary
+// expected stdout:
+// show 2
+// take 1
+// drop 1
+// show 2
+// g unused
+// 12
+// end
+// drop 3
+// drop 2
+

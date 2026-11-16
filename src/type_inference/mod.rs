@@ -56,6 +56,7 @@ pub mod generics;
 pub mod get_type;
 mod implicits;
 pub mod kinds;
+mod moved_captures;
 pub mod patterns;
 mod places;
 mod recursive_types;

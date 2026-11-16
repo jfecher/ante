@@ -84,6 +84,9 @@ pub struct ExtendedTopLevelContext {
     /// Closures declared with `move`, which capture by value instead of by reference.
     move_closures: FxHashSet<ExprId>,
 
+    /// The captures each other closure moves, which it captures by value
+    moved_captures: FxHashMap<ExprId, BTreeSet<NameId>>,
+
     /// Function values coerced to a wider effect row, mapped to the function type they were
     /// coerced to. The MIR builder wraps each in a closure of that type capturing the original.
     function_coercions: FxHashMap<ExprId, Type>,
@@ -228,6 +231,7 @@ impl ExtendedTopLevelContext {
             instantiations: Default::default(),
             closure_environments: Default::default(),
             move_closures: Default::default(),
+            moved_captures: Default::default(),
             function_coercions: Default::default(),
             dictionary_coercions: Default::default(),
             builtin_dictionaries: Default::default(),
@@ -434,8 +438,23 @@ impl ExtendedTopLevelContext {
 
     /// Every name captured by reference by some closure
     pub fn names_captured_by_reference(&self) -> FxHashSet<NameId> {
-        let by_reference = self.closure_environments.iter().filter(|(closure, _)| !self.is_move_closure(**closure));
-        by_reference.flat_map(|(_, names)| names.iter().copied()).collect()
+        let captures =
+            self.closure_environments.iter().flat_map(|(closure, names)| names.iter().map(|name| (*closure, *name)));
+        captures.filter(|(closure, name)| !self.captures_by_value(*closure, *name)).map(|(_, name)| name).collect()
+    }
+
+    pub(crate) fn insert_moved_captures(&mut self, closure: ExprId, names: BTreeSet<NameId>) {
+        self.moved_captures.insert(closure, names);
+    }
+
+    /// The captures of a closure other than a `move` closure that it moves
+    pub(crate) fn moved_captures(&self, closure: ExprId) -> Option<&BTreeSet<NameId>> {
+        self.moved_captures.get(&closure)
+    }
+
+    /// True if `closure` captures `name` by value rather than by reference
+    pub fn captures_by_value(&self, closure: ExprId, name: NameId) -> bool {
+        self.is_move_closure(closure) || self.moved_captures.get(&closure).is_some_and(|names| names.contains(&name))
     }
 
     pub(crate) fn insert_function_coercion(&mut self, expr: ExprId, expected: Type) {
@@ -483,6 +502,9 @@ impl ExtendedTopLevelContext {
         }
         if self.move_closures.contains(&from) {
             self.move_closures.insert(to);
+        }
+        if let Some(moved) = self.moved_captures.get(&from).cloned() {
+            self.moved_captures.insert(to, moved);
         }
         if let Some(coercion) = self.function_coercions.get(&from).cloned() {
             self.function_coercions.insert(to, coercion);

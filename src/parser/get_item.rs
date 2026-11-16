@@ -749,7 +749,7 @@ fn desugar_logical_operators(expr: ExprId, context: &mut DesugarContext, is_or: 
     );
 }
 
-/// Desugars `do <body>` into `move fn _ -> <body>)`.
+/// Desugars `do <body>` into `fn _ -> <body>`.
 fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
     let Expr::Do(do_) = context[expr].clone() else { unreachable!() };
     let location = context.expr_location(expr).clone();
@@ -761,7 +761,7 @@ fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
         parameters: vec![Parameter::new(param)],
         return_type: None,
         body: do_.body,
-        is_move: true,
+        is_move: false,
         effects: None,
     });
     context.set_expr(expr, lambda);

@@ -1576,14 +1576,16 @@ where
         // parameters.
         let generics_count = self.generics_in_scope.len() as u32;
 
-        // A `move` closure holds its own copy of each variable it captures. If the original
+        // A closure holds its own copy of each variable it captures by value. If the original
         // variable has a slot, the copy needs one too since it may be assigned to or captured by
         // reference in a nested closure.
-        let by_reference = !self.context().is_move_closure(expr);
-        let reference_captures = self.reference_captures.get_or_init(|| self.context().names_captured_by_reference());
+        let context = self.context();
+        let reference_captures = self.reference_captures.get_or_init(|| context.names_captured_by_reference());
         let needs_slot = |name: &NameId| self.slot_locals.contains(name) || reference_captures.contains(name);
-        let copied = self.context().get_closure_environment(expr).filter(|_| !by_reference).into_iter().flatten();
-        let copied_slots: Vec<NameId> = copied.filter(|name| needs_slot(name)).copied().collect();
+        let captured = context.get_closure_environment(expr).into_iter().flatten();
+        let (copied, by_reference): (Vec<NameId>, Vec<NameId>) =
+            captured.copied().partition(|name| context.captures_by_value(expr, *name));
+        let copied_slots: Vec<NameId> = copied.into_iter().filter(|name| needs_slot(name)).collect();
 
         let saved_scope = self.take_scope();
 
@@ -1619,9 +1621,7 @@ where
                 );
 
                 // Variables captured by reference are pointers to the original variable
-                if by_reference {
-                    this.slot_locals.extend(free_vars.iter().copied());
-                }
+                this.slot_locals.extend(by_reference.iter().copied());
                 for var in &copied_slots {
                     this.give_slot(*var);
                 }
@@ -1686,10 +1686,10 @@ where
     ) -> Value {
         assert!(!free_vars.is_empty() || !capability_values.is_empty());
 
-        let by_reference = !self.context().is_move_closure(closure);
         let mut values = mapvec(free_vars, |var| {
             let value = *self.local_variables.get(var).unwrap();
             let has_slot = self.slot_locals.contains(var);
+            let by_reference = !self.context().captures_by_value(closure, *var);
 
             match (by_reference, has_slot) {
                 (true, true) | (false, false) => value,
