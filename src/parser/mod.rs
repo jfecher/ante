@@ -1914,6 +1914,8 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
+    const ASSIGNMENT_PRECEDENCE: i8 = 2;
+
     /// Returns the precedence of an operator along with
     /// whether or not it is right-associative.
     /// Returns None if the given Token is not an operator
@@ -1925,7 +1927,7 @@ impl<'tokens> Parser<'tokens> {
             | Token::SubAssign
             | Token::MulAssign
             | Token::DivAssign
-            | Token::ModAssign => Some((2, true)),
+            | Token::ModAssign => Some((Self::ASSIGNMENT_PRECEDENCE, true)),
             Token::ApplyLeft => Some((3, true)),
             Token::TildeArrow => Some((4, false)),
             Token::Comma if !ban_comma => Some((5, true)),
@@ -2062,7 +2064,15 @@ impl<'tokens> Parser<'tokens> {
             // Terms can contain trailing expressions (notably unparenthesized lambdas).
             // Ensure those are limited to the current precedence level too, see issue #233.
             let new_min_prec = if right_associative { floor_prec - 1 } else { floor_prec };
-            let value = self.parse_term(new_min_prec, ban_do)?;
+
+            // Allow `x := if ...`
+            let keyword_rhs = prec == Self::ASSIGNMENT_PRECEDENCE
+                && matches!(self.current_token(), Token::If | Token::Match | Token::Handle | Token::Loop);
+            let value = if keyword_rhs {
+                self.parse_expression_trailing(new_min_prec, ban_do)?
+            } else {
+                self.parse_term(new_min_prec, ban_do)?
+            };
             results.push(value);
         }
 

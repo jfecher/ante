@@ -1,0 +1,26 @@
+f (var x: I32) =
+    x := if x == 1 then 10 else 20
+    x += if x > 5 then 1 else 2
+    x *= match x
+        | 11 -> 3
+        | _ -> 0
+    x := if x == 33 then
+        5
+    else
+        6
+    x
+
+// args: -e ast --no-color
+// expected stdout:
+// f (var x: I32) =
+//     x := if x == 1 then 10 else 20
+//     x += if x > 5 then 1 else 2
+//     x *= match x
+//     | 11 -> 3
+//     | _ -> 0
+//     x := if x == 33 then 
+//         5
+//     else 
+//         6
+//     x
+
