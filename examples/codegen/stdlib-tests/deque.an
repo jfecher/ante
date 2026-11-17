@@ -1,0 +1,62 @@
+import Std.Deque.push_back, push_front, pop_front, pop_back, front, back, get, clear, drop_deque,
+    stream_ref_deque, stream_deque, print_deque, extract_deque, insert_deque, eq_deque, clone_deque
+import Std.Deque
+import Std.Fail.try, assert, abort_on_fail
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    abort_on_fail do
+
+    var d = Deque.empty ()
+    assert <| is_empty d
+    assert <| (try fn () -> front d) is None
+    for i in 0 .. 10 do
+        push_back d i
+        push_front d (100 + i)
+    println d
+    assert <| len d == 20
+
+    assert <| pop_front d is Some 109
+    assert <| pop_back d is Some 9
+    assert <| front d == 108
+    assert <| back d == 8
+    assert <| d.[3] == 105
+
+    d.[0] := 7
+    assert <| get d 0 == 7
+    println d
+
+    copy = clone d
+    assert <| copy == d
+
+    // Wrap around the ring buffer repeatedly
+    var queue = Deque.of [1, 2, 3]
+    for i in 4 .. 50 do
+        push_back queue i
+        pop_front queue
+        ()
+    println queue
+
+    var strings = Deque.empty ()
+    push_back strings "b"
+    push_front strings "a"
+    push_back strings "c"
+    iter (ref strings) println
+    clear strings
+    assert <| is_empty strings
+
+    iter queue println
+
+// args: --delete-binary
+// expected stdout:
+// [109, 108, 107, 106, 105, 104, 103, 102, 101, 100, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+// [7, 107, 106, 105, 104, 103, 102, 101, 100, 0, 1, 2, 3, 4, 5, 6, 7, 8]
+// [47, 48, 49]
+// a
+// b
+// c
+// 47
+// 48
+// 49
+

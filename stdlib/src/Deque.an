@@ -1,0 +1,188 @@
+import Std.C.malloc, memcpy, free
+import Std.Mem.Type, null, forget
+
+export Deque, empty, of, with_capacity, is_empty, len, capacity, reserve,
+    push_back, push_front, pop_back, pop_front, front, back, get, clear, extend,
+    print_deque, extract_deque, insert_deque, stream_deque, stream_ref_deque,
+    eq_deque, clone_deque, drop_deque
+
+/// A double-ended queue implemented as a growable ring buffer.
+/// Pushing and popping from either end is O(1) amortized.
+type Deque t =
+    data: Ptr t
+    head: Usz
+    len: Usz
+    cap: Usz
+
+empty () = Deque (null ()) 0 0 0
+
+with_capacity (cap: Usz): Deque t =
+    if cap == 0 then return empty ()
+    Deque with
+        data = malloc (cap * size_of (MkType: Type t))
+        head = 0
+        len = 0
+        cap
+
+/// Create a new Deque with the elements from the given stream
+of (stream: s) {Stream s t e}: Deque t can Panic, e =
+    var deque = empty ()
+    extend deque stream
+    deque
+
+extend (deque: mut Deque t) (stream: s) {Stream s t e}: Unit can Panic, Mutate 'deque, e =
+    iter stream (push_back deque _)
+
+is_empty (d: ref Deque t) = d.len == 0
+
+len (d: ref Deque t) = d.len
+
+capacity (d: ref Deque t) = d.cap
+
+/// The position in `data` of the element at logical index `i`
+physical_index (d: ref Deque t) (i: Usz): Usz =
+    index = d.head + i
+    if index >= d.cap then index - d.cap else index
+
+slot (d: ref Deque t) (i: Usz): Ptr t =
+    offset d.data (physical_index d i)
+
+/// Reserve space for at least `additional` more elements, moving the
+/// elements to the front of a new buffer if it must grow.
+reserve (d: mut Deque t) (additional: Usz): Unit can Panic, Mutate 'd =
+    needed = d.len + additional
+    if needed <= d.cap then return ()
+
+    doubled = d.cap * 2
+    new_cap = if needed > doubled then needed else if doubled < 4 then 4 else doubled
+    elem_size = size_of (MkType: Type t)
+    new_data: Ptr t = malloc (new_cap * elem_size)
+    if new_data == null () then
+        panic "Error in reserving more elements for Deque"
+
+    if d.len != 0 then
+        first_part = if d.head + d.len > d.cap then d.cap - d.head else d.len
+        memcpy new_data (offset d.data d.head) (first_part * elem_size)
+        memcpy (offset new_data first_part) d.data ((d.len - first_part) * elem_size)
+
+    if d.cap != 0 then
+        free d.data
+
+    d.data := new_data
+    d.head := 0
+    d.cap := new_cap
+
+/// Push an element onto the back of the deque
+push_back (d: mut Deque t) (elem: t): Unit can Panic, Mutate 'd =
+    if d.len == d.cap then
+        reserve d 1
+    ptr_store (slot d d.len) elem
+    d.len += 1
+
+/// Push an element onto the front of the deque
+push_front (d: mut Deque t) (elem: t): Unit can Panic, Mutate 'd =
+    if d.len == d.cap then
+        reserve d 1
+    d.head := if d.head == 0 then d.cap - 1 else d.head - 1
+    ptr_store (offset d.data d.head) elem
+    d.len += 1
+
+/// Remove and return the last element, returning None if the deque was empty
+pop_back (d: mut Deque t): Maybe t can Mutate 'd =
+    if d.len == 0 then None
+    else
+        d.len -= 1
+        Some (deref_ptr (slot d d.len))
+
+/// Remove and return the first element, returning None if the deque was empty
+pop_front (d: mut Deque t): Maybe t can Mutate 'd =
+    if d.len == 0 then None
+    else
+        elem = deref_ptr (offset d.data d.head)
+        d.head := physical_index d 1
+        d.len -= 1
+        Some elem
+
+/// Retrieves a reference to the element at the given 0-based index from the front.
+/// Fails if the index is out of bounds.
+get (d: ref Deque t) (i: Usz): ref! t can Fail =
+    fail_if (i >= d.len)
+    transmute (slot d i)
+
+/// A reference to the first element. Fails if the deque is empty.
+front (d: ref Deque t): ref! t can Fail = get d 0
+
+/// A reference to the last element. Fails if the deque is empty.
+back (d: ref Deque t): ref! t can Fail =
+    if d.len == 0 then fail ()
+    // Using get here would perform an additional bounds check
+    transmute (slot d (d.len - 1))
+
+/// Remove and drop every element. The capacity is unchanged.
+clear (d: mut Deque t) {Drop t e}: Unit can e, Mutate 'd =
+    for i in 0 .. d.len do
+        drop (deref_ptr (slot d i))
+    d.head := 0
+    d.len := 0
+
+impl print_deque {Display t e}: Display (Deque t) e with
+    print d =
+        print "["
+        for i in 0 .. d.len do
+            if i != 0 then print ", "
+            elem: ref t = ptr_to_ref (slot d i)
+            print elem
+        print "]"
+
+impl extract_deque: Extract (ref 'd Deque t) Usz (ref 'd! t) Panic with
+    (.[]) d i =
+        if i >= d.len then
+            panic "Deque index out of bounds"
+        transmute (slot d i)
+
+impl insert_deque {Drop t e}: Insert (mut 'd Deque t) Usz t (Panic & Mutate 'd! & e) with
+    (.[]:=) d i e =
+        element = get d i ~> panic_on_fail
+        element := e
+
+impl stream_deque: Stream (Deque a) a pure with
+    stream d =
+        for i in 0 .. d.len do
+            emit (deref_ptr (slot d i))
+
+        // Every element was moved out, so only the buffer is left to free
+        if d.cap != 0 then
+            free d.data
+        forget d
+
+impl stream_ref_deque: Stream (ref Deque a) (ref a) pure with
+    stream d =
+        for i in 0 .. d.len do
+            emit (ptr_to_ref (slot d i))
+
+impl eq_deque {Eq t e}: Eq (Deque t) e with
+    (==) l r =
+        if l.len != r.len then
+            return false
+        for i in 0 .. l.len do
+            a: ref t = ptr_to_ref (slot l i)
+            b: ref t = ptr_to_ref (slot r i)
+            if a != b then
+                return false
+        true
+
+impl clone_deque {Clone t}: Clone (Deque t) with
+    clone d =
+        var result = with_capacity d.len
+        for i in 0 .. d.len do
+            elem: ref t = ptr_to_ref (slot d i)
+            ptr_store (offset result.data i) (clone elem)
+        result.len := d.len
+        result
+
+impl drop_deque {Drop t e}: Drop (Deque t) e with
+    drop (d: Deque t) =
+        if d.cap != 0 then
+            for i in 0 .. d.len do
+                drop (deref_ptr (slot d i))
+            free d.data
