@@ -16,7 +16,7 @@ main () = ()
 // 1 | bad_mutable_capture () =
 // 2 |     var v = 5	// note: v is only valid until the end of this scope
 //   |         -
-// 3 |     // Closures hold refs to variables their body doesn't move unless they're move closures
+// 3 |     // Variables are captured by reference by default
 // 4 |     fn () -> v	// error: This reference to v outlives its scope
 //   |     ^^^^^^^^^^
 // 

@@ -196,6 +196,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::Pattern::Literal(Literal::Integer(value, _kind)) => {
                 Pattern::Constructor(Constructor::Int(value.to_bits()), Vec::new())
             },
+            cst::Pattern::Literal(Literal::Char(value)) => {
+                Pattern::Constructor(Constructor::Int(*value as u8 as u64), Vec::new())
+            },
             cst::Pattern::Literal(_) => {
                 let location = pattern.locate(self);
                 self.compiler.accumulate(Diagnostic::InvalidPattern { location });
@@ -473,7 +476,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         let (definition_type, _) = self.checker.match_through_reference(&self.checker.path_types[&branch_var]);
         let definition_type = &definition_type;
         match self.checker.follow_type(definition_type) {
-            Type::Primitive(PrimitiveType::Int(_)) => {
+            Type::Primitive(PrimitiveType::Int(_) | PrimitiveType::Char) => {
                 let (cases, fallback) = self.compile_int_cases(rows, branch_var)?;
                 Ok(DecisionTree::Switch(branch_var, cases, Some(fallback)))
             },
@@ -929,7 +932,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         // used in Noir may change we recommend a match-all pattern instead.
         // If the type is a type variable, we don't know exactly which integer type this may
         // resolve to so also just suggest a catch-all in that case.
-        if typ.is_integer() || self.type_is_bindable(typ) {
+        let is_char = matches!(self.checker.follow_type(typ), Type::Primitive(PrimitiveType::Char));
+        if typ.is_integer() || is_char || self.type_is_bindable(typ) {
             return vec![(Arc::new(WILDCARD_PATTERN.to_string()), Vec::new())];
         }
 

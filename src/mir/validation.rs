@@ -548,7 +548,7 @@ impl Definition {
                 Some(TerminatorInstruction::Switch { int_value, cases, else_, end: _ }) => {
                     let int_type = mir.type_of_value(int_value, self);
                     assert!(
-                        matches!(int_type, Type::Primitive(PrimitiveType::Int(_))),
+                        matches!(int_type, Type::Primitive(PrimitiveType::Int(_) | PrimitiveType::Char)),
                         "Switch value type is not an integer, got `{int_type}`"
                     );
 

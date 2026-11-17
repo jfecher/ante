@@ -1,0 +1,17 @@
+main () =
+    print_to_stdout do
+    match 'a'
+    | 'a' -> println "a"
+    | 'b' -> println "b"
+
+// args: --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/char_pattern_missing_case.an:3:11
+// 2 |     print_to_stdout do
+// 3 |     match 'a'	// error: Missing case: _
+//   |           ^^^
+// 4 |     | 'a' -> println "a"
+// 
+// Found 1 error and 0 warnings
+

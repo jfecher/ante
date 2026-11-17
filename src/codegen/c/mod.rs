@@ -742,9 +742,10 @@ impl Builder {
                 self.write("switch (");
                 self.write_value(int_value, mir);
                 self.write(") { ");
-                let mir::Type::Primitive(mir::PrimitiveType::Int(kind)) = mir.type_of_value(int_value, definition)
-                else {
-                    unreachable!("Switch value type is not an integer")
+                let kind = match mir.type_of_value(int_value, definition) {
+                    mir::Type::Primitive(mir::PrimitiveType::Int(kind)) => kind,
+                    mir::Type::Primitive(mir::PrimitiveType::Char) => IntegerKind::U8,
+                    _ => unreachable!("Switch value type is not an integer"),
                 };
                 for (tag, target) in cases {
                     self.write("case ");

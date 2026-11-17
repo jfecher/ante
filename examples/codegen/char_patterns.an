@@ -1,0 +1,33 @@
+import Std.String.chars
+
+classify (c: Char): I32 =
+    match c
+    | '#' -> 1
+    | '.' | ' ' -> 2
+    | '\n' -> 3
+    | _ -> 0
+
+main () =
+    print_to_stdout do
+    chars "#. \nx" |> map classify |> iter println
+
+    c = 'v'
+    match ref c
+    | '^' -> println "up"
+    | 'v' -> println "down"
+    | _ -> println "other"
+
+    match ('a', 'b')
+    | ('a', 'c') -> println "ac"
+    | ('a', 'b') -> println "ab"
+    | _ -> println "neither"
+
+// args: --delete-binary
+// expected stdout:
+// 1
+// 2
+// 2
+// 3
+// 0
+// down
+// ab
