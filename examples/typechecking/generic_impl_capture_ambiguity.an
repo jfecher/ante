@@ -1,0 +1,21 @@
+// A generic impl that wraps another impl of the same trait also matches the local
+// `{Cmp t}`, so this is ambiguous. It used to silently pick `my_rev`, reversing `ge`.
+impl my_rev {cmp: Cmp t c}: Cmp t with
+    (<) l r = Cmp.(<) r l {cmp}
+
+ge (a: ref t) (b: ref t) {Cmp t} = not (a < b)
+
+main () =
+    print_to_stdout do
+    println (ge (ref 1i32) (ref 2i32) {cmp_i32})
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/generic_impl_capture_ambiguity.an:6:43
+//   | // error: Multiple matching implicits found for type Cmp t required by <: _, my_rev
+// 6 | ge (a: ref t) (b: ref t) {Cmp t} = not (a < b)
+//   |                                           ^
+// 
+// Found 1 error and 0 warnings
+

@@ -954,9 +954,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // TODO: This prevents infinite recursion but still slows us down when searching for an implicit
         // N levels deep. We could check for `Type::ERROR` object/implicit types to help catch this early.
         let arbitrary_recursion_limit = 8;
-        // The type bindings parameter is for recursive calls when we need to find implicits
-        // to slot in for another implicit function's arguments.
-        let no_bindings = TypeBindings::default();
+        let mut found = TypeBindings::default();
 
         // Local implicits' types may still be refined, so only searches without them are cached
         let mut cacheable = implicits_in_local_scope.is_empty();
@@ -970,10 +968,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let result = self.find_implicit_value_inner(
             implicit,
             implicits_in_local_scope,
-            &no_bindings,
+            &mut found,
             &mut cacheable,
             arbitrary_recursion_limit,
         );
+
+        if result.is_ok() {
+            self.bindings.extend(found);
+        }
 
         if let Err(error) = &result
             && cacheable
@@ -985,7 +987,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn find_implicit_value_inner(
-        &mut self, implicit: DelayedImplicit, implicits_in_local_scope: &[NameId], type_bindings: &TypeBindings,
+        &mut self, implicit: DelayedImplicit, implicits_in_local_scope: &[NameId], type_bindings: &mut TypeBindings,
         cacheable: &mut bool, fuel: u32,
     ) -> Result<(), ImplicitError> {
         let target_type = self.expr_types[&implicit.destination].clone();
@@ -1133,7 +1135,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else if candidates.len() == 1 {
             let candidate = candidates.remove(0);
             let location = function.locate(self);
-            self.create_implicit_argument_expr(candidate, destination, may_widen, location);
+            self.create_implicit_argument_expr(candidate, destination, may_widen, location, type_bindings);
             Ok(())
         } else {
             Err(ImplicitError::Multiple(candidates, target_type))
@@ -1235,7 +1237,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Fill in `implicit`, of the trait type `target`, with the compiler-provided dictionary `builtin`
     fn provide_builtin_dictionary(
         &mut self, builtin: BuiltinImpl, target: Type, implicit: DelayedImplicit, implicits_in_local_scope: &[NameId],
-        type_bindings: &TypeBindings, cacheable: &mut bool, fuel: u32,
+        type_bindings: &mut TypeBindings, cacheable: &mut bool, fuel: u32,
     ) -> Result<(), ImplicitError> {
         let destination = implicit.destination;
         let location = destination.locate(self);
@@ -1279,8 +1281,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // The impl of a dictionary is whatever its impl data is
         if let Type::Application(_, args) = &target
             && let Some(arg) = args.get(impl_index)
+            && let Type::Variable(id) = arg.follow_two(&self.bindings, type_bindings)
         {
-            self.bind_if_unbound(arg, impl_data);
+            type_bindings.insert(id, impl_data);
         }
         let context = self.current_extended_context_mut();
         context.insert_expr(destination, expr);
@@ -1343,7 +1346,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     arguments: Vec::new(),
                 });
             },
-            ImplicitMatch::Call(function_type, type_bindings) => {
+            ImplicitMatch::Call(function_type, mut type_bindings) => {
                 // TODO: Make this algorithm iterative instead of recursive
                 let mut arguments = Vec::new();
                 for parameter in &function_type.parameters {
@@ -1358,7 +1361,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             .find_implicit_value_inner(
                                 implicit,
                                 implicits_in_local_scope,
-                                &type_bindings,
+                                &mut type_bindings,
                                 cacheable,
                                 fuel - 1,
                             )
@@ -1645,6 +1648,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// `may_widen` is true if the dictionary created may be coerced to the target type's wider effect args
     fn create_implicit_argument_expr(
         &mut self, candidate: Candidate, destination: ExprId, may_widen: bool, location: Location,
+        type_bindings: &mut TypeBindings,
     ) {
         let path = self.push_path(
             cst::Path::ident(candidate.name.clone(), location.clone()),
@@ -1658,8 +1662,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let target_type = &self.expr_types[&destination];
         let dictionary_target = may_widen.then(|| target_type.clone());
 
-        // Commit type bindings from the prior `try_unify` call(s) made to find this implicit
-        self.bindings.extend(candidate.type_bindings);
+        // Commit type bindings from any prior try_unify calls made to find this implicit
+        *type_bindings = candidate.type_bindings;
 
         let context = self.current_extended_context_mut();
         context.insert_path_origin(path, candidate.origin);
