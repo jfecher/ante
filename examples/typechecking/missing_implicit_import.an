@@ -1,4 +1,4 @@
-import Std.HashMap.HashMap
+import Std.HashMap.HashMap, drop_hashmap
 import Std.HashMap
 
 main () =

@@ -1486,6 +1486,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // bound variables would hide
         let target_type = &target_type.follow_all(&self.bindings);
 
+        // Any impl of the trait would match an unknown type, so a suggestion would be arbitrary
+        if Self::type_args_all_unbound(target_type) {
+            return Vec::new();
+        }
+
         // Skip names already visible in the current file so we don't suggest imports the user already has.
         let visible = VisibleImplicits(item.source_file).get(self.compiler);
         let mut skip = BTreeSet::new();

@@ -1,4 +1,4 @@
-import Std.HashMap.clear, insert, remove, get,
+import Std.HashMap.clear, insert, remove, get, drop_hashmap,
     get_entry, stream_map, eq_hashmap
 import Std.HashMap
 import Std.Stream.iter, map

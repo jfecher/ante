@@ -1,6 +1,6 @@
 import Std.Sync.Thread.spawn
 import Std.Sync.Atomic
-import Std.Sync.Atomic.Atomic
+import Std.Sync.Atomic.Atomic, drop_atomic
 
 // Two threads each increment a shared lock-free atomic 1000 times.
 // The final value is exactly 2000 (no lost updates).

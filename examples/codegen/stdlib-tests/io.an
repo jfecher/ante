@@ -1,6 +1,6 @@
 import Std.IO.create_dir, create_dir_all
 import Std.IO.File
-import Std.IO.File.iterator_file, print_to_file, write
+import Std.IO.File.iterator_file, print_to_file, write, drop_file
 import Std.C
 import Std.C.system
 import Std.Fail.Fail, try, abort_on_fail, assert

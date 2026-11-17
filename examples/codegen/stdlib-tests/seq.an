@@ -1,5 +1,5 @@
 import Std.Seq
-import Std.Seq.Seq, iter, clone_seq, eq_seq
+import Std.Seq.Seq, iter, clone_seq, eq_seq, drop_seq
 import Std.Stream.iota
 
 type Tag = id: U32

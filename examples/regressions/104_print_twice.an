@@ -1,5 +1,5 @@
 import Std.HashMap
-import Std.HashMap.print_hashmap
+import Std.HashMap.print_hashmap, drop_hashmap
 import Std.Hash.hash_u8
 
 main () =

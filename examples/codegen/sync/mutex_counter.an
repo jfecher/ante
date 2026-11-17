@@ -1,8 +1,8 @@
 import Std.Sync.Thread.spawn
 import Std.Sync.Mutex
-import Std.Sync.Mutex.Mutex
+import Std.Sync.Mutex.Mutex, drop_mutex
 import Std.Sync.Arc
-import Std.Sync.Arc.Arc, clone_arc
+import Std.Sync.Arc.Arc, clone_arc, drop_arc
 
 // Two threads each increment a value guarded by a Mutex 1000 times.
 // with_lock provides mutual exclusion, so the final value is exactly 2000.

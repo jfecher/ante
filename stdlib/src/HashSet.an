@@ -1,6 +1,6 @@
 import Std.Hash.Hash
 import Std.HashMap
-import Std.HashMap.HashMap, Entry, clone_hashmap, stream_map
+import Std.HashMap.HashMap, Entry, clone_hashmap, stream_map, drop_hashmap
 
 export HashSet, Hash, len, is_empty, empty, of,
     clear, contains, insert, remove, extend,

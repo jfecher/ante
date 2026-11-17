@@ -1,6 +1,6 @@
 import Std.HashSet.HashSet, clear, contains, insert, remove, len,
     is_empty, extend, retain, merge, keys, stream_set, stream_ref_hashset,
-    print_hashset
+    print_hashset, drop_hashset
 import Std.HashSet
 import Std.Hash.hash_u8
 import Std.Stream.iter

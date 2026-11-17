@@ -1,4 +1,4 @@
-import Std.HashMap.HashMap, insert, merge
+import Std.HashMap.HashMap, insert, merge, drop_hashmap
 import Std.Hash.Hash, hash_u8
 import Std.HashMap
 

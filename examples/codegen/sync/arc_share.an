@@ -1,6 +1,6 @@
 import Std.Sync.Thread.spawn
 import Std.Sync.Arc
-import Std.Sync.Arc.Arc, clone_arc
+import Std.Sync.Arc.Arc, clone_arc, drop_arc
 
 // Clone an Arc into a spawned thread. When the thread's clone is dropped the shared
 // value survives (count > 0), so main's clone still reads it correctly after join.
