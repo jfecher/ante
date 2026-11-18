@@ -122,9 +122,9 @@ trait Cmp a =
     (<): fn (ref a) (ref a) -> Bool
 
 // TODO: Partial ordering screws everything up
-(>) (a: ref t) (b: ref t) {Cmp t} = b < a
-(<=) (a: ref t) (b: ref t) {Cmp t} = not (b < a)
-(>=) (a: ref t) (b: ref t) {Cmp t} = not (a < b)
+(>) (a: ref t) (b: ref t) {cmp: Cmp t} = Cmp.(<) b a {cmp}
+(<=) (a: ref t) (b: ref t) {cmp: Cmp t} = not (Cmp.(<) b a {cmp})
+(>=) (a: ref t) (b: ref t) {cmp: Cmp t} = not (Cmp.(<) a b {cmp})
 
 impl cmp_i8: Cmp I8 with (<) x y = intrinsic "LessSigned" x.* y.*
 impl cmp_i16: Cmp I16 with (<) x y = intrinsic "LessSigned" x.* y.*
@@ -143,11 +143,18 @@ impl cmp_f64: Cmp F64 with (<) x y = intrinsic "LessFloat" x.* y.*
 
 impl cmp_char: Cmp Char with (<) x y = intrinsic "LessUnsigned" x.* y.*
 
-impl cmp_pair {Cmp a} {Cmp b}: Cmp (a, b) with
-    (<) l r = l.first < r.first or (not (r.first < l.first) and l.second < r.second)
+impl cmp_pair {ca: Cmp a} {cb: Cmp b}: Cmp (a, b) with
+    (<) l r =
+        Cmp.(<) l.first r.first {ca}
+            or (not (Cmp.(<) r.first l.first {ca}) and Cmp.(<) l.second r.second {cb})
 
-max (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l > r then l else r
-min (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l < r then l else r
+/// Reverses the ordering of another `Cmp` impl. For example, `cmp_reverse cmp_i8` will
+/// order integers from greatest to least instead of least to greatest.
+impl cmp_reverse {cmp: Cmp t c}: Cmp t with
+    (<) l r = Cmp.(<) r l {cmp}
+
+max (l: ref 'a t) (r: ref 'a t) {cmp: Cmp t}: ref 'a t = if Cmp.(<) r l {cmp} then l else r
+min (l: ref 'a t) (r: ref 'a t) {cmp: Cmp t}: ref 'a t = if Cmp.(<) l r {cmp} then l else r
 
 trait Num a (ai = _) (si = _) (mi = _) (di = _) (ei = _) (ci = _) =
     add: Add a ai
