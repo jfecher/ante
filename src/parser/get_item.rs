@@ -324,8 +324,15 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
             to_desugar.push(ExprDesugar::Loop(expr));
         },
         Expr::While(w) => {
-            collect_expressions_to_desugar(w.condition, context, to_desugar);
-            collect_expressions_to_desugar(w.body, context, to_desugar);
+            if and_chain_contains_is(w.condition, context) {
+                let parts = flatten_and_chain(w.condition, context);
+                collect_chain_sub_expressions(&parts, context, to_desugar);
+                collect_expressions_to_desugar(w.body, context, to_desugar);
+                to_desugar.push(ExprDesugar::WhileWithIs(expr));
+            } else {
+                collect_expressions_to_desugar(w.condition, context, to_desugar);
+                collect_expressions_to_desugar(w.body, context, to_desugar);
+            }
         },
         Expr::For(fo) => {
             collect_expressions_to_desugar(fo.start, context, to_desugar);
@@ -525,6 +532,10 @@ enum ExprDesugar {
     /// subsequent chain elements and the then branch.
     IfWithIs(ExprId),
 
+    /// `while <and-chain containing is> do B`: rewrite to `while true do` over
+    /// a nested match which runs `B` with each `is`'s bindings in scope, or breaks.
+    WhileWithIs(ExprId),
+
     /// Value-position `and`-chain containing at least one `is`: rewrite the
     /// whole chain into a nested match.
     AndWithIs(ExprId),
@@ -602,6 +613,7 @@ impl ExprDesugar {
             ExprDesugar::Loop(expr) => desugar_loop(expr, context),
             ExprDesugar::StringInterpolation(expr) => desugar_string_interpolation(expr, context),
             ExprDesugar::IfWithIs(expr) => desugar_if_with_is(expr, context),
+            ExprDesugar::WhileWithIs(expr) => desugar_while_with_is(expr, context),
             ExprDesugar::AndWithIs(expr) => desugar_and_with_is(expr, context),
             ExprDesugar::BareIs(expr) => desugar_bare_is(expr, context),
         }
@@ -931,6 +943,17 @@ fn desugar_if_with_is(expr: ExprId, context: &mut DesugarContext) {
     let parts = flatten_and_chain(if_.condition, context);
     let compiled = compile_chain(&parts, then_branch, else_branch, context);
     context.set_expr(expr, context[compiled].clone());
+}
+
+fn desugar_while_with_is(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::While(while_) = context[expr].clone() else { unreachable!() };
+    let location = context.expr_location(expr).clone();
+    let parts = flatten_and_chain(while_.condition, context);
+    // `break` is `Never`, so the loop body is still checked against Unit
+    let break_ = context.push_expr(Expr::Break, location.clone());
+    let body = compile_chain(&parts, while_.body, break_, context);
+    let condition = context.push_expr(Expr::Literal(Literal::Bool(true)), location);
+    context.set_expr(expr, Expr::While(cst::While { condition, body }));
 }
 
 fn desugar_and_with_is(expr: ExprId, context: &mut DesugarContext) {
