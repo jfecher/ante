@@ -41,7 +41,7 @@ pub struct Candidate {
     pub crate_name: String,
     /// Module path as it appears in `crate.source_files`, e.g. `Vec.an`, `Bar/Baz.an`.
     pub module_path_with_ext: std::path::PathBuf,
-    /// User-facing dotted form like `Std.Vec` or `Std.Bar.Baz` for the action title.
+    /// User-facing dotted form like `Std.Collections.Vec` or `Std.Bar.Baz` for the action title.
     pub dotted_display: String,
 }
 
@@ -161,7 +161,7 @@ pub fn build_import_edit(
         // Module-only case: any matching import means the module is
         // already in scope.
         let name = name?;
-        // A bare `import Std.Vec` parses with an empty module_path and the
+        // A bare `import Std.IO` parses with an empty module_path and the
         // module name living in `items`. Adding more items there would change
         // its meaning entirely (from importing the namespace to importing
         // individual names from a submodule named after the first item), so

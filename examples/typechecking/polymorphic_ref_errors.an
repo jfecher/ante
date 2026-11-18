@@ -1,6 +1,6 @@
-import Std.Vec.get
+import Std.Collections.Vec.get
 import Std.Fail.Fail
-import Std.Vec
+import Std.Collections.Vec
 
 // A polymorphic reference may be read-only so it can't be mutated
 set_poly (r: ref 'p I32): Unit =

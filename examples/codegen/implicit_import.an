@@ -1,13 +1,13 @@
 // Still need to import this explicitly
-import Std.Vec.print_vec
+import Std.Collections.Vec.print_vec
 
 main () =
     print_to_stdout do
     abort_on_panic do
 
-    var v = Std.Vec.empty ()
-    Std.Vec.push (mut v) 3i32
-    Std.Vec.push (mut v) 4
+    var v = Std.Collections.Vec.empty ()
+    Std.Collections.Vec.push (mut v) 3i32
+    Std.Collections.Vec.push (mut v) 4
     println (ref v)
 
 // Found 1 error and 0 warnings

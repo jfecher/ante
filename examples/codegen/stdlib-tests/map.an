@@ -1,6 +1,6 @@
-import Std.HashMap.clear, insert, remove, get, drop_hashmap,
+import Std.Collections.HashMap.clear, insert, remove, get, drop_hashmap,
     get_entry, stream_map, eq_hashmap
-import Std.HashMap
+import Std.Collections.HashMap
 import Std.Stream.iter, map
 import Std.Hash.Hash, hash_u8
 import Std.Fail.try, panic_on_fail, assert, abort_on_fail

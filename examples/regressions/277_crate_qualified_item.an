@@ -8,7 +8,7 @@ main () = Std.foo
 
 bar () = Std.Missing.foo
 
-baz () = Std.Vec
+baz () = Std.Collections.HashMap
 
 // args: --check --no-color
 // expected exit status: 1
@@ -26,8 +26,9 @@ baz () = Std.Vec
 //  9 | bar () = Std.Missing.foo	// error: Namespace `Missing` not found in path
 //    |              ^^^^^^^
 // 
-// examples/regressions/277_crate_qualified_item.an:11:14
-// 11 | baz () = Std.Vec	// error: Vec is a module, not a value
-//    |              ^^^
+// examples/regressions/277_crate_qualified_item.an:11:26
+// 11 | baz () = Std.Collections.HashMap	// error: HashMap is a module, not a value
+//    |                          ^^^^^^^
 // 
 // Found 4 errors and 0 warnings
+

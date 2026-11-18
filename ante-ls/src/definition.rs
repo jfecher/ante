@@ -164,7 +164,7 @@ mod tests {
     /// refers to the crate's root module which has no source file, so it has no definition.
     #[test]
     fn definition_of_module_and_crate_qualifiers() {
-        let source = "main () =\n    v = Std.Vec.of [1]\n    ()\n";
+        let source = "main () =\n    v = Std.Collections.Vec.of [1]\n    ()\n";
         let (db, file_id) = db_with_source(source, "def_module_qualifier.an");
 
         let vec_offset = source.find("Vec").unwrap();

@@ -1,6 +1,6 @@
 import Std.Stream.iter
 import Std.Mem.Type, MkType, size_of
-import Std.Vec
+import Std.Collections.Vec
 
 type MyType =
     key: U8

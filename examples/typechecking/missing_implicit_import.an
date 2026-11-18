@@ -1,5 +1,5 @@
-import Std.HashMap.HashMap, drop_hashmap
-import Std.HashMap
+import Std.Collections.HashMap.HashMap, drop_hashmap
+import Std.Collections.HashMap
 
 main () =
     print_to_stdout do
@@ -15,7 +15,7 @@ main () =
 //    |     // error: No implicit found for type Eq (HashMap U8 I32 hash_u8) pure required by ==
 //  8 |     println (map == map)
 //    |                  ^^
-//    = note: did you mean to import Std.HashMap.eq_hashmap?
+//    = note: did you mean to import Std.Collections.HashMap.eq_hashmap?
 // 
 // Found 1 error and 0 warnings
 

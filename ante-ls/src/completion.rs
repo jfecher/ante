@@ -181,7 +181,7 @@ fn push_out_of_scope(compiler: &Db, file_id: SourceFileId, rope: &Rope, prefix: 
 
         // The module itself, if its bare name matches the prefix. The `imported_modules` check
         // in `in_scope` already excludes modules the user has imported by namespace, but a user can
-        // also have `import Std.Vec.push` which doesn't bring `Vec` as a namespace a namespace into
+        // also have `import Std.Collections.Vec.push` which doesn't bring `Vec` as a namespace a namespace into
         // scope. `build_import_edit` handles that case by short-circuiting when an exact module
         // import already exists.
         let bare = module_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");

@@ -1,7 +1,7 @@
-import Std.Vec
+import Std.Collections.Vec
 
 // A loop body or closure may run again, so it may not use a binding it invalidates
-import Std.Vec.get, clear, push
+import Std.Collections.Vec.get, clear, push
 import Std.Iterator.repeat
 
 use (_x: ref t): Unit = ()

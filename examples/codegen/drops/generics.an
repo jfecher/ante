@@ -1,5 +1,5 @@
 import Std.Mem.forget
-import Std.Vec
+import Std.Collections.Vec
 
 // A value of a generic type can only be dropped with a `Drop` constraint for it. Without
 // one it must be moved elsewhere or consumed with `forget`, which runs no `drop`.

@@ -1,6 +1,6 @@
-import Std.Vec.is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
+import Std.Collections.Vec.is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last
-import Std.Vec
+import Std.Collections.Vec
 
 import Std.Fail.on_fail, panic_on_fail, assert, abort_on_fail
 import Std.Stream.iter

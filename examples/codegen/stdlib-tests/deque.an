@@ -1,6 +1,6 @@
-import Std.Deque.push_back, push_front, pop_front, pop_back, front, back, get, clear, drop_deque,
+import Std.Collections.Deque.push_back, push_front, pop_front, pop_back, front, back, get, clear, drop_deque,
     stream_ref_deque, stream_deque, print_deque, extract_deque, insert_deque, eq_deque, clone_deque
-import Std.Deque
+import Std.Collections.Deque
 import Std.Fail.try, assert, abort_on_fail
 
 main () =

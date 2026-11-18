@@ -1,4 +1,4 @@
-import Std.Vec.push
+import Std.Collections.Vec.push
 
 // Re-exports like `push` are allowed
 export foo, missing, also_missing, push
@@ -10,7 +10,7 @@ main () = ()
 // args: -e ast-r --no-color
 // expected exit status: 1
 // expected stdout:
-// import Std.Vec.push
+// import Std.Collections.Vec.push
 // 
 // export foo, missing, also_missing, push
 // 

@@ -1,5 +1,5 @@
-import Std.Vec.Vec
-import Std.Vec
+import Std.Collections.Vec.Vec
+import Std.Collections.Vec
 
 reads (_v: mut 'v (Vec (ref 'e I32))) (_: ref 'k I32) = ()
 

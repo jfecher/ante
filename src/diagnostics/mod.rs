@@ -502,7 +502,7 @@ impl Display for Hint {
 /// A suggestion to import an out-of-scope item, attached to a diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ImportSuggestion {
-    /// Fully-qualified import path, e.g. `Std.HashMap.empty`
+    /// Fully-qualified import path, e.g. `Std.Collections.HashMap.empty`
     pub qualified_path: String,
     pub location: Location,
 }

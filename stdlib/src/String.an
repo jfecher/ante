@@ -1,4 +1,4 @@
-import Std.Vec
+import Std.Collections.Vec
 import Std.C
 import Std.C.malloc, memcpy, memcmp, copy_cstring, free
 import Std.Math.CheckedNum, checked_add, checked_sub, checked_mul

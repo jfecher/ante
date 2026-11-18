@@ -1,7 +1,7 @@
-import Std.Vec
+import Std.Collections.Vec
 
 // A place a function mutates may not alias any of its other places
-import Std.Vec.Vec, get, clear
+import Std.Collections.Vec.Vec, get, clear
 import Std.Fail.Fail
 
 use (_x: ref t): Unit = ()

@@ -1,4 +1,4 @@
-import Std.Heap.MaxHeap, MinHeap, empty_maxheap, empty_minheap, maxheap_of, minheap_of, drop_heap
+import Std.Collections.Heap.MaxHeap, MinHeap, empty_maxheap, empty_minheap, maxheap_of, minheap_of, drop_heap
 import Std.Fail.try, assert, abort_on_fail
 
 main () =

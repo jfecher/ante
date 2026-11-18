@@ -1,4 +1,4 @@
-import Std.Vec
+import Std.Collections.Vec
 import Std.Mem.forget
 
 /// Emit a single item of type `a`. Another name for this is `Yield`.

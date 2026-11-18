@@ -244,7 +244,7 @@ pub unsafe extern "C" fn ante_module_count(s: *const Session) -> usize {
     unsafe { s.as_ref() }.map_or(0, |s| s.modules.len())
 }
 
-/// The module's full name, e.g. `Std.Vec`
+/// The module's full name, e.g. `Std.Collections.Vec`
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ante_module_name(s: *const Session, m: usize) -> *const c_char {
     as_ptr(unsafe { module(s, m) }.map(|module| module.name.as_c_str()))

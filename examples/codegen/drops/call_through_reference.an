@@ -1,4 +1,4 @@
-import Std.Vec
+import Std.Collections.Vec
 
 // Calling a `fn` through a reference leaves its environment with whatever holds it,
 // so a non-Copy closure can be lent to a callee in a loop without moving it

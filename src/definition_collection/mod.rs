@@ -39,7 +39,7 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         // Ignore errors from imported files. We want to only collect errors
         // from this file. Otherwise we'll duplicate errors.
         let Some(import_file_id) = get_file_id(&import.crate_name, &import.module_path, db) else {
-            // The final segment may name a submodule rather than an item, e.g. `import Std.Vec`
+            // The final segment may name a submodule rather than an item, e.g. `import Std.Collections.Vec`
             resolve_submodule_imports(import, &mut visible, db);
             continue;
         };
@@ -143,7 +143,7 @@ fn get_file_id(target_crate_name: &String, module_path: &PathBuf, db: &DbHandle)
 }
 
 /// When module_path is empty (crate root), try resolving each imported item as a submodule.
-/// E.g. `import Std.Vec` resolves "Vec" as the Vec.an submodule in the Std crate.
+/// E.g. `import Std.IO` resolves "IO" as the IO.an submodule in the Std crate.
 fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsResult, db: &DbHandle) {
     let crates = GetCrateGraph.get(db);
     let Some(crate_) = crates.values().find(|c| c.name == import.crate_name) else {

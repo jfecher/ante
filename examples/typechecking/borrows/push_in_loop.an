@@ -1,4 +1,4 @@
-import Std.Vec
+import Std.Collections.Vec
 
 bad () =
     var vec = Vec.empty ()

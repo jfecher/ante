@@ -1,4 +1,4 @@
-import Std.Vec
+import Std.Collections.Vec
 
 // A temporary is dropped at the end of its statement, so nothing may keep a reference to it
 make (): String = "temporary" ++ "!"

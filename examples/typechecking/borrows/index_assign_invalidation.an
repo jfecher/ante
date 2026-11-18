@@ -1,6 +1,6 @@
 import Std.Slice.MutSlice
-import Std.Vec.Vec
-import Std.Vec
+import Std.Collections.Vec.Vec
+import Std.Collections.Vec
 
 replace_vec_element () =
     var inner = Vec.empty ()

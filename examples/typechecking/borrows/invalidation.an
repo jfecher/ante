@@ -1,6 +1,6 @@
-import Std.Vec.Vec, get, clear, push
+import Std.Collections.Vec.Vec, get, clear, push
 import Std.Fail.Fail
-import Std.Vec
+import Std.Collections.Vec
 
 use (_x: ref t): Unit = ()
 

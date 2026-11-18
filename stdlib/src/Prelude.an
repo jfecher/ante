@@ -6,7 +6,7 @@
 import Std.C.exit
 import Std.Fail.Fail, fail, try, on_fail, assert, fail_if, or_panic, panic_on_fail, abort_on_fail
 import Std.Stream.Stream, stream, Emit, emit, iter, stream_fn, stream_once_fn, stream_array, map, filter, foldl
-import Std.Vec.Vec, print_vec, extract_vec, insert_vec, stream_vec, stream_ref_vec, eq_vec, drop_vec, clone_vec, cmp_vec
+import Std.Collections.Vec.Vec, print_vec, extract_vec, insert_vec, stream_vec, stream_ref_vec, eq_vec, drop_vec, clone_vec, cmp_vec
 import Std.String.String, append_string, clone_string, drop_string, eq_string, cmp_string
 import Std.Slice.copy_slice, extract_slice, extract_ref_slice, insert_slice, stream_slice, print_slice, cmp_slice
 import Std.Cast.Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,

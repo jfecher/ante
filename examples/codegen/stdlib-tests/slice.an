@@ -1,6 +1,6 @@
 import Std.Slice.Slice, MutSlice, get_unchecked
 import Std.Fail.assert, abort_on_fail, fail
-import Std.Vec
+import Std.Collections.Vec
 
 first (s: Slice 'a I32): ref 'a I32 can Panic =
     s.[0]

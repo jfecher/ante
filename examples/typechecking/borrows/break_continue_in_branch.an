@@ -1,5 +1,5 @@
-import Std.Vec.Vec, get_unchecked, push
-import Std.Vec
+import Std.Collections.Vec.Vec, get_unchecked, push
+import Std.Collections.Vec
 
 consume (_: Vec I32): Unit = ()
 use (_: mut I32): Unit = ()
