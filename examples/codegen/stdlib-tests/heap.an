@@ -1,0 +1,51 @@
+import Std.Heap.MaxHeap, MinHeap, empty_maxheap, empty_minheap, maxheap_of, minheap_of, drop_heap
+import Std.Fail.try, assert, abort_on_fail
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    abort_on_fail do
+
+    var max = maxheap_of [5, 1, 8, 3, 9, 2]
+    assert <| len max == 6
+    assert <| peek max == 9
+    assert <| pop max is Some 9
+    assert <| pop max is Some 8
+    push max 7
+    println (into_sorted_vec max)
+
+    // TODO: ambiguous impl of type `Cmp _` without the type annotation
+    var empty: MaxHeap I32 = empty_maxheap ()
+    assert <| pop empty is None
+    assert <| (try fn () -> peek empty) is None
+
+    var min = minheap_of [5, 1, 8, 3]
+    assert <| pop min is Some 1
+    println (into_sorted_vec min)
+
+    var mins = empty_minheap ()
+    push mins (4, (0, 1))
+    push mins (4, (0, 0))
+    push mins (1, (5, 5))
+    assert <| pop mins is Some (1, (5, 5))
+    assert <| pop mins is Some (4, (0, 0))
+
+    var names = empty_minheap ()
+    push names (4, "four")
+    push names (1, "one")
+    push names (3, "three")
+    push names (2, "two")
+    while pop names is Some (d, name) do
+        print d
+        print " "
+        println name
+
+// args: --delete-binary
+// expected stdout:
+// [1, 2, 3, 5, 7]
+// [8, 5, 3]
+// 1 one
+// 2 two
+// 3 three
+// 4 four
+

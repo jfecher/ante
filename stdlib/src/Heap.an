@@ -1,0 +1,134 @@
+import Std.Vec
+import Std.Vec.Vec
+
+export MaxHeap, MinHeap, empty_maxheap, empty_minheap, maxheap_of, minheap_of,
+    maxheap_with_capacity, minheap_with_capacity, is_empty, len, push, pop, peek, clear, extend,
+    into_vec, into_sorted_vec, print_heap, stream_heap, stream_ref_heap,
+    clone_heap, drop_heap
+
+/// A priority queue where elements are popped from largest to smallest.
+type MaxHeap t (cmp = _) =
+    cmp: Cmp t cmp
+    data: Vec t
+
+/// A priority queue where elements are popped from smallest to largest.
+type MinHeap t (cmp = _) = MaxHeap t (Std.Num.cmp_reverse (Cmp t cmp))
+
+empty_maxheap {cmp: Cmp t c}: MaxHeap t c = MaxHeap cmp (Vec.empty ())
+
+empty_minheap: fn {_} -> MinHeap _ _ = empty_maxheap
+
+maxheap_with_capacity (capacity: Usz) {cmp: Cmp t c}: MaxHeap t c can Panic =
+    var data = Vec.empty ()
+    Vec.reserve data capacity
+    MaxHeap cmp data
+
+minheap_with_capacity: fn _ {_} -> MinHeap _ _ = maxheap_with_capacity
+
+/// Create a new MaxHeap with the elements from the given stream
+maxheap_of (stream: s) {cmp: Cmp t c} {Stream s t e}: MaxHeap t c can Panic, e =
+    var heap = empty_maxheap {cmp}
+    extend heap stream
+    heap
+
+/// Create a new MinHeap with the elements from the given stream
+minheap_of: fn _ {_} {_} -> MinHeap t c = maxheap_of
+
+extend (heap: mut MaxHeap t) (stream: s) {Stream s t e}: Unit can Panic, e, Mutate 'heap =
+    iter stream (push heap _)
+
+is_empty (heap: ref MaxHeap t): Bool = heap.data.len == 0
+
+len (heap: ref MaxHeap t): Usz = heap.data.len
+
+element (heap: ref MaxHeap t) (i: Usz): ref t =
+    ptr_to_ref (offset heap.data.data i)
+
+less (heap: ref MaxHeap t) (i: Usz) (j: Usz): Bool =
+    (<) = heap.cmp.(<)
+    element heap i < element heap j
+
+swap_elements (heap: mut MaxHeap t) (i: Usz) (j: Usz): Unit can Mutate 'heap =
+    data = heap.data.data
+    tmp = deref_ptr (offset data i)
+    ptr_store (offset data i) (deref_ptr (offset data j))
+    ptr_store (offset data j) tmp
+
+sift_up (heap: mut MaxHeap t) (start: Usz): Unit can Mutate 'heap =
+    var i = start
+    while i > 0 do
+        parent = (i - 1) / 2
+        if less heap parent i then
+            swap_elements heap i parent
+            i := parent
+        else
+            return ()
+
+sift_down (heap: mut MaxHeap t) (start: Usz): Unit can Mutate 'heap =
+    n = heap.data.len
+    var i = start
+    while true do
+        left = 2 * i + 1
+        if left >= n then return ()
+        right = left + 1
+        larger = if right < n and less heap left right then right else left
+        if less heap i larger then
+            swap_elements heap i larger
+            i := larger
+        else
+            return ()
+
+/// Push an element onto the heap in O(log n) time
+push (heap: mut MaxHeap t) (elem: t): Unit can Panic, Mutate 'heap =
+    Vec.push heap.data elem
+    sift_up heap (heap.data.len - 1)
+
+/// Remove and return the greatest element in O(log n) time.
+/// Returns None if the heap is empty.
+pop (heap: mut MaxHeap t): Maybe t can Mutate 'heap =
+    n = heap.data.len
+    if n == 0 then return None
+    swap_elements heap 0 (n - 1)
+    result = Vec.pop heap.data
+    sift_down heap 0
+    result
+
+/// A reference to the greatest element. Fails if the heap is empty.
+peek (heap: ref MaxHeap t): ref t can Fail =
+    if heap.data.len == 0 then fail ()
+    element heap 0
+
+/// Remove and drop every element
+clear (heap: mut MaxHeap t) {Drop t e}: Unit can e, Mutate 'heap =
+    Vec.clear heap.data
+
+/// The heap's elements in an unspecified order. Does not allocate.
+into_vec (heap: MaxHeap t): Vec t = heap.data
+
+/// The heap's elements sorted in ascending order of the heap's `Cmp` impl
+into_sorted_vec (heap: MaxHeap t): Vec t =
+    cmp = heap.cmp
+    var data = heap.data
+    // TODO: If we sort by `heap.cmp.(<)` directly instead we get an error
+    // saying sort_by found no Drop impl for the MaxHeap. It's a captures issue
+    // when we approximate what types a closure may need to drop in the type checker
+    // before we have borrow checking info saying whether we actually need to move or not.
+    sort_by data cmp.(<)
+    data
+
+impl print_heap {Display t e}: Display (MaxHeap t) e with
+    print heap = print heap.data
+
+/// Streams elements in an unspecified order
+impl stream_heap: Stream (MaxHeap a) a pure with
+    stream heap = iter heap.data emit
+
+/// Streams elements in an unspecified order
+impl stream_ref_heap: Stream (ref MaxHeap a) (ref a) pure with
+    stream heap = iter heap.data emit
+
+impl clone_heap {Clone t}: Clone (MaxHeap t) with
+    clone heap = MaxHeap heap.cmp (clone heap.data)
+
+impl drop_heap {Drop t e}: Drop (MaxHeap t) e with
+    drop _ = ()

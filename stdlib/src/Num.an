@@ -150,7 +150,7 @@ impl cmp_pair {ca: Cmp a} {cb: Cmp b}: Cmp (a, b) with
 
 /// Reverses the ordering of another `Cmp` impl. For example, `cmp_reverse cmp_i8` will
 /// order integers from greatest to least instead of least to greatest.
-impl cmp_reverse {cmp: Cmp t c}: Cmp t with
+impl cmp_reverse {cmp: Cmp t}: Cmp t with
     (<) l r = Cmp.(<) r l {cmp}
 
 max (l: ref 'a t) (r: ref 'a t) {cmp: Cmp t}: ref 'a t = if Cmp.(<) r l {cmp} then l else r
