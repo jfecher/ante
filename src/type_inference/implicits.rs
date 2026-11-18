@@ -1069,7 +1069,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return Err(ImplicitError::Ambiguous(target_type));
             }
 
+            let named_impl = self.impl_named_by(&target_type);
             let rigid_subject = self.subject_is_rigid_type(&target_type);
+
             let mut try_candidate = |name: &Name, name_id: &TopLevelName| {
                 if candidates.len() > MULTIPLE_MATCHING_IMPLS_CUTOFF {
                     // Multiple matching impls, don't waste time looking for more.
@@ -1101,10 +1103,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 );
                 false
             };
-            if rigid_subject {
-                visible_implicits.iter_impls_of_any_type(&target_type, &mut try_candidate);
-            } else {
-                visible_implicits.iter_possibly_matching_impls(&target_type, &mut try_candidate);
+            match &named_impl {
+                Some((name, impl_name)) => _ = try_candidate(name, impl_name),
+                None if rigid_subject => visible_implicits.iter_impls_of_any_type(&target_type, &mut try_candidate),
+                None => visible_implicits.iter_possibly_matching_impls(&target_type, &mut try_candidate),
             }
         }
 
@@ -1216,6 +1218,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
         let drop = self.drop_trait().0;
         self.trait_subject(target, drop).map(|subject| (false, subject))
+    }
+
+    /// If `target` already names an exact impl, return it.
+    fn impl_named_by(&self, target: &Type) -> Option<(Name, TopLevelName)> {
+        let impl_name = target.impl_arg(&self.bindings, self.compiler)?.impl_data_name(&self.bindings)?;
+        let (_, context) = GetItem(impl_name.top_level_item).get(self.compiler);
+        Some((context[impl_name.local_name_id].clone(), impl_name))
     }
 
     /// True if the first argument of the trait `target` is a generic of kind type, in which case

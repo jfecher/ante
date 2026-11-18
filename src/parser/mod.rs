@@ -641,6 +641,24 @@ impl<'tokens> Parser<'tokens> {
         Ok(Path { components })
     }
 
+    /// type_or_impl_path: (typename '.')* (typename | ident)
+    fn parse_type_or_impl_path(&mut self) -> Result<Path> {
+        let location = self.current_token_location();
+        let mut components = vec![(self.parse_type_name()?, location)];
+
+        while self.accept(Token::MemberAccess) {
+            let location = self.current_token_location();
+            let is_impl = matches!(self.current_token(), Token::Identifier(_));
+            let name = if is_impl { self.parse_ident()? } else { self.parse_type_name()? };
+            components.push((name, location));
+            if is_impl {
+                break;
+            }
+        }
+
+        Ok(Path { components })
+    }
+
     /// value_path: (typename '.')* (ident | typename)
     fn parse_value_path(&mut self) -> Result<Path> {
         let mut components = Vec::new();
@@ -1399,9 +1417,8 @@ impl<'tokens> Parser<'tokens> {
                 Ok(Type::new(TypeKind::Float(kind), location))
             },
             Token::TypeName(_) => {
-                let start = self.current_token_location();
-                let path = self.parse_type_path_id()?;
-                let location = start.to(&self.previous_token_location());
+                let path = self.parse_type_or_impl_path_id()?;
+                let location = self.current_context.path_locations[path].clone();
                 Ok(Type::new(TypeKind::Named(path), location))
             },
             Token::Apostrophe => self.parse_place_type(),
@@ -2942,6 +2959,11 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_type_path_id(&mut self) -> Result<PathId> {
         let (path, location) = self.with_location(Self::parse_type_path)?;
+        Ok(self.push_path(path, location))
+    }
+
+    fn parse_type_or_impl_path_id(&mut self) -> Result<PathId> {
+        let (path, location) = self.with_location(Self::parse_type_or_impl_path)?;
         Ok(self.push_path(path, location))
     }
 

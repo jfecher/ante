@@ -1,0 +1,26 @@
+import Std.Num
+import Std.Mem.forget
+
+// A Sorter stores the impl it compares with in its type
+type Sorter t (c = _) = cmp: Cmp t c
+
+// A qualified impl name is a type, and the impl it names can be found without importing it
+type Reversed t (c = _) = Sorter t (Num.cmp_reverse (Cmp t c))
+
+make () {cmp: Cmp t c}: Sorter t c = Sorter cmp
+
+less (s: ref Sorter t) (a: ref t) (b: ref t): Bool = s.cmp.(<) a b
+
+main () =
+    print_to_stdout do
+    normal: Sorter I32 = make ()
+    reversed: Reversed I32 = make ()
+    println (less normal 1 2)
+    println (less reversed 1 2)
+    forget normal
+    forget reversed
+
+// args: --delete-binary
+// expected stdout:
+// true
+// false

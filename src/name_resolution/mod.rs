@@ -706,7 +706,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                         unreachable!("Desugared by GetItem")
                     },
                     TopLevelItemKind::TraitImpl(_) => unreachable!("Desugared by GetItem"),
-                    TopLevelItemKind::Definition(_) | TopLevelItemKind::Comptime(_) => !is_type,
+                    // An impl's name can also be used as a type
+                    TopLevelItemKind::Definition(definition) => !is_type || definition.impl_info.is_some(),
+                    TopLevelItemKind::Comptime(_) => !is_type,
                 }
             },
             Origin::Builtin(b) => is_type == b.as_type().is_some(),
