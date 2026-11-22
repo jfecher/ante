@@ -11,7 +11,8 @@ use crate::{
     },
     type_inference::{
         generics::Generic,
-        types::{GenericSubstitutions, LocalKinds, Omissions, Type, TypeBindings, generic_display_name},
+        kinds::Kind,
+        types::{GenericSubstitutions, LocalKinds, LocalPlace, Omissions, Type, TypeBindings, generic_display_name},
     },
 };
 
@@ -254,7 +255,7 @@ fn convert_declared_type(
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
         let signature = lambda_signature(lambda, None, true, context, resolve, compiler)?;
         Some(Type::generalized(|next_id| {
-            Type::from_cst_function(&signature, resolve, compiler, next_id, false, true, rigid)
+            Type::from_cst_function(&signature, resolve, compiler, next_id, false, true, rigid, None)
         }))
 
     // The body being a type annotation is common for `extern` declarations: `puts = extern "puts": fn ...`
@@ -383,14 +384,30 @@ pub fn try_get_seeded_and_declared_type(
 /// In the case there are no annotations, a fresh type variable is returned.
 pub fn get_partial_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
-    next_id: &mut u32, is_top_level: bool,
+    next_id: &mut u32, is_top_level: bool, local_place: LocalPlace,
 ) -> Type {
+    let convert_local = |typ: &cst::Type, next_id: &mut u32| {
+        let mut local_kinds = LocalKinds::default();
+        Type::from_cst_type_with_kind(
+            typ,
+            Kind::Type,
+            resolve,
+            compiler,
+            next_id,
+            &mut local_kinds,
+            true,
+            true,
+            Omissions::Fresh,
+            local_place,
+        )
+    };
+
     // The type is inferred from the body, so its omitted parts are fresh variables. See [Omissions].
     let convert_annotation = |typ: &cst::Type, next_id: &mut u32| {
         if is_top_level {
             Type::from_cst_annotation(typ, resolve, compiler, next_id, true, Omissions::Fresh)
         } else {
-            Type::from_cst_type(typ, resolve, compiler, next_id, &mut LocalKinds::default(), true, true)
+            convert_local(typ, next_id)
         }
     };
 
@@ -402,14 +419,13 @@ pub fn get_partial_type(
         let hole = cst::Type::new(cst::TypeKind::Hole, context.expr_location(definition.rhs).clone());
         let signature = lambda_signature(lambda, Some(hole), is_top_level, context, resolve, compiler)
             .expect("omitted types are holes");
-        Type::from_cst_function(&signature, resolve, compiler, next_id, true, is_top_level, Omissions::Fresh)
+        Type::from_cst_function(&signature, resolve, compiler, next_id, true, is_top_level, Omissions::Fresh, local_place)
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
         convert_annotation(&annotation.rhs, next_id)
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {
-        let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&constructor.typ, resolve, compiler, next_id, &mut local_kinds, true, true)
+        convert_local(&constructor.typ, next_id)
     } else {
         let lambda_location = context.expr_location(definition.rhs).clone();
         let hole = cst::Type::new(cst::TypeKind::Hole, lambda_location);

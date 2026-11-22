@@ -662,6 +662,7 @@ impl Type {
             insert_implicit_type_vars,
             open_effects_by_default,
             Omissions::Fresh,
+            None,
         )
     }
 
@@ -684,6 +685,7 @@ impl Type {
                 insert_implicit_type_vars,
                 open_effects_by_default,
                 Omissions::Rigid,
+                None,
             )
         })
     }
@@ -707,7 +709,7 @@ impl Type {
     pub(crate) fn from_cst_type_with_kind(
         typ: &cst::Type, expected: Kind, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
         local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
-        omissions: Omissions,
+        omissions: Omissions, local_place: LocalPlace,
     ) -> Type {
         let mut visited = Vec::new();
         TypeConverter::new(
@@ -720,17 +722,19 @@ impl Type {
             &mut visited,
         )
         .with_omissions(omissions)
+        .with_local_place(local_place)
         .convert_with_kind(typ, expected)
     }
 
     /// Converts the type of a constructor expression. A constructor's type may omit any of its type
     /// arguments, in which case it is applied to a fresh type variable for each. Type aliases are expanded.
     pub(crate) fn from_cst_constructor_type(
-        typ: &cst::Type, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
+        typ: &cst::Type, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32, local_place: LocalPlace,
     ) -> Type {
         let mut visited = Vec::new();
         let mut local_kinds = LocalKinds::default();
-        let mut converter = TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, true, &mut visited);
+        let mut converter = TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, true, &mut visited)
+            .with_local_place(local_place);
         let (typ, kind) = converter.convert(typ, None);
         let arity = kind.required_argument_count();
         if arity == 0 {
@@ -741,15 +745,17 @@ impl Type {
     }
 
     /// Convert a definition's function type; a top-level `signature`'s elided parts convert as `omissions` says
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_cst_function(
         function: &cst::FunctionType, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        open_effects_by_default: bool, signature: bool, omissions: Omissions,
+        open_effects_by_default: bool, signature: bool, omissions: Omissions, local_place: LocalPlace,
     ) -> Type {
         let mut local_kinds = LocalKinds::default();
         let mut visited = Vec::new();
         let elision = if signature { Elision::Signature } else { Elision::Infer };
         TypeConverter::new(resolve, db, next_id, &mut local_kinds, true, open_effects_by_default, &mut visited)
             .with_omissions(omissions)
+            .with_local_place(local_place)
             .convert_function(function, elision, None)
     }
 
@@ -767,9 +773,11 @@ impl Type {
     }
 
     /// Convert an effects clause into an effect row [Type].
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_cst_effects_clause(
         effects: Option<&[cst::Type]>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
         local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
+        local_place: LocalPlace,
     ) -> Type {
         let mut visited = Vec::new();
         TypeConverter::new(
@@ -781,6 +789,7 @@ impl Type {
             open_effects_by_default,
             &mut visited,
         )
+        .with_local_place(local_place)
         .convert_effects_clause(effects, None)
     }
 }
@@ -808,6 +817,11 @@ pub(crate) enum Omissions {
     Error,
 }
 
+/// Gives the place of a local variable named by a `'x` in a type, see
+/// [ResolutionResult::local_place_roots]. Only the type checker knows these, without it every
+/// `'x` converts to a generic.
+pub(crate) type LocalPlace<'a> = Option<&'a dyn Fn(NameId) -> Type>;
+
 /// Converts a [cst::Type] to a type-checker [Type].
 struct TypeConverter<'a, 'b> {
     resolve: &'a ResolutionResult,
@@ -831,6 +845,8 @@ struct TypeConverter<'a, 'b> {
     /// True while converting a parameter of a top-level signature, where each [cst::TypeKind::RigidHole]
     /// converts as [Omissions] says
     in_signature_parameter: bool,
+
+    local_place: LocalPlace<'a>,
 }
 
 /// Which elision rules a function type's parameters follow
@@ -871,12 +887,27 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             elided_place: ElidedPlace::Infer,
             omissions: Omissions::Fresh,
             in_signature_parameter: false,
+            local_place: None,
         }
     }
 
     fn with_omissions(mut self, omissions: Omissions) -> Self {
         self.omissions = omissions;
         self
+    }
+
+    fn with_local_place(mut self, local_place: LocalPlace<'a>) -> Self {
+        self.local_place = local_place;
+        self
+    }
+
+    /// The place of the local variable `root` names, if it names one
+    fn local_place_root(&self, root: NameId) -> Option<Type> {
+        let local_place = self.local_place?;
+        match self.resolve.name_origins.get(&root) {
+            Some(Origin::Local(local)) if self.resolve.local_place_roots.contains(local) => Some(local_place(*local)),
+            _ => None,
+        }
     }
 
     /// Convert `typ` and error if its [Kind] does not unify with `expected`.
@@ -949,8 +980,11 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             crate::parser::cst::TypeKind::Place(paths) => {
                 let none = TypeBindings::default();
                 let entries = mapvec(paths, |path| {
-                    let (root, kind) = self.convert_type_variable(path.root, Some(&Kind::Place), &typ.location);
-                    self.check_kind(kind, Kind::Place, &typ.location);
+                    let root = self.local_place_root(path.root).unwrap_or_else(|| {
+                        let (root, kind) = self.convert_type_variable(path.root, Some(&Kind::Place), &typ.location);
+                        self.check_kind(kind, Kind::Place, &typ.location);
+                        root
+                    });
                     Type::project_place(&root, &path.segments, &none, &none)
                 });
                 let place =

@@ -44,6 +44,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         &mut local_kinds,
                         false,
                         false,
+                        None,
                     )
                 });
                 return;

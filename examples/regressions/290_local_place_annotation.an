@@ -1,0 +1,43 @@
+bump (m: mut 'm I32) (x: mut I32): Unit can Mutate 'm, Mutate 'x =
+    f = (fn () -> m.* += 1): fn Unit => Unit can Mutate 'm
+    f ()
+    g = (fn () -> x.* += 1): fn Unit => Unit can Mutate 'x
+    g ()
+
+main () =
+    print_to_stdout do
+    var x = 0
+    ((fn () -> x := 1): fn Unit => Unit can Mutate 'x) ()
+    println x
+
+    f: fn Unit => Unit can Mutate 'x = fn () -> x += 1
+    f ()
+    g = (fn () -> x += 1): fn Unit => Unit can Mutate 'x
+    g ()
+    println x
+
+    r: mut 'x I32 = mut x
+    r.* := 10
+    println x
+    s = (mut x): mut 'x I32
+    s.* := 11
+    println x
+
+    var y = 0
+    bump (mut x) (mut y)
+    println x
+    println y
+
+    h = fn (): Unit can Mutate 'x -> x += 5
+    h ()
+    println x
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1
+// 3
+// 10
+// 11
+// 12
+// 1
+// 17

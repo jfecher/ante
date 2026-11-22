@@ -1,0 +1,26 @@
+main (): Unit =
+    var x = 0
+    var _y = 0
+    f = (fn () -> x := 1): fn Unit => Unit can Mutate '_y
+    f ()
+    r: mut '_y I32 = mut x
+    r.* := 2
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/regressions/290_wrong_local_place_annotation.an:4:10
+// 3 |     var _y = 0
+//   |     // error: This can perform Mutate 'x but only Mutate '_y is allowed here
+// 4 |     f = (fn () -> x := 1): fn Unit => Unit can Mutate '_y
+//   |          ^^^^^^^^^^^^^^^
+// 5 |     f ()
+// 
+// examples/regressions/290_wrong_local_place_annotation.an:6:22
+// 5 |     f ()
+//   |     // error: Type annotation mut '_y I32 does not match the inferred type mut 'x I32
+// 6 |     r: mut '_y I32 = mut x
+//   |                      ^^^^^
+// 7 |     r.* := 2
+// 
+// Found 2 errors and 0 warnings

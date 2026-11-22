@@ -487,6 +487,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             compiler,
                             next_id,
                             true,
+                            None,
                         ),
                     };
 
@@ -1987,6 +1988,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 allow_implicit_type_vars,
                 open_effects_by_default,
                 Omissions::Fresh,
+                Some(&|name| self.local_place(name)),
             )
         });
         self.record_kinds(&converted, &expected);
@@ -2010,6 +2012,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 allow_implicit_type_vars,
                 false,
                 Omissions::Error,
+                None,
             )
         });
         self.record_kinds(&converted, &kinds::Kind::Type);
@@ -2019,7 +2022,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// See [Type::from_cst_constructor_type]
     fn from_cst_constructor_type(&mut self, typ: &cst::Type) -> Type {
         let converted = self.with_next_id(|next_id| {
-            Type::from_cst_constructor_type(typ, self.current_resolve(), self.compiler, next_id)
+            Type::from_cst_constructor_type(
+                typ,
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+                Some(&|name| self.local_place(name)),
+            )
         });
         self.record_kinds(&converted, &kinds::Kind::Type);
         converted

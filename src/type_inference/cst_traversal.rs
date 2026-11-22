@@ -113,6 +113,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.compiler,
                 next_id,
                 is_top_level,
+                Some(&|name| self.local_place(name)),
             )
         });
         self.record_kinds(&typ, &Kind::Type);
@@ -941,6 +942,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 &mut local_kinds,
                 true,
                 true,
+                Some(&|name| self.local_place(name)),
             )
         });
         self.record_kinds(&effects, &Kind::Effect);

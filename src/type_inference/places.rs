@@ -1023,8 +1023,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// A places row containing just `atom` plus a fresh open tail
     pub(crate) fn open_place(&self, atom: Place) -> Type {
         let fresh = self.next_variable(Kind::Place);
+        Type::places(&[self.place_entry(atom), fresh], &self.bindings, &TypeBindings::default())
+    }
+
+    /// The row entry for `atom`, mutable if it is rooted in a `var`
+    fn place_entry(&self, atom: Place) -> Type {
         let access = PlaceAccess::Plain { mutable: self.place_root_is_mutable(&atom) };
-        Type::places(&[Type::Place(atom, access), fresh], &self.bindings, &TypeBindings::default())
+        Type::Place(atom, access)
+    }
+
+    /// The place a `'x` in a type names when `x` is the local variable `name`
+    pub(super) fn local_place(&self, name: NameId) -> Type {
+        self.place_entry(self.binding_place(name))
     }
 
     /// True if `place` is rooted in a `var`

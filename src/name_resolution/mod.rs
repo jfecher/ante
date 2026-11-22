@@ -54,6 +54,10 @@ pub struct ResolutionResult {
     /// Names of each callee with [Origin::ArgumentResolution]. Used to build a dependency graph for
     /// type inference since the definitions these refer to are only known after type inference.
     pub argument_resolved_names: BTreeSet<Name>,
+
+    /// Each local variable whose place is named by a `'x` in a type. Excludes parameters named
+    /// this way in the item's own signature, where `'x` is a generic of the signature instead.
+    pub local_place_roots: BTreeSet<NameId>,
 }
 
 /// Which unresolved names may be deferred to type inference instead of erroring
@@ -101,6 +105,16 @@ struct Resolver<'local, 'inner> {
 
     /// See [ResolutionResult::argument_resolved_names]
     argument_resolved_names: BTreeSet<Name>,
+
+    /// See [ResolutionResult::local_place_roots]
+    local_place_roots: BTreeSet<NameId>,
+
+    /// Parameters whose place is named by a `'x` in the item's signature
+    signature_place_roots: BTreeSet<NameId>,
+
+    /// True while resolving the item's own signature, where a `'x` is a generic of the
+    /// signature rather than the place of the local `x`
+    in_signature: bool,
 }
 
 /// Where was this variable defined?
@@ -309,6 +323,7 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> Arc<ResolutionRes
     match &statement.kind {
         TopLevelItemKind::Definition(definition) => {
             resolver.impl_constructor = definition.impl_info.as_ref().map(|impl_info| impl_info.constructor);
+            resolver.in_signature = matches!(&statement_ctx[definition.rhs], Expr::Lambda(_));
             resolver.resolve_expr(definition.rhs);
         },
         TopLevelItemKind::TypeDefinition(type_definition) => resolver.resolve_type_definition(type_definition),
@@ -343,6 +358,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             impl_constructor: None,
             constructs_trait_outside_impl: false,
             argument_resolved_names: Default::default(),
+            local_place_roots: Default::default(),
+            signature_place_roots: Default::default(),
+            in_signature: false,
             context,
         }
     }
@@ -355,6 +373,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             top_level_names: self.top_level_names,
             constructs_trait_outside_impl: self.constructs_trait_outside_impl,
             argument_resolved_names: self.argument_resolved_names,
+            local_place_roots: self.local_place_roots,
         }
     }
 
@@ -739,11 +758,21 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.push_local_scope();
                 for parameter in &lambda.parameters {
                     self.declare_names_in_pattern(parameter.pattern, true, false, !parameter.is_implicit, false);
+
+                    // A signature names the elided place of a parameter after it
+                    if self.in_signature
+                        && let Pattern::TypeAnnotation(inner, typ) = &self.context[parameter.pattern]
+                        && let Pattern::Variable(name) = &self.context[*inner]
+                        && typ.has_elided_place()
+                    {
+                        self.signature_place_roots.insert(*name);
+                    }
                 }
                 if let Some(return_type) = &lambda.return_type {
                     self.resolve_type(return_type, true);
                 }
                 self.resolve_effects(&lambda.effects, true);
+                self.in_signature = false;
                 self.resolve_expr(lambda.body);
                 self.pop_local_scope();
             },
@@ -1158,6 +1187,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         match self.find_local(&self.context[name_id]) {
             Some(local) => {
                 self.name_links.insert(name_id, Origin::Local(local));
+                if self.type_variables.contains(&local) {
+                    return;
+                }
+                if self.in_signature {
+                    self.signature_place_roots.insert(local);
+                } else if !self.signature_place_roots.contains(&local) {
+                    self.local_place_roots.insert(local);
+                }
             },
             None => self.resolve_variable(name_id, auto_declare),
         }
