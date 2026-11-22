@@ -376,7 +376,7 @@ fn emit_cap_tuple(
             Instruction::MakeTuple(vec![buf_ptr, result_slot_ptr, target_coro, d.handler_env.unwrap_or(Value::Unit)]),
             cap_state_type,
         );
-        let cap_state_ptr = e.push_instruction(Instruction::StackAlloc(cap_state), Type::POINTER);
+        let cap_state_ptr = e.push_instruction(Instruction::slot(cap_state), Type::POINTER);
         let wrapper_value = e.emit_definition_value(wid, wty.clone(), d.handler_bindings);
         e.push_instruction(Instruction::PackClosure { function: wrapper_value, environment: cap_state_ptr }, wty)
     });

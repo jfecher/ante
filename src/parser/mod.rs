@@ -848,7 +848,7 @@ impl<'tokens> Parser<'tokens> {
             .try_parse_or_recover_to_newline(|this| this.parse_block_or_expression())
             .unwrap_or_else(|| self.push_expr(Expr::Error, self.current_token_location()));
 
-        let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false, effects });
+        let lambda = Expr::Lambda(Lambda { return_type, effects, ..Lambda::new(parameters, body) });
         self.insert_expr(lambda_id, lambda, start_location);
         Ok(Definition::new(implicit, false, name, lambda_id))
     }
@@ -2398,7 +2398,7 @@ impl<'tokens> Parser<'tokens> {
                 this.warn_if_operator_outside_body(body, min_prec, ConfusingBodyKind::Lambda);
             }
 
-            Ok(Expr::Lambda(Lambda { parameters, return_type, body, is_move, effects }))
+            Ok(Expr::Lambda(Lambda { return_type, is_move, effects, ..Lambda::new(parameters, body) }))
         })
     }
 
@@ -2615,20 +2615,17 @@ impl<'tokens> Parser<'tokens> {
     fn parse_for(&mut self) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
             this.expect(Token::For, "`for` to begin a for loop")?;
-            let variable = this.parse_ident_id()?;
-            this.expect(Token::In, "`in` after the for-loop variable")?;
-            // Parse a term rather than an expression so we don't consume a range `..` token here
-            let start = this.parse_term(0, false)?;
-            this.expect(Token::Range, "`..` to separate the start and end of a for-loop range")?;
-            let end = this.parse_expr_with_recovery(
+            let pattern = this.parse_pattern()?;
+            this.expect(Token::In, "`in` after the for-loop pattern")?;
+            let iterable = this.parse_expr_with_recovery(
                 |this| this.parse_expression_trailing(0, true),
                 Token::Do,
                 &[Token::Newline],
             )?;
             this.accept(Token::Newline);
-            this.expect(Token::Do, "`do` to separate the range from the body of a for loop")?;
+            this.expect(Token::Do, "`do` to separate the iterated expression from the body of a for loop")?;
             let body = this.parse_block_or_expression()?;
-            Ok(Expr::For(cst::For { variable, start, end, body }))
+            Ok(Expr::For(cst::For { pattern, iterable, body }))
         })
     }
 
@@ -2724,7 +2721,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn wrap_in_lambda(&mut self, parameters: Vec<cst::Parameter>, body: ExprId) -> ExprId {
         let location = self.current_context.expr_locations[body].clone();
-        let lambda = Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false, effects: None });
+        let lambda = Expr::Lambda(cst::Lambda::new(parameters, body));
         self.push_expr(lambda, location)
     }
 
@@ -2885,7 +2882,7 @@ impl<'tokens> Parser<'tokens> {
                 self.parse_block_or_expression()?
             };
 
-            let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false, effects });
+            let lambda = Expr::Lambda(Lambda { return_type, effects, ..Lambda::new(parameters, body) });
             let location = start.to(&self.previous_token_span()).in_file(self.file_id);
             return Ok((name, self.push_expr(lambda, location)));
         }
@@ -3039,8 +3036,15 @@ impl<'tokens> Parser<'tokens> {
     /// is a possibly indented list of TypeNames
     fn at_declaration_block(&self) -> bool {
         let start = if *self.current_token() == Token::Indent { self.token_index + 1 } else { self.token_index };
-        matches!(self.tokens.get(start), Some((Token::Identifier(_), _)))
-            && matches!(self.tokens.get(start + 1), Some((Token::Colon, _)))
+        let token = |offset: usize| self.tokens.get(start + offset).map(|(token, _)| token);
+
+        // An operation may also be named by an operator: `(op): ...`
+        let at_operator = token(0) == Some(&Token::ParenthesisLeft)
+            && token(1).is_some_and(Token::is_overloadable_operator)
+            && token(2) == Some(&Token::ParenthesisRight);
+
+        let name_length = if at_operator { 3 } else { 1 };
+        (at_operator || matches!(token(0), Some(Token::Identifier(_)))) && token(name_length) == Some(&Token::Colon)
     }
 
     /// Parses an effect definition whose body can either be a series of operations comprising the

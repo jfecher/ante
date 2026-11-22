@@ -1,7 +1,6 @@
 import Std.C.calloc, free
 import Std.Hash.Hash
 import Std.Mem.Type, null, ref_to_ptr, forget
-import Std.Iterator.repeat
 
 export HashMap, Entry, Hash, empty, of, clear, resize, should_resize,
     insert, get_entry, get, contains, remove, len,
@@ -45,7 +44,7 @@ extend (map: mut HashMap k v) (stream: s) {Stream s (k, v) e} {Eq k e} {Drop k d
 
 clear (map: mut HashMap k v) {Drop k d} {Drop v d}: Unit can d, Mutate 'map =
     if map.capacity != 0 then
-        repeat map.capacity fn i ->
+        for i in 0 .. map.capacity do
             entry_ptr = offset map.entries i
             entry = ptr_to_ref entry_ptr
             if entry.occupied then

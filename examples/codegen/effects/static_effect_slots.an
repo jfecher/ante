@@ -1,0 +1,51 @@
+// Which handler an effect reaches is decided where it is written and
+// does not take into account what any type variables will dynamically
+// be instantiated to in monomorphization.
+effect Give a =
+    give: fn a -> Unit
+
+// Performs its own effects in the order of its type parameters
+own (x: a) (y: b): Unit can Give a, Give b =
+    give x
+    give y
+
+// `own`'s type parameters are bound in the other order here
+swapped (x: a) (y: b) {Copy a} {Copy b}: Unit can Print =
+    handle
+        handle own y x
+        | give (_: a) ->
+            println "a"
+            resume ()
+    | give (_: b) ->
+        println "b"
+        resume ()
+
+takes (f: fn Unit -> Unit can Give I32, Give U8): Unit can Give I32, Give U8 = f ()
+
+other_order (): Unit can Give U8, Give I32 =
+    give 1u8
+    give 2i32
+
+main () =
+    print_to_stdout do
+    swapped 1u8 2i32
+    swapped 1u8 2u8
+
+    handle
+        handle takes other_order
+        | give (_: U8) ->
+            println "u8"
+            resume ()
+    | give (_: I32) ->
+        println "i32"
+        resume ()
+
+// args: --delete-binary --no-color
+// expected stdout:
+// b
+// a
+// b
+// a
+// u8
+// i32
+

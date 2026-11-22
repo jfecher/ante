@@ -1,8 +1,8 @@
 //! This module defines the two calling conventions of existentialized code:
 //! - The direct calling convention passes a pointer to the [TypeInfoTable] its callee needs, then
 //!   its arguments, then a result pointer if the result is dynamic. See `FunctionBuilder::call_direct`.
-//! - The uniform calling convention, used by every function value, passes each argument but
-//!   evidence by address, then the result pointer, then the function value's own address. See
+//! - The uniform calling convention, used by every function value, passes each argument by
+//!   address, then the result pointer, then the function value's own address. See
 //!   `FunctionBuilder::call_value`. A function value is `(code, type infos.., environment)`, see
 //!   [Types::function_value_fields].
 

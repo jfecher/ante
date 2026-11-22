@@ -58,8 +58,6 @@ pub enum TypeErrorKind {
     Return,
     /// A loop body (actual) is not Unit-typed (expected)
     LoopBody,
-    /// A for-range bound (actual) does not match the range's integer type (expected)
-    LoopRange,
     /// An array literal element (actual) does not match the array's element type (expected)
     ArrayElement,
     /// A call performs an effect (actual) not permitted by the enclosing function's effects clause (expected)
@@ -154,9 +152,6 @@ impl TypeErrorKind {
             },
             TypeErrorKind::LoopBody => {
                 format!("Loop bodies must have type {expected} but this body has type {actual}")
-            },
-            TypeErrorKind::LoopRange => {
-                format!("This range bound has type {actual} but {expected} was expected")
             },
             TypeErrorKind::ArrayElement => {
                 format!("This array element has type {actual} but {expected} was expected")

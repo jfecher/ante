@@ -75,15 +75,6 @@ impl TypeChecker<'_, '_> {
                     self.find_in_lambda_body(lambda, captures, moved);
                 }
             },
-            Expr::While(while_) => {
-                find(self, while_.condition, moves);
-                find(self, while_.body, moves);
-            },
-            Expr::For(for_) => {
-                find(self, for_.start, moves);
-                find(self, for_.end, moves);
-                find(self, for_.body, moves);
-            },
             Expr::Return(return_) => find(self, return_.expression, moves),
             Expr::Assignment(assignment) => {
                 // `x += v` reads `x` but `x := v` only writes it
@@ -127,10 +118,15 @@ impl TypeChecker<'_, '_> {
             | Expr::Error
             | Expr::Extern(_)
             | Expr::Quoted(_)
+            | Expr::Fallthrough => (),
+            Expr::Is(_)
+            | Expr::Do(_)
+            | Expr::Loop(_)
+            | Expr::While(_)
+            | Expr::For(_)
             | Expr::Break
             | Expr::Continue
-            | Expr::Fallthrough => (),
-            Expr::Is(_) | Expr::Do(_) | Expr::Loop(_) | Expr::InterpolatedString(_) => {
+            | Expr::InterpolatedString(_) => {
                 unreachable!("desugared before type inference")
             },
         }

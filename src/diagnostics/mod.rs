@@ -266,12 +266,6 @@ pub enum Diagnostic {
     ReturnNotInFunction {
         location: Location,
     },
-    BreakNotInLoop {
-        location: Location,
-    },
-    ContinueNotInLoop {
-        location: Location,
-    },
     IntegerTooLarge {
         value: Integer,
         kind: IntegerKind,
@@ -814,8 +808,6 @@ impl Diagnostic {
                 format!("A {} clause may only have one variable", color_keyword("can"))
             },
             Diagnostic::ReturnNotInFunction { location: _ } => "`return` can only be used in a function".to_string(),
-            Diagnostic::BreakNotInLoop { location: _ } => "`break` can only be used inside a loop".to_string(),
-            Diagnostic::ContinueNotInLoop { location: _ } => "`continue` can only be used inside a loop".to_string(),
             Diagnostic::IntegerTooLarge { value, kind, location: _ } => {
                 format!("{} is too large for type {}", color_name(&value.to_string()), color_type(&kind.to_string()))
             },
@@ -1057,8 +1049,6 @@ impl Diagnostic {
             | Diagnostic::ExpectedKind { location, .. }
             | Diagnostic::MultipleEffectRowVariables { location }
             | Diagnostic::ReturnNotInFunction { location }
-            | Diagnostic::BreakNotInLoop { location }
-            | Diagnostic::ContinueNotInLoop { location }
             | Diagnostic::IntegerTooLarge { location, .. }
             | Diagnostic::Unimplemented { location, .. }
             | Diagnostic::TypeAnnotationNeeded { location, .. }
@@ -1175,9 +1165,10 @@ impl Diagnostic {
             Diagnostic::FunctionQualifiedByType { name: _, location } => {
                 Some((location, "Functions are stored in modules, not types".to_string()))
             },
-            Diagnostic::ArgumentTypeMustBeKnown { name: _, location } => {
-                Some((location, "The first argument's type is unknown so its source module was not searched".to_string()))
-            },
+            Diagnostic::ArgumentTypeMustBeKnown { name: _, location } => Some((
+                location,
+                "The first argument's type is unknown so its source module was not searched".to_string(),
+            )),
             _ => None,
         }
     }

@@ -1,0 +1,32 @@
+// A function's type lists an effect once for each handler it may reach. Here `make seven` needs
+// `Ask` twice: once for the closure and once for `seven`. It can still be used anywhere a function
+// of its type is accepted.
+effect Ask =
+    ask: fn Unit -> I32
+
+// Returns a function whose type has its own `Ask` next to `e`
+make (g: fn Unit -> I32 can e) = move fn () -> ask () * 10 + g ()
+
+seven (): I32 can Ask = ask ()
+
+// A parameter with a closed row
+call_closed (h: fn Unit [env] -> I32 can Ask) {Drop env pure}: I32 can Ask = h ()
+
+// A parameter with an open row
+call_open (h: fn Unit [env] -> I32 can e) {Drop env e}: I32 can e = h ()
+
+main () =
+    abort_on_fail do
+    handle
+        f = make seven
+        assert (f () == 77)
+        assert (call_open f == 77)
+        assert (call_closed f == 77)
+
+        // If the caller can see both `Ask`s then they both reach the caller's nearest handler
+        inner = handle f ()
+                | ask () -> resume 1
+        assert (inner == 11)
+    | ask () -> resume 7
+
+// args: --delete-binary --no-color

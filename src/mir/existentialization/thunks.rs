@@ -43,8 +43,7 @@ pub(super) fn value_thunk(shared: &Shared, target: DefinitionId, id: DefinitionI
     let name = Arc::new(format!("{}_value", definition.name));
     let (mut builder, addresses, result) = FunctionBuilder::new_uniform(shared, name, id, definition);
     let args = mapvec(addresses.into_iter().zip(&definition.entry_block().parameter_types), |(address, typ)| {
-        let arg = if matches!(typ, Type::Evidence(_)) { Arg::Value(address) } else { Arg::Address(address) };
-        (arg, typ.clone())
+        (Arg::Address(address), typ.clone())
     });
 
     let return_type = shared.return_type(target);

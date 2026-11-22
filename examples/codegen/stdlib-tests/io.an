@@ -1,10 +1,9 @@
 import Std.IO.create_dir, create_dir_all
 import Std.IO.File
-import Std.IO.File.iterator_file, print_to_file, write, drop_file
+import Std.IO.File.stream_file, print_to_file, write, drop_file
 import Std.C
 import Std.C.system
 import Std.Fail.Fail, try, abort_on_fail, assert
-import Std.Iterator.iterate
 
 write_test_file (path: String): Unit can Fs, Fail =
     var f = File.open path "w"
@@ -45,9 +44,9 @@ main () =
     assert <| try (do next_char f2_ref) is None
     close f2
 
-    // Test iterating over file lines using the File Iterator impl
+    // Test iterating over file lines using the File Stream impl
     var f3 = File.open (clone path) "r"
-    iterate (mut f3) println  // line1\nline2\nline3
+    iter (mut f3) println  // line1\nline2\nline3
     close f3
 
     // Test print_to_file

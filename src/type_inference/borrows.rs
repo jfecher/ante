@@ -66,8 +66,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             chains: Vec::new(),
             item_names: FxHashSet::default(),
             tail_resumes: FxHashSet::default(),
+            loop_parts: Vec::new(),
+            handle_lambdas: Vec::new(),
             closures: Vec::new(),
-            loops: Vec::new(),
             diverged: false,
         };
         // Top-level definitions are never dropped so we bind their names before entering any drop scope
@@ -166,13 +167,20 @@ pub(super) struct BorrowChecker<'a, 'local, 'inner> {
     /// See [Self::drop_before_tail_resume].
     tail_resumes: FxHashSet<ExprId>,
 
+    /// Stack of each loop condition or body being walked. Innermost is last.
+    /// Closures written within a loop push `None` here since they may be called from anywhere. So a
+    /// `break` or `continue` in one is treated like any other effect rather than a jump out of the
+    /// surrounding code.
+    pub(super) loop_parts: Vec<Option<LoopState>>,
+
+    /// The body or branch of each `handle` being walked, with the index of its scope in
+    /// `drop_scopes`. Innermost is last.
+    pub(super) handle_lambdas: Vec<(ExprId, usize)>,
+
     /// Stack of each lambda whose body is being walked. Innermost lambda is last.
     /// Each entry is `None` unless it is a `move` closure since those are the only closures
     /// that own what they capture.
     pub(super) closures: Vec<Option<ClosureState>>,
-
-    /// Stack of each loop whose body is being walked. Innermost loop is last.
-    loops: Vec<LoopState>,
 
     /// True if control never reaches the point being walked. This happens when an earlier
     /// expression in the same branch jumped away or never returns. We don't drop anything here
@@ -181,12 +189,15 @@ pub(super) struct BorrowChecker<'a, 'local, 'inner> {
     pub(super) diverged: bool,
 }
 
-/// A loop whose body is being walked
-struct LoopState {
-    /// How many move scopes enclose its body
+/// A loop condition or body being walked
+pub(super) struct LoopState {
+    /// The index of its scope in `drop_scopes`
+    pub(super) drop_scopes: usize,
+
+    /// The number of move scopes enclosing it
     move_scopes: usize,
 
-    /// What was moved and mutated within the body before each `break` or `continue`
+    /// What was moved and mutated within it before each `break` or `continue`
     jumps: Vec<MoveScope>,
 }
 
@@ -231,13 +242,15 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             },
             Expr::If(if_) => self.walk_if(&if_, expr, depth, usage),
             Expr::Match(match_) => self.walk_match(&match_, depth, usage),
-            Expr::Lambda(_) => {
+            Expr::Lambda(lambda) => {
                 self.borrow_sites.push(expr);
                 // A closure's body runs when it is called rather than where it is written
-                self.walk_lambda(expr, depth, LambdaKind::Closure);
+                let (body, _) = self.walk_lambda(expr, depth, LambdaKind::Closure);
+                // Loop conditions and bodies are only ever called by the loop they are written in
+                if lambda.is_loop_part() {
+                    self.moves.absorb_mutations(body);
+                }
             },
-            Expr::While(while_) => self.walk_while(&while_, depth, usage),
-            Expr::For(for_) => self.walk_for(&for_, depth, usage),
             Expr::Return(ret) => {
                 self.walk_expr(ret.expression, depth, usage);
 
@@ -247,7 +260,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                     // return outside of a function, name resolution should already error here
                 }
                 if !self.diverged {
-                    self.drop_before_jump(expr, DropScopeKind::Function);
+                    self.drop_before_return(expr);
                     self.return_from_closure(expr);
                 }
             },
@@ -290,6 +303,9 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 if self.tail_resumes.contains(&expr) && !self.diverged {
                     self.drop_before_tail_resume(expr, &call);
                 }
+                if !self.diverged {
+                    self.drop_before_loop_jump(expr, &call);
+                }
             },
             Expr::TypeAnnotation(annotation) => self.walk_expr(annotation.lhs, depth, usage),
             Expr::Constructor(constructor) => {
@@ -304,15 +320,18 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 }
             },
             Expr::Variable(path) => self.walk_variable(path, expr, usage),
-            Expr::Break | Expr::Continue if !self.diverged => {
-                self.drop_before_jump(expr, DropScopeKind::Loop);
-                self.jump_to_loop();
-            },
             Expr::Chain(chain) => self.walk_chain(&chain, depth, usage),
             Expr::Fallthrough if !self.diverged => self.fall_through(expr),
-            Expr::Break | Expr::Continue | Expr::Fallthrough => {},
+            Expr::Fallthrough => {},
             Expr::Literal(_) | Expr::Error | Expr::Extern(_) | Expr::Quoted(_) => {},
-            Expr::Is(_) | Expr::Do(_) | Expr::Loop(_) | Expr::InterpolatedString(_) => {
+            Expr::Is(_)
+            | Expr::Do(_)
+            | Expr::Loop(_)
+            | Expr::While(_)
+            | Expr::For(_)
+            | Expr::Break
+            | Expr::Continue
+            | Expr::InterpolatedString(_) => {
                 unreachable!("desugared before type inference")
             },
         }
@@ -337,27 +356,15 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.tc.expr_function_type(callee).is_some_and(|function| diverges(Some(&function.return_type)))
     }
 
-    /// Record what the innermost loop's body moved and mutated before reaching a `break` or
+    /// Record what the innermost loop part moved and mutated before reaching a `break` or
     /// `continue`. We need to do this here since the branch being jumped out of never reaches
-    /// its end, so its state wouldn't otherwise make it to the end of the loop.
-    fn jump_to_loop(&mut self) {
-        let Some(state) = self.loops.last_mut() else { return };
-        // The body's own scope already reaches the end of the loop either way
+    /// its end, so its state wouldn't otherwise make it to the end of the loop part.
+    pub(super) fn jump_to_loop(&mut self) {
+        let Some(Some(state)) = self.loop_parts.last_mut() else { return };
+        // The loop part's own scope reaches its end either way, so we only need to record the
+        // scopes within it
         if self.moves.scope_count() > state.move_scopes + 1 {
             state.jumps.push(self.moves.state_since(state.move_scopes + 1));
-        }
-    }
-
-    /// Start walking the body of a loop. Its move scope should already be entered.
-    fn enter_loop(&mut self) {
-        self.loops.push(LoopState { move_scopes: self.moves.scope_count() - 1, jumps: Vec::new() });
-    }
-
-    /// Leave the body of the innermost loop, merging in the state of each jump out of it
-    fn exit_loop(&mut self) {
-        let state = self.loops.pop().expect("exit_loop called without a loop");
-        for jump in state.jumps {
-            self.moves.merge_jump(jump);
         }
     }
 
@@ -664,56 +671,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
     /// Every expression directly nested within `expr`
     pub(super) fn child_exprs(&self, expr: ExprId) -> Vec<ExprId> {
-        match self.tc.resolved_expr(expr).as_ref() {
-            Expr::Sequence(items) => mapvec(items, |item| item.expr),
-            Expr::Definition(definition) => vec![definition.rhs],
-            Expr::MemberAccess(access) => vec![access.object],
-            Expr::Call(call) => {
-                let mut children = vec![call.function];
-                children.extend(call.arguments.iter().map(|arg| arg.expr));
-                children
-            },
-            Expr::Lambda(lambda) => vec![lambda.body],
-            Expr::If(if_) => {
-                let mut children = vec![if_.condition, if_.then];
-                children.extend(if_.else_);
-                children
-            },
-            Expr::Match(match_) => {
-                let mut children = vec![match_.expression];
-                children.extend(match_.cases.iter().map(|(_, branch)| *branch));
-                children
-            },
-            Expr::Handle(handle) => {
-                let mut children = vec![handle.expression];
-                children.extend(handle.cases.iter().map(|(_, branch)| *branch));
-                children
-            },
-            Expr::Chain(chain) => vec![chain.body, chain.else_],
-            Expr::Reference(reference) => vec![reference.rhs],
-            Expr::TypeAnnotation(annotation) => vec![annotation.lhs],
-            Expr::Constructor(constructor) => constructor.fields.iter().map(|(_, field)| *field).collect(),
-            Expr::While(while_) => vec![while_.condition, while_.body],
-            Expr::For(for_) => vec![for_.start, for_.end, for_.body],
-            Expr::Return(ret) => vec![ret.expression],
-            Expr::Assignment(assignment) => {
-                let mut children = vec![assignment.lhs, assignment.rhs];
-                children.extend(assignment.op.map(|(_, op_expr)| op_expr));
-                children
-            },
-            Expr::ArrayLiteral(elements) => elements.clone(),
-            Expr::Literal(_)
-            | Expr::Variable(_)
-            | Expr::Break
-            | Expr::Continue
-            | Expr::Fallthrough
-            | Expr::Error
-            | Expr::Extern(_)
-            | Expr::Quoted(_) => Vec::new(),
-            Expr::Is(_) | Expr::Do(_) | Expr::Loop(_) | Expr::InterpolatedString(_) => {
-                unreachable!("desugared before type inference")
-            },
-        }
+        self.tc.resolved_expr(expr).children()
     }
 
     /// Issue an escaping reference error for `atom`, avoiding multiple errors for the same place
@@ -1220,42 +1178,6 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.moves.merge_branches_into_parent(branches);
     }
 
-    fn walk_while(&mut self, while_: &cst::While, depth: ScopeDepth, usage: Use) {
-        let body_depth = depth.deeper();
-        let diverged = self.diverged;
-        self.enter_body();
-        self.enter_loop();
-        // The condition's temporaries are dropped each time it is evaluated
-        self.enter_drop_scope(DropScopeKind::Statement);
-        self.walk_expr(while_.condition, depth, usage);
-        self.exit_drop_scope(while_.condition);
-        self.enter_drop_scope(DropScopeKind::Loop);
-        self.walk_and_check_escapes(while_.body, body_depth, usage);
-        self.exit_drop_scope(while_.body);
-        self.exit_loop();
-        self.diverged = diverged;
-        let body = self.finish_body(body_depth, Some(RepeatedContext::WhileLoop));
-        self.moves.absorb_mutations(body);
-    }
-
-    fn walk_for(&mut self, for_: &cst::For, depth: ScopeDepth, usage: Use) {
-        self.walk_expr(for_.start, depth, usage);
-        self.walk_expr(for_.end, depth, usage);
-
-        let body_depth = depth.deeper();
-        let diverged = self.diverged;
-        self.enter_body();
-        self.enter_loop();
-        self.enter_drop_scope(DropScopeKind::Loop);
-        self.bind_name(for_.variable, body_depth, true);
-        self.walk_and_check_escapes(for_.body, body_depth, usage);
-        self.exit_drop_scope(for_.body);
-        self.exit_loop();
-        self.diverged = diverged;
-        let body = self.finish_body(body_depth, Some(RepeatedContext::ForLoop));
-        self.moves.absorb_mutations(body);
-    }
-
     /// Track a body's moves, mutations, and uses of unstable references
     fn enter_body(&mut self) {
         self.moves.push_scope();
@@ -1366,8 +1288,19 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         let Expr::Lambda(lambda) = self.tc.resolved_expr(lambda_expr).into_owned() else {
             unreachable!("walk_lambda called on a non-lambda expr")
         };
+        let is_loop_part = lambda.is_loop_part();
+        let context = match lambda.kind {
+            cst::LambdaKind::ForBody => Some(RepeatedContext::ForLoop),
+            cst::LambdaKind::WhileCondition | cst::LambdaKind::WhileBody => Some(RepeatedContext::WhileLoop),
+            cst::LambdaKind::Function | cst::LambdaKind::LoopReturnHandler => context,
+        };
 
         let body_depth = depth.deeper();
+        let drop_scopes = self.drop_scopes.len();
+        let runs_in_place = kind != LambdaKind::Closure;
+        if runs_in_place {
+            self.handle_lambdas.push((lambda_expr, drop_scopes));
+        }
         self.enter_drop_scope(DropScopeKind::Function);
         self.mark_dropped_parameter(lambda_expr, &lambda.parameters);
         for parameter in &lambda.parameters {
@@ -1375,8 +1308,16 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
         self.push_function_row(lambda_expr);
 
-        let old_function_depth = self.function_depth.replace(body_depth);
+        // A `return` in a loop still leaves the enclosing function
+        let old_function_depth = self.function_depth;
+        if !lambda.returns_from_enclosing_function() {
+            self.function_depth = Some(body_depth);
+        }
         self.enter_body();
+        if !runs_in_place {
+            let move_scopes = self.moves.scope_count() - 1;
+            self.loop_parts.push(is_loop_part.then(|| LoopState { drop_scopes, move_scopes, jumps: Vec::new() }));
+        }
         let is_closure = kind == LambdaKind::Closure && !self.tc.is_impl_method(lambda_expr);
         self.enter_closure(lambda_expr, is_closure);
         if is_closure {
@@ -1390,6 +1331,14 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         let diverged = self.diverged;
         self.walk_and_check_escapes(lambda.body, body_depth, Use::Move);
         self.exit_drop_scope(lambda.body);
+        if runs_in_place {
+            self.handle_lambdas.pop();
+        } else if let Some(Some(part)) = self.loop_parts.pop() {
+            // The branch a jump leaves never reaches its end, so merge its state in here
+            for jump in part.jumps {
+                self.moves.merge_jump(jump);
+            }
+        }
         let completes = !std::mem::replace(&mut self.diverged, diverged);
         self.function_depth = old_function_depth;
         let body = self.finish_body(body_depth, context);
@@ -1398,7 +1347,8 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
         if is_closure {
             self.record_move_captures(lambda_expr, self_name);
-            if !lambda.is_move {
+            // Moves in a loop were already reported by `finish_body`
+            if !lambda.is_move && !is_loop_part {
                 self.check_moves_out_of_reference_captures(lambda_expr, &body, body_depth);
             }
         }

@@ -1,6 +1,11 @@
-break_at_top () = break
+// `break` and `continue` are operations of the `Loop` effect, so outside of a loop they are
+// unhandled effects like any other
+break_at_top (): Unit = break
 
-continue_at_top () = continue
+continue_at_top (): Unit can Print = continue
+
+// It is fine for a function to leave these for its caller to handle
+break_for_caller (): Unit can Loop = break
 
 for_with_non_integers () =
     for i in "zero" .. "ten" do
@@ -11,27 +16,22 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/break_continue_not_in_loop.an:1:19
-// 1 | break_at_top () = break	// error: `break` can only be used inside a loop
-//   |                   ^^^^^
+// examples/typechecking/break_continue_not_in_loop.an:3:25
+// 2 | // unhandled effects like any other
+// 3 | break_at_top (): Unit = break	// error: This can perform Loop but only pure is allowed here
+//   |                         ^^^^^
 // 
-// examples/typechecking/break_continue_not_in_loop.an:3:22
-// 3 | continue_at_top () = continue	// error: `continue` can only be used inside a loop
-//   |                      ^^^^^^^^
+// examples/typechecking/break_continue_not_in_loop.an:5:38
+//   | // error: This can perform Loop but only Print is allowed here
+// 5 | continue_at_top (): Unit can Print = continue
+//   |                                      ^^^^^^^^
 // 
-// examples/typechecking/break_continue_not_in_loop.an:6:14
-// 5 | for_with_non_integers () =
-//   |     // error: This range bound has type String but I32 was expected
-// 6 |     for i in "zero" .. "ten" do
-//   |              ^^^^^^
-// 7 |         _ = i
+// examples/typechecking/break_continue_not_in_loop.an:11:5
+// 10 | for_with_non_integers () =
+//    |     // error: No implicit found for type Stream (Range String) _ _ required by for
+// 11 |     for i in "zero" .. "ten" do
+//    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+// 12 |         _ = i
 // 
-// examples/typechecking/break_continue_not_in_loop.an:6:24
-// 5 | for_with_non_integers () =
-//   |     // error: This range bound has type String but I32 was expected
-// 6 |     for i in "zero" .. "ten" do
-//   |                        ^^^^^
-// 7 |         _ = i
-// 
-// Found 4 errors and 0 warnings
+// Found 3 errors and 0 warnings
 

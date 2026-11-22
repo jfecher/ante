@@ -1,5 +1,4 @@
-// Regression test for a bug where the outer handler was accidentally selected in `inlined`
-// after the local effect optimization
+// `Give a` and `Give b` are handled by different handlers, even when `a` and `b` are the same type
 effect Give a =
     give: fn a -> Unit
 
@@ -65,18 +64,19 @@ main () =
 // after inner
 // after outer
 // inner
-// inner
+// outer
 // after inner
-// after inner
+// after outer
 // inner
 // outer
 // after inner
 // after outer
 // inner
-// inner
+// outer
 // after inner
-// after inner
+// after outer
 // inner
 // outer
 // inner
-// inner
+// outer
+

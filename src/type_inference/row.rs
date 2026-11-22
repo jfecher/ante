@@ -1,5 +1,8 @@
-//! Row polymorphism helpers shared by effect rows and places rows: sets of entries with an
-//! open tail, compared by subtyping or unification.
+//! Row polymorphism helpers shared by effect rows and places rows. Both are lists of entries with
+//! an open tail which are compared by subtyping or unification. A places row is a set, but an
+//! effect row may repeat an effect and the order of those repeats matters. Effects also can't be
+//! moved past a row's row variables. See [sort_and_dedup_row].
+use crate::iterator_extensions::{mapvec, sort_runs};
 use crate::shared_arc::Shared;
 
 use crate::type_inference::{
@@ -29,6 +32,69 @@ pub(super) enum RowEnd {
     Actual,
     /// Either end when unifying
     Exact,
+}
+
+/// Controls how the entries of one effect row are resolved against those of another. See
+/// [resolve_row].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RowRelation {
+    /// Both rows must hold the same entries, slot for slot. This is required for two function types
+    /// to be equal.
+    Same,
+    /// Each entry of the first row must be provided by some entry of the second. E.g. when
+    /// performing an effect somewhere the second row is allowed, or when using a function as a
+    /// function with the second row.
+    Within,
+}
+
+/// Resolves each entry of the effect row `narrow` to the entry of `wide` which provides it. Returns
+/// the index of that entry for each, or `None` if `wide` has no such entry.
+///
+/// An effect is a label along with its arguments, and a row may contain the same effect several
+/// times. Entries sharing a `head` are distinguished by their order, with the first being the
+/// nearest handler. We can't go by their arguments alone since differing arguments may later be
+/// substituted to the same type. `same` is used to decide whether two entries are the same effect.
+/// - [RowRelation::Same]: each entry resolves to the next remaining entry in `wide` with the same
+///   head. Returns `Err` if `same` is false for that entry.
+/// - [RowRelation::Within]: each entry resolves to the next remaining entry in `wide` for which
+///   `same` is true. If there are none left, it shares the last entry taken for which `same` is
+///   true. This lets a row which repeats an effect more often than `wide` still resolve.
+///
+/// Entries which aren't `ordered` have no repeats to distinguish, so they only need `same` to be
+/// true.
+pub(crate) fn resolve_row<T, Head: PartialEq>(
+    narrow: &[T], wide: &[T], relation: RowRelation, head: impl Fn(&T) -> Option<Head>, ordered: impl Fn(&T) -> bool,
+    mut same: impl FnMut(&T, &T) -> bool,
+) -> Result<Vec<Option<usize>>, ()> {
+    let wide_heads = mapvec(wide, &head);
+    let mut taken = vec![false; wide.len()];
+    let mut slots = Vec::with_capacity(narrow.len());
+
+    for entry in narrow {
+        let entry_head = head(entry);
+        let slot = if relation == RowRelation::Same && entry_head.is_some() && ordered(entry) {
+            match (0..wide.len()).find(|i| !taken[*i] && wide_heads[*i] == entry_head) {
+                Some(next) if same(entry, &wide[next]) => Some(next),
+                Some(_) => return Err(()),
+                None => None,
+            }
+        } else {
+            // Effects with different heads are never the same
+            let mut is_same = |i: usize| {
+                let same_head = entry_head.is_none() || wide_heads[i].is_none() || wide_heads[i] == entry_head;
+                same_head && same(entry, &wide[i])
+            };
+            match (0..wide.len()).find(|i| !taken[*i] && is_same(*i)) {
+                None if relation == RowRelation::Within => (0..wide.len()).rev().find(|i| taken[*i] && is_same(*i)),
+                slot => slot,
+            }
+        };
+        if let Some(slot) = slot {
+            taken[slot] = true;
+        }
+        slots.push(slot);
+    }
+    Ok(slots)
 }
 
 /// Which kind of row a list of entries belongs to
@@ -150,22 +216,58 @@ pub(super) fn follow_row(entries: &mut [Type], bindings: &TypeBindings, more_bin
     }
 }
 
-/// Sort and deduplicate the given row. Entries must already be zonked.
+/// Sort the given row, merging repeated places. Entries must already be zonked.
+///
+/// The handler an effect reaches is determined by its position among the other effects sharing its
+/// head. This position can't change when type arguments or row variables are substituted, so we
+/// keep effects with the same head in order and never merge them. We also never move an effect past
+/// a row variable since the variable may later be bound to effects with the same head. This leaves
+/// only the effects between two row variables to be sorted by head.
 pub(super) fn sort_and_dedup_row(kind: RowKind, entries: &mut Vec<Type>) {
-    let sort_key = |entry: &Type| {
-        let head = kind.head(entry);
-        (is_open(entry), head.is_none(), head)
-    };
-    entries.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)).then_with(|| a.cmp(b)));
     match kind {
-        RowKind::Effects => entries.dedup(),
-        RowKind::Places => entries.dedup_by(|entry, previous| {
-            let same = same_place(entry, previous);
-            if same {
-                *previous = join_entries(previous.clone(), entry.clone());
-            }
-            same
-        }),
+        RowKind::Effects => {
+            let head = |entry: &Type| kind.head(entry);
+            sort_runs(
+                entries,
+                |entry| head(entry).is_none(),
+                |a, b| {
+                    let positional = !is_places_effect(a) && !is_places_effect(b);
+                    let by_head = head(a).cmp(&head(b));
+                    by_head.then_with(|| if positional { std::cmp::Ordering::Equal } else { a.cmp(b) })
+                },
+            );
+            // `Mutate` is never handled so repeats of it are meaningless and can be merged
+            entries.dedup_by(|entry, previous| is_places_effect(entry) && entry == previous);
+        },
+        RowKind::Places => {
+            let sort_key = |entry: &Type| {
+                let head = kind.head(entry);
+                (is_open(entry), head.is_none(), head)
+            };
+            entries.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)).then_with(|| a.cmp(b)));
+            entries.dedup_by(|entry, previous| {
+                let same = same_place(entry, previous);
+                if same {
+                    *previous = join_entries(previous.clone(), entry.clone());
+                }
+                same
+            })
+        },
+    }
+}
+
+/// Moves each effect of a row ahead of its row variables. This is done on rows as they were written
+/// so that the order effects and row variables are written in doesn't matter.
+pub(super) fn effects_before_row_variables(entries: &mut [Type]) {
+    entries.sort_by_key(|entry| RowKind::Effects.head(entry).is_none());
+}
+
+/// True if this is an effect over places like `Mutate 'p`. These have no handlers, so there is no
+/// need to distinguish between repeats of them.
+fn is_places_effect(effect: &Type) -> bool {
+    match effect {
+        Type::Application(_, arguments) => matches!(arguments.first(), Some(Type::Places(_))),
+        _ => false,
     }
 }
 
@@ -198,35 +300,76 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let (b_open, b_concrete): (Vec<Type>, Vec<Type>) = b_list.into_iter().partition(is_open);
 
         let mut b_matched = vec![false; b_concrete.len()];
-        let mut a_leftover = Vec::new();
-        for a_item in a_concrete {
-            let matched =
-                b_concrete.iter().enumerate().find(|(i, b_item)| !b_matched[*i] && try_match(&a_item, b_item));
-            match matched {
-                Some((i, _)) => b_matched[i] = true,
-                None => a_leftover.push(a_item),
+        let slots = mapvec(&a_concrete, |a_item| {
+            let slot = (0..b_concrete.len()).find(|i| !b_matched[*i] && try_match(a_item, &b_concrete[*i]));
+            if let Some(slot) = slot {
+                b_matched[slot] = true;
             }
-        }
+            slot
+        });
+        Self::row_match_from_slots(a_open, a_concrete, b_open, b_concrete, slots)
+    }
 
+    /// Splits the concrete entries of each row into the pairs matched by `slots` and the entries
+    /// left over. `slots` holds the index into `b_concrete` that each entry of `a_concrete` was
+    /// matched to.
+    fn row_match_from_slots(
+        a_open: Vec<Type>, a_concrete: Vec<Type>, b_open: Vec<Type>, b_concrete: Vec<Type>, slots: Vec<Option<usize>>,
+    ) -> RowMatch {
+        let mut b_matched = vec![false; b_concrete.len()];
+        slots.iter().flatten().for_each(|slot| b_matched[*slot] = true);
+
+        let a_leftover =
+            a_concrete.into_iter().zip(slots).filter_map(|(item, slot)| slot.is_none().then_some(item)).collect();
         let b_leftover =
             b_concrete.into_iter().zip(b_matched).filter_map(|(item, matched)| (!matched).then_some(item)).collect();
         RowMatch { a_open, b_open, a_leftover, b_leftover }
     }
 
-    /// Flattens two effect rows and matches `a`'s concrete effects against `b`'s.
-    /// Returns `None` if either row contains an error type
-    fn match_rows(&self, a: &Type, b: &Type, variance: Variance, new_bindings: &mut TypeBindings) -> Option<RowMatch> {
+    /// Flattens two effect rows and resolves `a`'s concrete effects against `b`'s according to
+    /// `relation`, see [resolve_row]. Returns `None` if either row contains an error type.
+    fn match_rows(
+        &self, a: &Type, b: &Type, variance: Variance, relation: RowRelation, new_bindings: &mut TypeBindings,
+    ) -> Result<Option<RowMatch>, ()> {
         let a_list = self.collect_and_merge_effects(a, new_bindings);
         let b_list = self.collect_and_merge_effects(b, new_bindings);
 
         if a_list.iter().chain(b_list.iter()).any(|effect| effect.is_error()) {
-            return None;
+            return Ok(None);
         }
 
-        Some(Self::match_row_entries(a_list, b_list, |a_effect, b_effect| {
-            self.subtype_matching_effect(std::slice::from_ref(b_effect), |_| false, a_effect, variance, new_bindings)
-                .is_some()
-        }))
+        let (a_open, a_concrete): (Vec<Type>, Vec<Type>) = a_list.into_iter().partition(is_open);
+        let (b_open, b_concrete): (Vec<Type>, Vec<Type>) = b_list.into_iter().partition(is_open);
+
+        let head = |effect: &Type| RowKind::Effects.head(effect);
+        let ordered = |effect: &Type| !is_places_effect(effect);
+        // `subtype_matching_effect` tries each comparison on a copy of the bindings, so a failed
+        // comparison doesn't leave any bindings behind
+        let same = |a_effect: &Type, b_effect: &Type| {
+            let b_effect = std::slice::from_ref(b_effect);
+            self.subtype_matching_effect(b_effect, |_| false, a_effect, variance, new_bindings).is_some()
+        };
+        let slots = resolve_row(&a_concrete, &b_concrete, relation, head, ordered, same)?;
+
+        let mut row_match = Self::row_match_from_slots(a_open, a_concrete, b_open, b_concrete, slots);
+
+        // The effects performed within a row are a set, so remove any repeats from the leftover
+        // effects and row variables
+        if relation == RowRelation::Within {
+            let dedup = |entries: &mut Vec<Type>| {
+                let mut kept: Vec<Type> = Vec::with_capacity(entries.len());
+                entries.retain(|entry| {
+                    let new = !kept.contains(entry);
+                    if new {
+                        kept.push(entry.clone());
+                    }
+                    new
+                });
+            };
+            dedup(&mut row_match.a_leftover);
+            dedup(&mut row_match.a_open);
+        }
+        Ok(Some(row_match))
     }
 
     /// Row-subtype two rows, adding `a`'s open ends to `b` rather than binding them to `b`'s other entries.
@@ -252,7 +395,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
     pub(super) fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(m) = self.match_rows(a, b, Variance::Contravariant, new_bindings) else { return Ok(()) };
+        let Some(m) = self.match_rows(a, b, Variance::Contravariant, RowRelation::Within, new_bindings)? else {
+            return Ok(());
+        };
         self.row_subtype_generic(RowKind::Effects, m, (RowEnd::Exact, RowEnd::Exact), new_bindings)
     }
 
@@ -302,7 +447,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Unify two effect rows
     pub(super) fn row_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(m) = self.match_rows(a, b, Variance::Invariant, new_bindings) else { return Ok(()) };
+        let Some(m) = self.match_rows(a, b, Variance::Invariant, RowRelation::Same, new_bindings)? else {
+            return Ok(());
+        };
         self.row_unify_generic(RowKind::Effects, m, (RowEnd::Exact, RowEnd::Exact), new_bindings)
     }
 

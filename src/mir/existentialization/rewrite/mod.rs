@@ -3,7 +3,6 @@
 //! - `entry`: the definition's own parameters and block parameters
 //! - `calls`: calls, function values, and calls to and from C
 //! - `memory`: aggregates, loads, stores, allocations, and atomics
-//! - `evidence`: building and searching evidence
 //! - `destinations`: choosing where dynamic values are built to avoid copying them
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -25,7 +24,6 @@ use crate::{
 mod calls;
 mod destinations;
 mod entry;
-mod evidence;
 mod memory;
 
 use destinations::Hint;
@@ -147,7 +145,7 @@ impl<'a> Rewriter<'a> {
             Instruction::MakeBytes(bytes) => {
                 Some(self.builder.emit(Instruction::MakeBytes(bytes.clone()), Type::POINTER))
             },
-            Instruction::StackAlloc(value) => Some(self.stack_alloc(value)),
+            Instruction::StackAlloc { value, .. } => Some(self.stack_alloc(value)),
             Instruction::StackAllocUninit(element) => Some(self.stack_alloc_uninit(element)),
             Instruction::AllocShared(value) => Some(self.alloc_shared(value)),
             Instruction::Store { pointer, value } => Some(self.store(pointer, value)),
@@ -159,8 +157,9 @@ impl<'a> Rewriter<'a> {
             Instruction::SizeOf(sized) => Some(usz_value(self.builder.layout(sized).size)),
             Instruction::ArrayLen(Type::Array { length, .. }) => Some(usz_value(self.builder.array_length(length))),
             Instruction::ArrayLen(array) => panic!("ArrayLen of the non-array `{array}`"),
-            Instruction::LookupEvidence { evidence, key } => Some(self.lookup_evidence(evidence, key, &typ)),
-            Instruction::MakeEvidence { capabilities, rest } => Some(self.make_evidence(capabilities, rest)),
+            Instruction::LookupEvidence { .. } | Instruction::RestEvidence { .. } | Instruction::MakeEvidence(_) => {
+                unreachable!("evidence is lowered to tuples before existentialization")
+            },
             Instruction::Extern(name) => Some(self.extern_symbol(name, &typ)),
             Instruction::AtomicLoad { pointer, ordering } if is_dynamic(&typ) => {
                 Some(self.dynamic_atomic(AtomicOperation::Load(*ordering), pointer, &[], &typ))

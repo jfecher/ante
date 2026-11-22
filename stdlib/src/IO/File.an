@@ -1,10 +1,9 @@
 import Std.C.fwrite, ungetc, malloc, realloc, free, copy_file, copy_cstring
 import Std.C
 import Std.Mem.null
-import Std.Iterator.Iterator
 import Std.String
 
-export File, open, close, drop_file, eof, write, next_char, next_line, iterator_file, print_to_file
+export File, open, close, drop_file, eof, write, next_char, next_line, stream_file, print_to_file
 
 type File = c_file: C.File
 
@@ -72,8 +71,8 @@ next_line (f: mut File): String can Fs =
     array_insert cstr len '\0'
     String.from_parts cstr (U32 len)
 
-/// Iterating through a File iterates through each line
-impl iterator_file: Iterator (mut File) String Fs with
-    next file =
-        if eof file then None
-        else Some (file, next_line file)
+/// Streaming a File emits each line
+impl stream_file: Stream (mut File) String Fs with
+    stream file =
+        while not (eof file) do
+            emit (next_line file)

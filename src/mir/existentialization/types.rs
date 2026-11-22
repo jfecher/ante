@@ -96,7 +96,7 @@ impl Types {
                 fields.push(self.lower(&function.environment));
                 Type::tuple(fields)
             },
-            Type::Evidence(_) => Type::POINTER,
+            Type::Evidence(_) => panic!("existentialization: evidence is lowered to tuples beforehand"),
             Type::Generic(_) => panic!("existentialization: cannot lower the dynamic type `{typ}`"),
         }
     }

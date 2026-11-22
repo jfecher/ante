@@ -253,7 +253,7 @@ impl Definition {
                         instr_assert_subtype!(**array_element_type, element_type, self, id, mir, "Array elem `{array_element_type}` != `{element_type}`");
                     }
                 },
-                Instruction::StackAlloc(_) => {
+                Instruction::StackAlloc { .. } => {
                     instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "Result type is not a pointer, it is `{result_type}`");
                 },
                 Instruction::Transmute(_) => (),
@@ -454,7 +454,7 @@ impl Definition {
                     instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "GetFieldPtr result must be a pointer");
                 },
                 Instruction::Extern(_) => (),
-                Instruction::LookupEvidence { .. } | Instruction::MakeEvidence { .. } => {
+                Instruction::LookupEvidence { .. } | Instruction::RestEvidence { .. } | Instruction::MakeEvidence(_) => {
                     instr_panic!(self, id, mir, "evidence instruction should have been lowered before validation");
                 },
                 Instruction::Capability => {

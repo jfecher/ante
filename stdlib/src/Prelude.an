@@ -5,7 +5,8 @@
 */
 import Std.C.exit
 import Std.Fail.Fail, fail, try, on_fail, assert, fail_if, or_panic, panic_on_fail, abort_on_fail
-import Std.Stream.Stream, stream, Emit, emit, iter, stream_fn, stream_once_fn, stream_array, map, filter, foldl
+import Std.Stream.Stream, stream, Emit, emit, iter, stream_fn, stream_once_fn, stream_array, map, filter, foldl,
+    (for), (while), Loop, (break), (continue), stream_range
 import Std.Collections.Vec.Vec, print_vec, extract_vec, insert_vec, stream_vec, stream_ref_vec, eq_vec, drop_vec, clone_vec, cmp_vec
 import Std.String.String, append_string, clone_string, drop_string, eq_string, cmp_string
 import Std.Slice.copy_slice, extract_slice, extract_ref_slice, insert_slice, stream_slice, print_slice, cmp_slice
@@ -34,7 +35,6 @@ import Std.Print.Print, write, write_char, write_u64, write_i64, write_f64,
     print_to_sink, print_to_stdout, print_to_stderr, dbg, Display, print, println, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_ref
 import Std.Array.array_len, extract_array, insert_array, print_array, cmp_array, copy_array, drop_array
 import Std.Mem.null, offset, deref_ptr, ptr_store, ptr_to_ref, copy_type
-import Std.Iterator.copy_range
 import Std.Time.Duration.copy_duration
 import Std.Time.Instant.copy_instant
 import Std.C.copy_clock
@@ -78,6 +78,8 @@ export String, Maybe, Maybe.None, Maybe.Some, iff, unwrap, unwrap_or_else, Resul
     Panic, Panic.panic, panic, abort_on_panic, ignore,
     Fail, fail, try, on_fail, assert, fail_if, or_panic, panic_on_fail, abort_on_fail,
     Stream, stream, Emit, emit, iter, stream_fn, stream_once_fn, stream_array, map, filter, foldl,
+    (for), (while), Loop, (break), (continue), Range, (..),
+    stream_range,
     Vec, print_vec, extract_vec, insert_vec, stream_vec, stream_ref_vec, eq_vec, drop_vec, clone_vec, cmp_vec,
     eq_string, cmp_string, cmp_array,
     copy_slice, extract_slice, extract_ref_slice, insert_slice, stream_slice, print_slice, cmp_slice
@@ -85,6 +87,12 @@ export String, Maybe, Maybe.None, Maybe.Some, iff, unwrap, unwrap_or_else, Resul
 type Maybe t =
    | None
    | Some t
+
+type Range t = start: t, end: t
+
+impl copy_range {Copy t}: Copy (Range t) with (.*) = deref
+
+(..) (start: t) (end: t): Range t = Range start end
 
 /// If `condition` is true, returns `Some (then_ ())`,
 /// otherwise returns `None`.

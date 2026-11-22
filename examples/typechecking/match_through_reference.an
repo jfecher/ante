@@ -83,7 +83,7 @@ main () =
 // (nested: fn (ref 'm (Maybe (I32, String))) -> ref 'm! String can Panic) (m: ref 'm (Maybe (I32, String))): ref 'm! String can Panic =
 //     (match_var11: (error)) = (m: ref 'm (Maybe (I32, String)))
 //     switch (match_var11: ref 'm (Maybe (I32, String)))
-//     | 0 -> ref (panic: fn String -> Never can Panic) "none"
+//     | 0 -> (panic: fn String -> Never can Panic) "none"
 //     | 1, (match_var12: ref 'm! (I32, String)) -> switch (match_var12: ref 'm! (I32, String))
 //         | 0, (match_var13: ref 'm! I32), (match_var14: ref 'm! String) -> 
 //                 (y: ref 'm! String) = (match_var14: ref 'm! String)
@@ -107,12 +107,12 @@ main () =
 //                     (_: ref 's! F64) = (match_var10: ref 's! F64)
 //                     
 //                         (_name: ref 's String) = (name: ref 's String)
-//                         ref (panic: fn String -> Never can Panic) ""
+//                         (panic: fn String -> Never can Panic) ""
 // 
 // (whole_variant: fn (ref 'm (Maybe I32)) -> ref 'm! (Maybe.Some I32) can Panic) (m: ref 'm (Maybe I32)) =
 //     (match_var6: (error)) = (m: ref 'm (Maybe I32))
 //     switch (match_var6: ref 'm (Maybe I32))
-//     | 0 -> ref (panic: fn String -> Never can Panic) ""
+//     | 0 -> (panic: fn String -> Never can Panic) ""
 //     | 1, (match_var7: ref 'm! I32) -> 
 //             (c: ref 'm! (Maybe.Some I32)) = (match_var8: ref 'm! (Maybe.Some I32))
 //             (c: ref 'm! (Maybe.Some I32))

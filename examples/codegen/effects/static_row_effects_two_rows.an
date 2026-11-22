@@ -1,0 +1,47 @@
+// Two row variables in the same row are still kept separate when both are bound to the same effect.
+// An `ask` written in `direct`, `values`, or `closures` reaches the handler in `outer`, while an `ask`
+// arriving through `e` reaches the handler in `main`. This is true no matter which order the row
+// variables are bound in.
+effect Ask =
+    ask: fn Unit -> I32
+
+pair (f: fn Unit -> I32 can e) (g: fn Unit -> I32 can d): I32 can e, d = g () * 10 + f ()
+
+pair_recursive (f: fn Unit -> I32 can e) (g: fn Unit -> I32 can d) (n: I32): I32 can e, d =
+    if n > 0 then pair_recursive f g (n - 1) else g () * 10 + f ()
+
+make (f: fn Unit -> I32 can e) (g: fn Unit -> I32 can d) = move fn () -> g () * 10 + f ()
+
+// Recursive so that neither it nor `pair_recursive` is inlined
+direct (f: fn Unit -> I32 can e) (n: I32): I32 can Ask, e =
+    if n > 0 then direct f (n - 1)
+    else
+        a = pair f ask
+        b = pair_recursive f ask 0
+        c = pair ask f
+        a * 10000 + b * 100 + c
+
+// `pair` as a function value
+values (f: fn Unit -> I32 can e): I32 can Ask, e =
+    p = pair
+    a = p f ask
+    q = pair
+    b = q ask f
+    a * 100 + b
+
+// A closure over two row variables, returned and called later
+closures (f: fn Unit -> I32 can e): I32 can Ask, e =
+    a = make f ask
+    b = make ask f
+    a () * 100 + b ()
+
+outer (f: fn Unit -> I32 can e): (I32, I32, I32) can e =
+    handle (direct f 0, values f, closures f)
+    | ask () -> resume 1
+
+main () =
+    abort_on_fail do
+    handle assert (outer ask is (171771, 1771, 1771))
+    | ask () -> resume 7
+
+// args: --delete-binary --no-color

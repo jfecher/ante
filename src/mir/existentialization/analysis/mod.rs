@@ -135,10 +135,11 @@ fn computed_globals(
     })
 }
 
-/// Ids are read for effect keys and passed on in function values and to callees reading them
+/// A definition uses ids if it reads them itself or references anything which does, since ids are
+/// passed along in function values and to callees
 fn propagate_uses_ids(facts: &FxHashMap<DefinitionId, Facts>) -> FxHashSet<DefinitionId> {
     propagate(facts, |_, facts, uses_ids| {
-        facts.reads_ids || facts.references.iter().any(|(callee, _)| uses_ids.contains(callee))
+        !facts.function_values.is_empty() || facts.references.iter().any(|(callee, _)| uses_ids.contains(callee))
     })
 }
 

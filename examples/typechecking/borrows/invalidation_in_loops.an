@@ -2,7 +2,8 @@ import Std.Collections.Vec
 
 // A loop body or closure may run again, so it may not use a binding it invalidates
 import Std.Collections.Vec.get, clear, push
-import Std.Iterator.repeat
+repeat (count: Usz) (f: fn Usz [env] -> Unit can e) {Drop env e}: Unit can e =
+    for i in 0 .. count do f i
 
 use (_x: ref t): Unit = ()
 
@@ -60,43 +61,43 @@ bad5 () =
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/invalidation_in_loops.an:13:13
-// 12 |     for _i in 0 .. 3 do
+// examples/typechecking/borrows/invalidation_in_loops.an:14:13
+// 13 |     for _i in 0 .. 3 do
 //    |         // error: one may be invalidated by a later mutation in a for loop, which may run again
-// 13 |         use one
+// 14 |         use one
 //    |             ^^^
-// 14 |         clear v	// note: one may be invalidated by this mutation
+// 15 |         clear v	// note: one may be invalidated by this mutation
 //    |         -------
 // 
-// examples/typechecking/borrows/invalidation_in_loops.an:20:13
-// 19 |     repeat 3 fn _ ->
+// examples/typechecking/borrows/invalidation_in_loops.an:21:13
+// 20 |     repeat 3 fn _ ->
 //    |         // error: one may be invalidated by a later mutation in a closure, which may run again
-// 20 |         use one
+// 21 |         use one
 //    |             ^^^
-// 21 |         clear v	// note: one may be invalidated by this mutation
+// 22 |         clear v	// note: one may be invalidated by this mutation
 //    |         -------
 // 
-// examples/typechecking/borrows/invalidation_in_loops.an:28:9
-// 26 |     for _i in 0 .. 3 do
-// 27 |         push v 4	// note: one may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation_in_loops.an:29:9
+// 27 |     for _i in 0 .. 3 do
+// 28 |         push v 4	// note: one may be invalidated by this mutation
 //    |         --------
-// 28 |     use one	// error: one may have been invalidated by an earlier mutation
+// 29 |     use one	// error: one may have been invalidated by an earlier mutation
 //    |         ^^^
 // 
-// examples/typechecking/borrows/invalidation_in_loops.an:42:13
-// 40 |     while true do
-// 41 |         clear v	// note: one may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation_in_loops.an:43:13
+// 41 |     while true do
+// 42 |         clear v	// note: one may be invalidated by this mutation
 //    |         -------
-// 42 |         use one	// error: one may have been invalidated by an earlier mutation
+// 43 |         use one	// error: one may have been invalidated by an earlier mutation
 //    |             ^^^
 // 
-// examples/typechecking/borrows/invalidation_in_loops.an:56:13
-// 55 |     for _i in 0 .. 3 do
+// examples/typechecking/borrows/invalidation_in_loops.an:57:13
+// 56 |     for _i in 0 .. 3 do
 //    |         // error: one may be invalidated by a later mutation in a for loop, which may run again
-// 56 |         use one
+// 57 |         use one
 //    |             ^^^
-// 57 |         one := get v 0
-// 58 |         push v 4	// note: one may be invalidated by this mutation
+// 58 |         one := get v 0
+// 59 |         push v 4	// note: one may be invalidated by this mutation
 //    |         --------
 // 
 // Found 5 errors and 0 warnings

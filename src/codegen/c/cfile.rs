@@ -169,8 +169,7 @@ typedef double ante_f64;
         self.function_declarations += "#define ANTE_SETJMP(buf) _setjmp(buf)\n";
         self.function_declarations += "#endif\n";
         self.function_declarations += "ANTE_NORETURN void mco_abort_longjmp(void*, void*, int);\n";
-        self.function_declarations +=
-            "#define ANTE_INTEGER_OVERFLOW() do { ante_write_stderr((void*)\"Integer overflow\\n\", 17); exit(1); } while (0)\n";
+        self.function_declarations += "#define ANTE_INTEGER_OVERFLOW() do { ante_write_stderr((void*)\"Integer overflow\\n\", 17); exit(1); } while (0)\n";
         self
     }
 }

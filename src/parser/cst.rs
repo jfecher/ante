@@ -453,7 +453,9 @@ pub enum Expr {
     Loop(Loop),
     While(While),
     For(For),
+    /// Always desugared during `GetItem` to `Std.Stream.(break) ()`
     Break,
+    /// Always desugared during `GetItem` to `Std.Stream.(continue) ()`
     Continue,
     Chain(Chain),
     Fallthrough,
@@ -628,8 +630,88 @@ pub struct Lambda {
     pub body: ExprId,
     pub is_move: bool,
 
+    pub kind: LambdaKind,
+
     /// `None` for no clause, `Some(vec![])` for `is pure`, `Some(effects)` for `can e1, e2, ...`.
     pub effects: Option<Vec<Type>>,
+}
+
+impl Expr {
+    /// Returns every expression directly nested within this one. Expects loops, `is`, `do`, and
+    /// interpolated strings to already be desugared.
+    pub fn children(&self) -> Vec<ExprId> {
+        match self {
+            Expr::Sequence(items) => items.iter().map(|item| item.expr).collect(),
+            Expr::Definition(definition) => vec![definition.rhs],
+            Expr::MemberAccess(access) => vec![access.object],
+            Expr::Call(call) => {
+                std::iter::once(call.function).chain(call.arguments.iter().map(|argument| argument.expr)).collect()
+            },
+            Expr::Lambda(lambda) => vec![lambda.body],
+            Expr::If(if_) => [if_.condition, if_.then].into_iter().chain(if_.else_).collect(),
+            Expr::Match(match_) => {
+                std::iter::once(match_.expression).chain(match_.cases.iter().map(|(_, branch)| *branch)).collect()
+            },
+            Expr::Handle(handle) => {
+                std::iter::once(handle.expression).chain(handle.cases.iter().map(|(_, branch)| *branch)).collect()
+            },
+            Expr::Chain(chain) => vec![chain.body, chain.else_],
+            Expr::Reference(reference) => vec![reference.rhs],
+            Expr::TypeAnnotation(annotation) => vec![annotation.lhs],
+            Expr::Constructor(constructor) => constructor.fields.iter().map(|(_, field)| *field).collect(),
+            Expr::Return(ret) => vec![ret.expression],
+            Expr::Assignment(assignment) => {
+                [assignment.lhs, assignment.rhs].into_iter().chain(assignment.op.map(|(_, op_expr)| op_expr)).collect()
+            },
+            Expr::ArrayLiteral(elements) => elements.clone(),
+            Expr::Literal(_)
+            | Expr::Variable(_)
+            | Expr::Fallthrough
+            | Expr::Break
+            | Expr::Continue
+            | Expr::Error
+            | Expr::Extern(_)
+            | Expr::Quoted(_) => Vec::new(),
+            Expr::Is(_) | Expr::Do(_) | Expr::Loop(_) | Expr::While(_) | Expr::For(_) | Expr::InterpolatedString(_) => {
+                unreachable!("Expected this expression to be desugared already")
+            },
+        }
+    }
+}
+
+impl Lambda {
+    /// Creates a plain `fn parameters -> body` lambda
+    pub fn new(parameters: Vec<Parameter>, body: ExprId) -> Lambda {
+        Lambda { parameters, return_type: None, body, is_move: false, kind: LambdaKind::Function, effects: None }
+    }
+
+    /// True if this is the condition or body of a desugared loop
+    pub fn is_loop_part(&self) -> bool {
+        matches!(self.kind, LambdaKind::ForBody | LambdaKind::WhileCondition | LambdaKind::WhileBody)
+    }
+
+    /// True if a `return` written in this lambda should return from an enclosing function instead
+    /// of the lambda itself. This is done by performing an effect, see `desugar_loop_call`.
+    pub fn returns_from_enclosing_function(&self) -> bool {
+        self.kind != LambdaKind::Function
+    }
+}
+
+/// Describes where a lambda came from
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum LambdaKind {
+    /// A normal lambda, i.e. anything not listed below
+    Function,
+    /// The body of a desugared `for` loop. Like the condition and body of a `while` loop below,
+    /// these run in place once per iteration. So they never own their captures and are borrow
+    /// checked as loop bodies.
+    ForBody,
+    /// The condition of a desugared `while` loop
+    WhileCondition,
+    /// The body of a desugared `while` loop
+    WhileBody,
+    /// The body of the `handle` which wraps a desugared loop containing a `return`
+    LoopReturnHandler,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -767,12 +849,12 @@ pub struct While {
     pub body: ExprId,
 }
 
-/// `for variable in start .. end do body`
+/// `for pattern in iterable do body`
+/// Always desugared during `GetItem` to `(for) iterable (fn pattern -> body)`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct For {
-    pub variable: NameId,
-    pub start: ExprId,
-    pub end: ExprId,
+    pub pattern: PatternId,
+    pub iterable: ExprId,
     pub body: ExprId,
 }
 

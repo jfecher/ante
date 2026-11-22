@@ -1,0 +1,43 @@
+effect Ask =
+    ask: fn Unit -> I32
+
+use_it (): I32 can Ask = ask () + 1
+
+apply (f: fn Unit [env] -> a can e) {Drop env e}: a can e = f ()
+
+// `resume` may be captured by a closure. This includes loop bodies since they are closures as well.
+in_while (): I32 =
+    handle use_it ()
+    | ask () ->
+        var out = 0
+        var i = 0
+        while i < 3 do
+            i += 1
+            if i == 2 then
+                out := resume 20
+                break
+        out
+
+in_for (): I32 =
+    handle use_it ()
+    | ask () ->
+        var out = 0
+        for i in 0 .. 3 do
+            if i == 1 then
+                out := resume 10
+                break
+        out
+
+// Calling `resume` directly should still work when another branch captures it in a closure
+direct_and_captured (flag: Bool): I32 =
+    handle use_it ()
+    | ask () -> if flag then resume 1 else apply fn () -> resume 2
+
+main () =
+    abort_on_fail do
+    assert (in_while () == 21)
+    assert (in_for () == 11)
+    assert (direct_and_captured true == 2)
+    assert (direct_and_captured false == 3)
+
+// args: --delete-binary --no-color

@@ -854,7 +854,10 @@ impl Builder {
         self.write_declarator(result, &|this| {
             let _ = write!(this.current_item, "{id}");
         });
-        self.record_extern_use("ante_write_stderr", &mir::Type::function(vec![mir::Type::POINTER, mir::Type::int(IntegerKind::Usz)], mir::Type::UNIT));
+        self.record_extern_use(
+            "ante_write_stderr",
+            &mir::Type::function(vec![mir::Type::POINTER, mir::Type::int(IntegerKind::Usz)], mir::Type::UNIT),
+        );
         self.record_extern_use("exit", &mir::Type::function(vec![mir::Type::int(IntegerKind::I32)], mir::Type::UNIT));
         let builtin_name = op.c_builtin_name();
         let _ = write!(self.current_item, "; if ({builtin_name}(");
@@ -996,7 +999,7 @@ impl Builder {
                     self.write(";");
                 }
             },
-            mir::Instruction::StackAlloc(value) => {
+            mir::Instruction::StackAlloc { value, .. } => {
                 let typ = mir.type_of_value(value, definition);
                 self.write_declarator(&typ, &|this| {
                     let _ = write!(this.current_item, "{id}_slot");
@@ -1297,7 +1300,9 @@ impl Builder {
             mir::Instruction::Perform { .. } => unreachable!("Instruction::Perform remaining in C codegen"),
             mir::Instruction::Handle { .. } => unreachable!("Instruction::Handle remaining in C codegen"),
             mir::Instruction::Capability => unreachable!("Instruction::Capability remaining in C codegen"),
-            mir::Instruction::LookupEvidence { .. } | mir::Instruction::MakeEvidence { .. } => {
+            mir::Instruction::LookupEvidence { .. }
+            | mir::Instruction::RestEvidence { .. }
+            | mir::Instruction::MakeEvidence(_) => {
                 unreachable!("evidence instruction remaining in C codegen")
             },
             mir::Instruction::PackClosure { .. } | mir::Instruction::ClosureEnvironment(_) => {

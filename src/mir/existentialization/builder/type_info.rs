@@ -9,7 +9,7 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::IntegerKind,
     mir::{
-        DefinitionId, EffectKey, Instruction, Type, Value,
+        DefinitionId, Instruction, Type, Value,
         existentialization::{
             builder::{
                 At, FunctionBuilder, Op,
@@ -88,7 +88,7 @@ impl FunctionBuilder<'_> {
             Type::Generic(generic) => Op::Value(self.generic_word(generic.0, 2)),
             Type::Primitive(primitive) => Op::Const(FxBuildHasher.hash_one(primitive)),
             Type::U32(n) => self.combine(Op::Const(1), Op::Const(*n as u64)),
-            Type::Evidence(_) => Op::Const(2),
+            Type::Evidence(_) => unreachable!("evidence is lowered to tuples before existentialization"),
             Type::Tuple(fields) => self.combine_all(3 ^ fields.len() as u64, fields.iter()),
             Type::Union(variants) => self.combine_all(4 ^ variants.len() as u64, variants.iter()),
             Type::Array { length, element } => self.combine_all(5 ^ 2, [&**length, &**element]),
@@ -99,11 +99,6 @@ impl FunctionBuilder<'_> {
         };
         self.cache.type_ids.insert(typ.clone(), id);
         id
-    }
-
-    /// The runtime key identifying an effect within evidence
-    pub(crate) fn effect_key(&mut self, key: &EffectKey) -> Value {
-        u64_value(self.combine_all(FxBuildHasher.hash_one(&key.effect), &key.args))
     }
 
     /// A pointer to the type info table to pass to `callee`, if it takes one.

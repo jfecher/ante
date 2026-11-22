@@ -236,7 +236,7 @@ fn try_optimize_handle(
     let fields =
         vec![inline_chunk, inline_end, inline_chunk, null_chunk, usz(INLINE_FRAMES as usize), stride, tag_offset];
     let state = emitter.push_instruction(Instruction::MakeTuple(fields), state_type());
-    let state = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
+    let state = emitter.push_instruction(Instruction::slot(state), Type::POINTER);
 
     // Each capability closure's environment is `(state, handler_env..)`
     let cases = splits.iter().zip(handler_env_types).zip(pre_ids.iter().zip(&pre_types));
@@ -244,7 +244,7 @@ fn try_optimize_handle(
         let fields = std::iter::once(state).chain(split.handler_env).collect();
         let field_types = std::iter::once(Type::POINTER).chain(handler_env_type).collect();
         let environment = emitter.push_instruction(Instruction::MakeTuple(fields), Type::tuple(field_types));
-        let environment = emitter.push_instruction(Instruction::StackAlloc(environment), Type::POINTER);
+        let environment = emitter.push_instruction(Instruction::slot(environment), Type::POINTER);
         let pre = emitter.emit_definition_value(*pre_id, pre_type.clone(), split.handler_bindings.clone());
         emitter.push_instruction(Instruction::PackClosure { function: pre, environment }, pre_type.clone())
     });
@@ -307,7 +307,7 @@ fn analyze_case(
         let end = if block_id == resume_block { resume_index } else { block.instructions.len() };
         for id in &block.instructions[..end] {
             let typ = match &handler.instructions[*id] {
-                Instruction::StackAlloc(value) => handler.type_of_value(value, &mir.externals, &mir.definitions),
+                Instruction::StackAlloc { value, .. } => handler.type_of_value(value, &mir.externals, &mir.definitions),
                 Instruction::StackAllocUninit(typ) => typ.clone(),
                 Instruction::StackAllocBytes(_) => return None,
                 _ => continue,
@@ -473,7 +473,7 @@ fn build_pre_function(
             let Some(index) = slot_indices.get(&id) else { continue };
             let field =
                 Instruction::GetFieldPtr { struct_ptr: frame, struct_type: split.frame_type.clone(), index: *index };
-            if let Instruction::StackAlloc(value) = std::mem::replace(&mut definition.instructions[id], field) {
+            if let Instruction::StackAlloc { value, .. } = std::mem::replace(&mut definition.instructions[id], field) {
                 let store = Instruction::Store { pointer: Value::InstructionResult(id), value };
                 let store_id = definition.instructions.push(store);
                 definition.instruction_result_types.push_existing(store_id, Type::UNIT);

@@ -11,8 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::local_handler_optimization::has_handle;
 use crate::mir::{
-    BlockId, Definition, DefinitionId, GenericBindings, Instruction, InstructionId, Mir, Type, Value,
-    identity_bindings,
+    BlockId, Definition, DefinitionId, GenericBindings, Instruction, InstructionId, Mir, Value, identity_bindings,
     inline::{Substitution, instantiate},
     next_definition_id,
 };
@@ -243,8 +242,7 @@ fn find_rewrites(
 }
 
 fn is_identity(bindings: &GenericBindings, parent_generic_count: u32, lambda_generic_count: u32) -> bool {
-    lambda_generic_count == parent_generic_count
-        && bindings.iter().enumerate().all(|(index, binding)| *binding == Type::generic(index as u32))
+    lambda_generic_count == parent_generic_count && crate::mir::are_identity_bindings(bindings)
 }
 
 /// Make `rewrite.holder` refer to `specialized` with the parent's identity bindings. Any new
@@ -289,7 +287,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::mir::{BlockId, TerminatorInstruction};
+    use crate::mir::{BlockId, TerminatorInstruction, Type};
 
     #[test]
     fn rewrites_handle_body_reached_through_id() {

@@ -1,4 +1,13 @@
-import Std.Iterator.Iterator, iterate
+trait Iterator it elem (effects: effect) =
+    next: fn it -> Maybe (it, elem) can effects
+
+iterate (iterable: it) (f: fn elem [env] -> Unit can e) {i: Iterator it elem effects} {Drop env e}: Unit can effects, e =
+    match i.next iterable
+    | None -> ()
+    | Some (rest, elem) ->
+        f elem
+        iterate rest f
+
 impl countdown: Iterator I32 I32 pure with
     next x =
         if x <= 0

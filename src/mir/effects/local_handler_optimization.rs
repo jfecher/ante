@@ -526,7 +526,7 @@ impl Site<'_, '_> {
         let exit = exits.then(|| {
             let result = Instruction::StackAllocUninit(self.result_type.clone());
             let exit_slot = work.push_instruction_in(block, result, Type::POINTER);
-            let exited = work.push_instruction_in(block, Instruction::StackAlloc(Value::Bool(false)), Type::POINTER);
+            let exited = work.push_instruction_in(block, Instruction::slot(Value::Bool(false)), Type::POINTER);
             (exit_slot, exited)
         });
 
@@ -645,8 +645,13 @@ impl Carriers {
                 let value = if resolved != Value::InstructionResult(id) { resolved } else { *operand };
                 self.carries(work, value)
             },
+            // The evidence for a row generic never includes any capabilities passed alongside it
+            Instruction::RestEvidence { evidence, prefix } if work.instruction_result_type(id).is_single_rest() => {
+                self.carries(work, work.rest_source(*evidence, crate::mir::evidence::entries(prefix)))
+            },
+            Instruction::RestEvidence { evidence, .. } => self.carries(work, *evidence),
             instruction @ (Instruction::MakeTuple(_)
-            | Instruction::MakeEvidence { .. }
+            | Instruction::MakeEvidence(_)
             | Instruction::PackClosure { .. }) => self.any_operand_carries(work, instruction),
             _ => false,
         }
@@ -679,10 +684,16 @@ impl Carriers {
         for (block_id, block) in work.blocks.iter() {
             for (index, id) in block.instructions.iter().enumerate() {
                 let instruction = &work.instructions[*id];
-                // A projection which is not a carrier extracts something other than the capability
+                // If a projection isn't a carrier then it is extracting something other than the
+                // capability. The same is true for evidence which only takes the row generics out
+                // of the evidence holding the capability.
                 let is_projection = matches!(
                     instruction,
-                    Instruction::Id(_) | Instruction::IndexTuple { .. } | Instruction::LookupEvidence { .. }
+                    Instruction::Id(_)
+                        | Instruction::IndexTuple { .. }
+                        | Instruction::LookupEvidence { .. }
+                        | Instruction::RestEvidence { .. }
+                        | Instruction::MakeEvidence(_)
                 );
                 if self.carriers.contains(id) || is_projection || !self.any_operand_carries(work, instruction) {
                     continue;

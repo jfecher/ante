@@ -535,6 +535,9 @@ impl Imports {
                 | Instruction::LookupEvidence { .. }
                 | Instruction::PackClosure { .. }
                 | Instruction::Instantiate(..)
+                // Copying an immutable slot gives us a second slot with the same value. This is
+                // fine since neither slot is ever stored to, so nothing can tell them apart.
+                | Instruction::StackAlloc { immutable: true, .. }
         );
         if !copyable || depth >= MAX_IMPORT_DEPTH {
             return self.import(body, outer, value);

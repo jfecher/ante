@@ -114,7 +114,7 @@ impl Rewriter<'_> {
             slot
         } else {
             let value = self.builder.direct(arg, &typ);
-            self.builder.emit(Instruction::StackAlloc(value), Type::POINTER)
+            self.builder.emit(Instruction::slot(value), Type::POINTER)
         }
     }
 

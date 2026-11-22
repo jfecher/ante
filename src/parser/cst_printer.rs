@@ -905,8 +905,8 @@ impl<'a> CstDisplay<'a> {
             Expr::While(while_) => self.fmt_while(while_, context, f),
             Expr::For(for_) => self.fmt_for(for_, context, f),
             Expr::Break => write!(f, "break"),
-            Expr::Chain(_) | Expr::Fallthrough => unreachable!("only created by desugaring"),
             Expr::Continue => write!(f, "continue"),
+            Expr::Chain(_) | Expr::Fallthrough => unreachable!("only created by desugaring"),
             Expr::Return(return_) => {
                 write!(f, "return ")?;
                 self.fmt_expr(return_.expression, context, f)
@@ -1563,11 +1563,9 @@ impl<'a> CstDisplay<'a> {
 
     fn fmt_for(&mut self, for_: &For, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "for ")?;
-        self.fmt_name(for_.variable, context, f)?;
+        self.fmt_pattern(for_.pattern, context, f)?;
         write!(f, " in ")?;
-        self.fmt_expr(for_.start, context, f)?;
-        write!(f, "..")?;
-        self.fmt_expr(for_.end, context, f)?;
+        self.fmt_expr(for_.iterable, context, f)?;
         write!(f, " do ")?;
         self.fmt_expr(for_.body, context, f)
     }

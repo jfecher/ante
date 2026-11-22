@@ -544,7 +544,7 @@ fn splice_in_handle_replacement(
     let mut cap_closures: Vec<Value> = Vec::with_capacity(wrapper_ids.len());
     for (i, wrapper_id) in wrapper_ids.iter().enumerate() {
         let env_pointer_value = match decisions[i].handler_env {
-            Some(env) => push(definition, Instruction::StackAlloc(env), Type::POINTER),
+            Some(env) => push(definition, Instruction::slot(env), Type::POINTER),
             None => {
                 push(definition, Instruction::Transmute(Value::Integer(crate::mir::IntConstant::Usz(0))), Type::POINTER)
             },

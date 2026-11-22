@@ -26,7 +26,8 @@ use crate::{
         kinds::Kind,
         places::{Place, PlaceAccess, PlaceMode},
         row::{
-            Row, RowKind, canonicalize_row, construct_row, flatten_row_into, follow_row, is_open, sort_and_dedup_row,
+            Row, RowKind, canonicalize_row, construct_row, effects_before_row_variables, flatten_row_into, follow_row,
+            is_open, sort_and_dedup_row,
         },
     },
 };
@@ -79,7 +80,7 @@ pub enum Type {
     /// Has [Kind::U32].
     U32(u32),
 
-    /// An effects row, each effect is sorted & deduplicated
+    /// An effects row sorted by effect, where repeats of an effect are kept in order
     ///
     /// A value of None corresponds to an empty effect set to avoid allocation
     Effects(Row<Type>),
@@ -1258,7 +1259,11 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
     fn convert_effect_row_entries(&mut self, list: &[cst::Type], implicit: Option<Type>) -> Type {
         let mut effects = mapvec(list, |e| self.convert_with_kind(e, Kind::Effect));
         effects.extend(implicit);
-        Type::effects(&effects, &Default::default(), &Default::default())
+        let none = TypeBindings::default();
+        let mut flat = Vec::with_capacity(effects.len());
+        flatten_row_into(RowKind::Effects, &effects, &mut flat, &none, &none);
+        effects_before_row_variables(&mut flat);
+        Type::effects(&flat, &none, &none)
     }
 
     fn next_type_variable_id(&mut self) -> TypeVariableId {
@@ -1939,7 +1944,7 @@ impl Type {
         flatten_row_into(RowKind::Effects, effects, found, bindings, more_bindings);
     }
 
-    /// Flatten, follow, sort, and deduplicate `effects` by exact equality rather than unification
+    /// Flatten, follow and sort `effects`
     pub(crate) fn canonicalize_effects(
         effects: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) -> Vec<Type> {
@@ -1951,12 +1956,12 @@ impl Type {
         follow_row(effects, bindings, more_bindings);
     }
 
-    /// Sort and deduplicate the given effect set. Entries must already be zonked.
-    pub(crate) fn sort_and_dedup_effects(effects: &mut Vec<Type>) {
+    /// Sort the given effects. Entries must already be zonked.
+    pub(crate) fn sort_effects(effects: &mut Vec<Type>) {
         sort_and_dedup_row(RowKind::Effects, effects);
     }
 
-    /// Construct a canonicalized effect row by following & deduplicating entries.
+    /// Construct a canonicalized effect row by following & sorting entries.
     pub(crate) fn effects(list: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
         construct_row(RowKind::Effects, list, bindings, more_bindings)
     }
@@ -2275,9 +2280,10 @@ where
     fn canonicalize(&self, effects: &Option<Shared<Vec<Type>>>) -> Vec<Type> {
         let effects = effects.as_deref().map_or(&[][..], Vec::as_slice);
         let mut effects = Type::canonicalize_effects(effects, self.bindings, &Default::default());
-        // Open ends are sorted last
         if let Some(first_open) = effects.iter().position(is_open) {
-            effects.truncate(first_open + 1);
+            let open = effects[first_open].clone();
+            effects.retain(|effect| !is_open(effect));
+            effects.push(open);
         }
         effects
     }

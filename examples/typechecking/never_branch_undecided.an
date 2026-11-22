@@ -1,0 +1,40 @@
+// A diverging branch shouldn't decide the type of the other branches,
+// even when the result has no expected type yet
+stop (): Never = stop ()
+
+use_i32 (_x: I32): Unit = ()
+use_str (_x: String): Unit = ()
+
+if_last (b: Bool): Unit =
+    x = if b then "a" else stop ()
+    use_str x
+
+match_middle (n: I32): Unit =
+    x = match n
+        | 0 -> stop ()
+        | 1 -> "one"
+        | 2 -> stop ()
+        | _ -> "many"
+    use_str x
+
+in_loop (n: I32): Unit =
+    for i in 0 .. n do
+        x = if i > 2 then break else i
+        use_i32 x
+
+mismatch (b: Bool): Unit =
+    x = if b then stop () else 3
+    use_str x
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/never_branch_undecided.an:27:13
+// 26 |     x = if b then stop () else 3
+// 27 |     use_str x	// error: Argument 1 has type I32 but String was expected
+//    |             ^
+// 
+// Found 1 error and 0 warnings
+

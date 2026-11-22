@@ -28,7 +28,7 @@ use crate::{
     },
     shared_arc::Shared,
     type_inference::{
-        Locateable, TypeChecker,
+        Locateable, LoopExit, TypeChecker,
         affine::{MoveScope, prelude_trait},
         borrows::BorrowChecker,
         errors::TypeErrorKind,
@@ -73,7 +73,6 @@ pub(super) enum DropCause {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(super) enum DropScopeKind {
     Function,
-    Loop,
     Block,
     /// A single statement in a block. It owns the temporaries evaluated within it but never any bindings.
     Statement,
@@ -334,22 +333,36 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    /// Before `jump` (a `return`, `break`, or `continue`), drop what every scope it leaves still
-    /// owns. `target` is the kind of the outermost scope it leaves.
-    /// Returns the index of that scope, if there is one.
-    pub(super) fn drop_before_jump(&mut self, jump: ExprId, target: DropScopeKind) -> Option<usize> {
-        let outermost = self.drop_scopes.iter().rposition(|scope| scope.kind == target)?;
-        self.drop_scopes_before(DropSlot::BeforeJump(jump), outermost);
-        Some(outermost)
+    /// Returns the index of the innermost function scope being walked
+    fn function_scope(&self) -> Option<usize> {
+        self.drop_scopes.iter().rposition(|scope| scope.kind == DropScopeKind::Function)
+    }
+
+    /// Drop everything still owned by each scope of the function being returned from. These drops
+    /// are run before the `return` at `jump`.
+    pub(super) fn drop_before_return(&mut self, jump: ExprId) {
+        if let Some(outermost) = self.function_scope() {
+            self.drop_scopes_before(DropSlot::BeforeJump(jump), outermost);
+        }
     }
 
     /// Drop what each scope from index `outermost` onward still owns at `slot`, which leaves all
     /// of these scopes
     fn drop_scopes_before(&mut self, slot: DropSlot, outermost: usize) {
+        self.drop_scopes_with(slot, outermost, |_, _, _| ());
+    }
+
+    /// Same as [Self::drop_scopes_before] but also calls `each_scope` with the index of each scope
+    /// and its drops
+    fn drop_scopes_with(
+        &mut self, slot: DropSlot, outermost: usize, mut each_scope: impl FnMut(&mut Self, usize, &[ExprId]),
+    ) {
         let scopes = self.drop_scopes.split_off(outermost);
         let mut drops = Vec::new();
-        for scope in scopes.iter().rev() {
+        for (offset, scope) in scopes.iter().enumerate().rev() {
+            let first_drop = drops.len();
             self.drop_owned(scope, &mut drops);
+            each_scope(self, outermost + offset, &drops[first_drop..]);
         }
         self.drop_scopes.extend(scopes);
         self.record_drops(slot, drops);
@@ -378,13 +391,46 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             self.check_escapes(argument.expr, boundary);
         }
 
-        let Some(outermost) = self.drop_scopes.iter().rposition(|scope| scope.kind == DropScopeKind::Function) else {
-            return;
-        };
+        let Some(outermost) = self.function_scope() else { return };
         self.drop_scopes_before(DropSlot::BeforeCall(call_expr), outermost);
         let location = call_expr.locate(self.tc);
         for name in self.drop_scopes[outermost..].iter().flat_map(|scope| &scope.owned) {
             self.moves.record_move(Place::variable(*name), location.clone());
+        }
+    }
+
+    /// A `break`, `continue`, or `return` in a loop is a `call` to an effect which never resumes.
+    /// Nothing after it in the surrounding loop condition or body will run, so we need to drop
+    /// anything still owned there before `call`, the same way we would before a jump.
+    pub(super) fn drop_before_loop_jump(&mut self, call_expr: ExprId, call: &cst::Call) {
+        let Some(Some(part)) = self.loop_parts.last() else { return };
+        let outermost = part.drop_scopes;
+
+        let Some(exit) = self.tc.loop_exit(call.function) else { return };
+
+        if exit == LoopExit::Return
+            && let Some(boundary) = self.function_depth
+        {
+            for argument in &call.arguments {
+                self.check_escapes(argument.expr, boundary);
+            }
+        }
+
+        // The jump may be inside the body or a branch of a `handle` within the loop. These run in
+        // place but are still lambdas, so they need to capture anything they drop on behalf of the
+        // loop.
+        self.drop_scopes_with(DropSlot::BeforeCall(call_expr), outermost, |this, scope, drops| {
+            for &(lambda, lambda_scope) in &this.handle_lambdas {
+                if lambda_scope > scope {
+                    for drop in drops {
+                        this.tc.capture_for_drop(lambda, *drop);
+                    }
+                }
+            }
+        });
+
+        if exit == LoopExit::Jump {
+            self.jump_to_loop();
         }
     }
 
@@ -534,7 +580,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 self.most_calls(match_.expression, name) + most(&branches)
             },
             // These may run their body any number of times
-            Expr::Lambda(_) | Expr::While(_) | Expr::For(_) | Expr::Handle(_) => 2 * sum(&self.child_exprs(expr)),
+            Expr::Lambda(_) | Expr::Handle(_) => 2 * sum(&self.child_exprs(expr)),
             _ => sum(&self.child_exprs(expr)),
         };
         calls.min(2)

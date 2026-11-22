@@ -38,12 +38,15 @@ pub(crate) mod builder;
 mod cfg;
 mod display;
 mod effects;
+pub(crate) mod evidence;
 pub(crate) mod existentialization;
 mod inline;
 mod lower_closures;
 mod lower_evidence;
 pub(crate) mod monomorphization;
 mod remove_unreachable;
+mod row_specialization;
+mod tail_calls;
 mod validation;
 
 #[derive(Default)]
@@ -339,6 +342,17 @@ impl Definition {
     }
 
     /// Invoke `f` on each type this definition's blocks and instructions carry, excluding its own [Definition::typ]
+    pub fn for_each_type(&self, mut f: impl FnMut(&Type)) {
+        for block in self.blocks.values() {
+            block.parameter_types.iter().for_each(&mut f);
+        }
+        self.instruction_result_types.values().for_each(&mut f);
+        for instruction in self.instructions.values() {
+            instruction.for_each_type(&mut f);
+        }
+    }
+
+    /// Same as [Self::for_each_type] but with mutable access to each type
     pub fn for_each_type_mut(&mut self, mut f: impl FnMut(&mut Type)) {
         for block in self.blocks.values_mut() {
             block.parameter_types.iter_mut().for_each(&mut f);
@@ -651,18 +665,23 @@ pub enum Instruction {
     /// a directly-built capability tuple. Must be removed before LLVM codegen.
     Capability,
 
-    /// The capability for `key` within `evidence`. Lowered to an [Instruction::IndexTuple] after monomorphization.
+    /// Retrieves the capability for `key`'s effect from the slot of `evidence` which comes after
+    /// `prefix`. `prefix` is the evidence type of everything ahead of that slot. See [evidence].
     LookupEvidence {
         evidence: Value,
         key: EffectKey,
+        prefix: Type,
     },
 
-    /// Evidence built from capabilities plus the wider evidence its row generics are taken from.
-    /// Lowered to an [Instruction::MakeTuple] after monomorphization.
-    MakeEvidence {
-        capabilities: Vec<(EffectKey, Value)>,
-        rest: Option<Value>,
+    /// Retrieves the evidence for the row generic of `evidence` which comes after `prefix`.
+    /// `prefix` is the evidence type of everything ahead of that row generic.
+    RestEvidence {
+        evidence: Value,
+        prefix: Type,
     },
+
+    /// Creates evidence holding each item in order
+    MakeEvidence(Vec<EvidenceItem>),
 
     /// Returns a closure value after packing the function with the given environment.
     /// This is equivalent to a `MakeTuple` instruction but is distinguished because the
@@ -685,7 +704,12 @@ pub enum Instruction {
     MakeArray(Vec<Value>),
 
     // TODO: Should we remove this in favor of StackAllocUninit + Store?
-    StackAlloc(Value),
+    StackAlloc {
+        value: Value,
+        /// True if this slot is never stored to afterward, meaning any read of it always yields
+        /// `value`. This is the case for the slots of immutable bindings.
+        immutable: bool,
+    },
     StackAllocUninit(Type),
 
     /// Allocate a runtime number of bytes on the stack aligned to [MAX_ALIGNMENT], returning a `Pointer`
@@ -849,6 +873,28 @@ pub struct HandlerCase {
     pub handler: Value,
 }
 
+/// The shared body of [Instruction::for_each_type] and [Instruction::for_each_type_mut].
+/// `$bindings` is used to access the bindings of an `Instantiate`.
+macro_rules! for_each_instruction_type {
+    ($self:expr, $f:ident, $iter:ident, $bindings:path) => {
+        match $self {
+            Instruction::StackAllocUninit(typ) | Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => $f(typ),
+            Instruction::GetFieldPtr { struct_type, .. } => $f(struct_type),
+            Instruction::Instantiate(_, bindings) => $bindings(bindings).$iter().for_each(&mut $f),
+            Instruction::LookupEvidence { key, prefix, .. } => key.args.$iter().chain([prefix]).for_each($f),
+            Instruction::RestEvidence { prefix, .. } => $f(prefix),
+            Instruction::MakeEvidence(items) => {
+                for item in items {
+                    if let EvidenceItem::Capability(key, _) = item {
+                        key.args.$iter().for_each(&mut $f);
+                    }
+                }
+            },
+            _ => (),
+        }
+    };
+}
+
 /// Visits each operand of an instruction, by reference or mutable reference
 macro_rules! for_each_instruction_value {
     ($self:expr, $f:expr, $iter:ident $(, $mut:tt)?) => {{
@@ -874,18 +920,17 @@ macro_rules! for_each_instruction_value {
                 }
             },
             Instruction::Capability => (),
-            Instruction::LookupEvidence { evidence, key: _ } => f(evidence),
-            Instruction::MakeEvidence { capabilities, rest } => {
-                capabilities.$iter().for_each(|(_, value)| f(value));
-                rest.$iter().for_each(&mut f);
-            },
+            Instruction::LookupEvidence { evidence, .. } | Instruction::RestEvidence { evidence, .. } => f(evidence),
+            Instruction::MakeEvidence(items) => items.$iter().for_each(|item| match item {
+                EvidenceItem::Capability(_, value) | EvidenceItem::Splice(value) => f(value),
+            }),
             Instruction::PackClosure { function, environment } => two(function, environment),
             Instruction::ClosureEnvironment(closure) => f(closure),
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
             Instruction::MakeBytes(_) => (),
             Instruction::MakeTuple(elements) => elements.$iter().for_each(f),
             Instruction::MakeArray(elements) => elements.$iter().for_each(f),
-            Instruction::StackAlloc(value) => f(value),
+            Instruction::StackAlloc { value, .. } => f(value),
             Instruction::StackAllocUninit(_) => (),
             Instruction::StackAllocBytes(size) => f(size),
             Instruction::GlobalAddress(_) => (),
@@ -958,6 +1003,16 @@ macro_rules! for_each_instruction_value {
 }
 
 impl Instruction {
+    /// Creates a [Instruction::StackAlloc] which may be stored to afterward
+    pub(crate) fn slot(value: Value) -> Instruction {
+        Instruction::StackAlloc { value, immutable: false }
+    }
+
+    /// Creates a [Instruction::StackAlloc] which is never stored to afterward
+    pub(crate) fn immutable_slot(value: Value) -> Instruction {
+        Instruction::StackAlloc { value, immutable: true }
+    }
+
     pub fn for_each_value(&self, f: impl FnMut(&Value)) {
         for_each_instruction_value!(self, f, iter)
     }
@@ -967,17 +1022,13 @@ impl Instruction {
     }
 
     /// Invoke `f` on each type this instruction carries, excluding its result type
+    pub fn for_each_type(&self, mut f: impl FnMut(&Type)) {
+        for_each_instruction_type!(self, f, iter, std::convert::identity)
+    }
+
+    /// Same as [Self::for_each_type] but with mutable access to each type
     pub fn for_each_type_mut(&mut self, mut f: impl FnMut(&mut Type)) {
-        match self {
-            Instruction::StackAllocUninit(typ) | Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => f(typ),
-            Instruction::GetFieldPtr { struct_type, .. } => f(struct_type),
-            Instruction::Instantiate(_, bindings) => Arc::make_mut(bindings).iter_mut().for_each(&mut f),
-            Instruction::LookupEvidence { key, .. } => key.args.iter_mut().for_each(f),
-            Instruction::MakeEvidence { capabilities, .. } => {
-                capabilities.iter_mut().flat_map(|(key, _)| key.args.iter_mut()).for_each(f)
-            },
-            _ => (),
-        }
+        for_each_instruction_type!(self, f, iter_mut, Arc::make_mut)
     }
 }
 
@@ -1165,25 +1216,30 @@ pub enum Type {
 
     Generic(Generic),
 
-    /// The evidence of an effect row: one capability per effect plus the evidence of each row
-    /// generic. Always canonical (sorted by effect, no repeats), so any two rows with the same
-    /// effects have the same evidence type once their generics are substituted. Lowered to a
-    /// tuple of capabilities after monomorphization by [lower_evidence].
+    /// The evidence for an effect row: one capability for each effect in order, plus the evidence
+    /// of each row generic. This is always kept canonical, see [evidence::normalize].
+    /// [lower_evidence] lowers this to a tuple of capabilities once every row generic is
+    /// substituted.
     Evidence(Arc<Vec<EvidenceEntry>>),
 }
 
-/// The identity of an effect within evidence: its definition applied to its type arguments
+/// Identifies an effect within evidence by its definition and type arguments. Evidence may hold
+/// several slots for the same effect, in which case they are distinguished by their order. See
+/// [evidence].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EffectKey {
     pub effect: TopLevelName,
     pub args: Vec<Type>,
 }
 
-impl EffectKey {
-    /// True if any of this effect's type arguments mention a generic
-    fn contains_generics(&self) -> bool {
-        self.args.iter().any(Type::contains_generics)
-    }
+/// A single item given to an [Instruction::MakeEvidence]. Items are added to the resulting evidence
+/// in order.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum EvidenceItem {
+    /// The capability for this key's effect
+    Capability(EffectKey, Value),
+    /// Copies every slot of this evidence value into the new evidence
+    Splice(Value),
 }
 
 /// One slot of an effect row's evidence, see [Type::Evidence]
@@ -1193,8 +1249,11 @@ pub enum EvidenceEntry {
         key: EffectKey,
         capability: Type,
     },
-    /// The evidence of a row generic, spliced in once the generic is substituted
-    Rest(Generic),
+    /// The evidence for a row generic. Once the generic is substituted, the evidence it is bound to
+    /// is spliced in at this position.
+    Rest {
+        generic: Generic,
+    },
 }
 
 impl Type {
@@ -1242,12 +1301,9 @@ impl Type {
         Type::Function(Arc::new(FunctionType { parameters, environment: Type::NO_CLOSURE_ENV, return_type }))
     }
 
-    /// Canonical evidence: entries sorted by effect with repeats removed.
-    /// Equal keys always carry equal capability types, so plain equality dedups.
-    pub fn evidence(mut entries: Vec<EvidenceEntry>) -> Type {
-        entries.sort();
-        entries.dedup();
-        Type::Evidence(Arc::new(entries))
+    /// Creates a canonical evidence type from the given entries. See [evidence::normalize].
+    pub fn evidence(entries: Vec<EvidenceEntry>) -> Type {
+        Type::Evidence(Arc::new(evidence::normalize(entries)))
     }
 
     /// Rebuilds evidence entries with `substitute` applied to each, splicing the evidence a
@@ -1255,38 +1311,19 @@ impl Type {
     pub(crate) fn substitute_evidence(
         entries: &[EvidenceEntry], substitute: impl Fn(&Type) -> Option<Type>,
     ) -> Option<Type> {
-        let mut changed = false;
-        let mut substitute = |typ: &Type| {
-            let result = substitute(typ);
-            changed |= result.is_some();
-            result.unwrap_or_else(|| typ.clone())
-        };
-        let mut out = Vec::with_capacity(entries.len());
-        for entry in entries {
-            match entry {
-                EvidenceEntry::Capability { key, capability } => {
-                    let args = mapvec(&key.args, &mut substitute);
-                    let capability = substitute(capability);
-                    let key = EffectKey { effect: key.effect, args };
-                    out.push(EvidenceEntry::Capability { key, capability });
-                },
-                EvidenceEntry::Rest(generic) => match substitute(&Type::Generic(*generic)) {
-                    Type::Evidence(inner) => out.extend(inner.iter().cloned()),
-                    Type::Generic(generic) => out.push(EvidenceEntry::Rest(generic)),
-                    // A residual row variable converts to `()`, see `convert_type`
-                    Type::Tuple(fields) if fields.is_empty() => (),
-                    other => panic!("a row generic was bound to the non-evidence type `{other}`"),
-                },
-            }
-        }
-        changed.then(|| Type::evidence(out))
+        evidence::substitute(entries, substitute).map(|entries| Type::Evidence(Arc::new(entries)))
+    }
+
+    /// True if this is the evidence of one row generic and nothing else
+    pub(crate) fn is_single_rest(&self) -> bool {
+        matches!(self, Type::Evidence(entries) if entries.len() == 1 && entries[0].rest_generic().is_some())
     }
 
     /// The capabilities of fully substituted evidence, in canonical order
     pub(crate) fn evidence_capabilities(entries: &[EvidenceEntry]) -> impl Iterator<Item = (&EffectKey, &Type)> {
         entries.iter().map(|entry| match entry {
             EvidenceEntry::Capability { key, capability } => (key, capability),
-            EvidenceEntry::Rest(generic) => panic!("evidence still holds the row generic {generic:?}"),
+            EvidenceEntry::Rest { generic } => panic!("evidence still holds the row generic {generic:?}"),
         })
     }
 
@@ -1373,9 +1410,9 @@ impl Type {
             Type::Array { length, element } => length.contains_generics() || element.contains_generics(),
             Type::Evidence(entries) => entries.iter().any(|entry| match entry {
                 EvidenceEntry::Capability { key, capability } => {
-                    key.contains_generics() || capability.contains_generics()
+                    key.args.iter().any(Type::contains_generics) || capability.contains_generics()
                 },
-                EvidenceEntry::Rest(_) => true,
+                EvidenceEntry::Rest { .. } => true,
             }),
         }
     }
@@ -1506,6 +1543,11 @@ pub(crate) type GenericBindings = Vec<Type>;
 pub(crate) fn identity_bindings(generic_count: u32) -> Option<Arc<GenericBindings>> {
     let bindings = mapvec(0..generic_count, Type::generic);
     (!bindings.is_empty()).then(|| Arc::new(bindings))
+}
+
+/// True if `bindings` binds each generic to itself
+pub(crate) fn are_identity_bindings(bindings: &GenericBindings) -> bool {
+    bindings.iter().enumerate().all(|(index, binding)| *binding == Type::generic(index as u32))
 }
 
 /// True if `id` is a definition with generics of its own

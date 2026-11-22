@@ -1,10 +1,18 @@
-//! Lowers [Type::Evidence] and the evidence instructions to plain tuples once monomorphization
-//! has substituted every row generic, so each capability has a fixed index in canonical order.
+//! Lowers [Type::Evidence] and the evidence instructions to plain tuples. This requires every row
+//! generic to already be substituted, either by monomorphization or by [row
+//! specialization](super::row_specialization).
+//!
+//! After this pass, evidence is a tuple holding the capability of each slot in the same order as
+//! its type (see [evidence]), so each slot is just an index into the tuple.
 use std::sync::Arc;
 
 use crate::{
     iterator_extensions::mapvec,
-    mir::{BlockId, Definition, EffectKey, EvidenceEntry, FunctionType, Instruction, InstructionId, Mir, Type, Value},
+    mir::{
+        BlockId, Definition, EvidenceEntry, EvidenceItem, FunctionType, Instruction, InstructionId, Mir, Type, Value,
+        evidence,
+    },
+    parser::ids::TopLevelName,
 };
 
 impl Mir {
@@ -34,50 +42,71 @@ fn lower_definition(definition: &mut Definition) {
 
 /// Rewrites the evidence instruction `id` in place, pushing any new instructions it needs onto `before`
 fn lower_instruction(definition: &mut Definition, id: InstructionId, before: &mut Vec<InstructionId>) {
-    if !matches!(definition.instructions[id], Instruction::LookupEvidence { .. } | Instruction::MakeEvidence { .. }) {
-        return;
-    }
-    match std::mem::replace(&mut definition.instructions[id], Instruction::MakeTuple(Vec::new())) {
-        Instruction::LookupEvidence { evidence, key } => {
-            let index = evidence_index(&evidence_entries(definition, &evidence), &key)
-                .unwrap_or_else(|| panic!("the evidence `{evidence}` holds no capability for {key}"));
-            definition.instructions[id] = Instruction::IndexTuple { tuple: evidence, index };
+    let instruction = std::mem::replace(&mut definition.instructions[id], Instruction::Id(Value::Unit));
+    let lowered = match instruction {
+        Instruction::LookupEvidence { evidence, key, prefix } => {
+            let held = value_type(definition, evidence);
+            let ahead = count(evidence::entries(&prefix), key.effect);
+            slot(evidence, &held, key.effect, ahead)
         },
-        Instruction::MakeEvidence { capabilities, rest } => {
-            let Type::Evidence(entries) = definition.instruction_result_type(id).clone() else {
-                panic!("MakeEvidence does not have an evidence type");
-            };
-            let rest = rest.map(|rest| (rest, evidence_entries(definition, &rest)));
-            let values = mapvec(Type::evidence_capabilities(&entries), |(key, capability)| {
-                if let Some((_, value)) = capabilities.iter().find(|(candidate, _)| candidate == key) {
-                    return *value;
-                }
-                let (rest, index) = rest
-                    .as_ref()
-                    .and_then(|(rest, entries)| Some((*rest, evidence_index(entries, key)?)))
-                    .unwrap_or_else(|| panic!("no evidence holds the capability {key} for a MakeEvidence"));
-                let new_id = definition.instructions.push(Instruction::IndexTuple { tuple: rest, index });
-                definition.instruction_result_types.push_existing(new_id, capability.clone());
-                before.push(new_id);
-                Value::InstructionResult(new_id)
+        // Take each slot of the row generic. These come after any slots for the same effect in
+        // `prefix`.
+        Instruction::RestEvidence { evidence, prefix } => {
+            let result = definition.instruction_result_type(id).clone();
+            let held = value_type(definition, evidence);
+            let prefix = evidence::entries(&prefix);
+            let result = evidence::entries(&result);
+            let slots = mapvec(Type::evidence_capabilities(result).enumerate(), |(i, (key, capability))| {
+                let ahead = count(prefix, key.effect) + count(&result[..i], key.effect);
+                let slot = slot(evidence, &held, key.effect, ahead);
+                add(definition, before, slot, capability.clone())
             });
-            definition.instructions[id] = Instruction::MakeTuple(values);
+            Instruction::MakeTuple(slots)
         },
-        _ => unreachable!(),
-    }
+        Instruction::MakeEvidence(items) => {
+            let mut slots = Vec::new();
+            for item in items {
+                match item {
+                    EvidenceItem::Capability(key, value) => slots.push((key.effect, value)),
+                    EvidenceItem::Splice(spliced) => {
+                        let held = value_type(definition, spliced);
+                        let capabilities = Type::evidence_capabilities(evidence::entries(&held));
+                        for (index, (key, capability)) in capabilities.enumerate() {
+                            let slot = Instruction::IndexTuple { tuple: spliced, index: index as u32 };
+                            slots.push((key.effect, add(definition, before, slot, capability.clone())));
+                        }
+                    },
+                }
+            }
+            evidence::sort_by_effect(&mut slots, |(effect, _)| Some(*effect));
+            Instruction::MakeTuple(mapvec(slots, |(_, value)| value))
+        },
+        other => other,
+    };
+    definition.instructions[id] = lowered;
 }
 
-/// The entries of the evidence value `evidence`
-fn evidence_entries(definition: &Definition, evidence: &Value) -> Arc<Vec<EvidenceEntry>> {
-    match definition.local_value_type(evidence) {
-        Some(Type::Evidence(entries)) => entries.clone(),
-        _ => panic!("`{evidence}` is not an evidence value"),
-    }
+fn count(entries: &[EvidenceEntry], effect: TopLevelName) -> usize {
+    evidence::count(entries, effect).expect("every row generic is substituted before evidence is lowered")
 }
 
-/// The canonical index of `key` within evidence with `entries`
-fn evidence_index(entries: &[EvidenceEntry], key: &EffectKey) -> Option<u32> {
-    Type::evidence_capabilities(entries).position(|(candidate, _)| candidate == key).map(|index| index as u32)
+fn add(definition: &mut Definition, before: &mut Vec<InstructionId>, instruction: Instruction, typ: Type) -> Value {
+    let id = definition.add_instruction(instruction, typ);
+    before.push(id);
+    Value::InstructionResult(id)
+}
+
+/// Returns the evidence type of the value `evidence`
+fn value_type(definition: &Definition, evidence: Value) -> Type {
+    definition.local_value_type(&evidence).unwrap_or_else(|| panic!("`{evidence}` is not an evidence value")).clone()
+}
+
+/// Returns an instruction extracting the capability for `effect` from `evidence` (of type `held`),
+/// skipping the first `ahead` capabilities for that effect
+fn slot(evidence: Value, held: &Type, effect: TopLevelName, ahead: usize) -> Instruction {
+    let index = evidence::slot_index(evidence::entries(held), effect, ahead)
+        .unwrap_or_else(|| panic!("the evidence `{evidence}` holds no capability {ahead} for effect {effect}"));
+    Instruction::IndexTuple { tuple: evidence, index: index as u32 }
 }
 
 fn lower_type(typ: &Type) -> Type {

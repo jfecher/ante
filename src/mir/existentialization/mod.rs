@@ -9,8 +9,7 @@
 //!   a global must be computed at runtime, and how many type infos each function value reserves.
 //! - `rewrite` rewrites each definition in parallel, using a `FunctionBuilder` from `builder` to
 //!   emit instructions and compute layouts at runtime.
-//! - `thunks`, `evidence`, and `atomics` generate the definitions the rewritten code calls into:
-//!   value thunks and helpers such as the evidence lookup.
+//! - `thunks` and `atomics` generate the definitions the rewritten code calls into.
 //!
 //! The rewritten program represents generics as follows:
 //! - A definition takes a pointer to a type info table holding a type info `(size, align, id)`
@@ -25,7 +24,8 @@
 //! - A definition used as a first-class function value gets a value thunk from the uniform calling
 //!   convention to its direct calling convention, unless it is never used in a call position, in
 //!   which case it takes the uniform calling convention itself.
-//! - Evidence is a chain of nodes searched at runtime by each effect's key.
+//! - Evidence is already a tuple of capabilities by this point since every definition is
+//!   specialized over its effect rows first. See [crate::mir::row_specialization].
 //!
 //! Both calling conventions are described in `convention`.
 
@@ -49,7 +49,6 @@ mod analysis;
 mod atomics;
 mod builder;
 mod convention;
-mod evidence;
 mod resolve;
 mod rewrite;
 #[cfg(test)]
@@ -75,6 +74,7 @@ where
         + Sync,
 {
     let mir = build_effect_lowered_mir(compiler, GenericsStrategy::Existential);
+    let mir = mir.specialize_rows().lower_evidence();
     existentialize_mir(&mir, TargetPointerSize.get(compiler))
 }
 
@@ -97,7 +97,7 @@ fn existentialize_mir(mir: &Mir, ptr_size: u32) -> Mir {
     definitions.extend(build_thunks(&shared.native_thunks, thunks::native_thunk));
 
     for entry in shared.helpers.iter() {
-        definitions.insert(*entry.value(), helper(*entry.key(), *entry.value(), shared.types.ptr_size));
+        definitions.insert(*entry.value(), atomics::helper(*entry.key(), *entry.value(), shared.types.ptr_size));
     }
 
     for entry in shared.static_tables.iter() {
@@ -122,21 +122,6 @@ fn existentialize_mir(mir: &Mir, ptr_size: u32) -> Mir {
     mir
 }
 
-/// A definition existentialization generates once for the whole program
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Helper {
-    EvidenceLookup,
-    /// An atomic operation on a value whose size is only known at runtime
-    Atomic(AtomicOperation),
-}
-
-fn helper(helper: Helper, id: DefinitionId, ptr_size: u32) -> Definition {
-    match helper {
-        Helper::EvidenceLookup => evidence::lookup_helper(id, ptr_size),
-        Helper::Atomic(operation) => atomics::helper(operation, id, ptr_size),
-    }
-}
-
 /// Emit an instruction into `block` of a helper, which needs no [builder::FunctionBuilder]
 fn emit(definition: &mut Definition, block: BlockId, instruction: Instruction, typ: Type) -> Value {
     definition.push_instruction_in(block, instruction, typ)
@@ -155,7 +140,7 @@ pub(super) struct Shared<'a> {
     /// cannot call
     native_thunks: DashMap<DefinitionId, DefinitionId>,
 
-    helpers: DashMap<Helper, DefinitionId>,
+    helpers: DashMap<AtomicOperation, DefinitionId>,
 
     /// The global holding each constant type info table, deduplicated across the whole program
     static_tables: DashMap<(Type, Vec<Value>), DefinitionId>,
@@ -207,7 +192,7 @@ impl<'a> Shared<'a> {
         self.info.get(&id).is_some_and(|info| info.uniform)
     }
 
-    fn helper(&self, helper: Helper) -> DefinitionId {
+    fn helper(&self, helper: AtomicOperation) -> DefinitionId {
         *self.helpers.entry(helper).or_insert_with(next_definition_id)
     }
 

@@ -1,0 +1,71 @@
+type R = x: I32
+
+impl drop_r: Drop R Print with
+    drop r =
+        print "drop "
+        println r.x
+
+effect Log =
+    log: fn I32 -> Unit
+
+// Dropping a value in a loop body may perform effects (`Print` here)
+effectful_drops (): Unit can Print =
+    for i in 0 .. 2 do
+        _a = R (10 + i)
+    var i = 0
+    while i < 2 do
+        i += 1
+        _b = R (20 + i)
+
+// Anything owned by the loop body should be dropped before jumping out of a `handle` within it
+jumps_in_handle (): Unit can Print =
+    var i = 0
+    while i < 4 do
+        i += 1
+        _c = R (30 + i)
+        if i == 1 then continue
+        handle log i
+        | log x ->
+            if x == 3 then break
+            resume ()
+        println i
+    for j in 0 .. 3 do
+        _d = R (40 + j)
+        handle
+            _e = R (50 + j)
+            log j
+            if j == 1 then break
+        | log _ -> resume ()
+
+// Calling break/continue through their exact paths should work the same as using the keyword
+named_jumps (): Unit can Print =
+    for j in 0 .. 3 do
+        _f = R (60 + j)
+        if j == 0 then Std.Stream.(continue) ()
+        if j == 2 then (break) ()
+        println j
+
+main () =
+    print_to_stdout do
+    effectful_drops ()
+    jumps_in_handle ()
+    named_jumps ()
+
+// args: --delete-binary --no-color
+// expected stdout:
+// drop 10
+// drop 11
+// drop 21
+// drop 22
+// drop 31
+// 2
+// drop 32
+// drop 33
+// drop 50
+// drop 40
+// drop 51
+// drop 41
+// drop 60
+// 1
+// drop 61
+// drop 62

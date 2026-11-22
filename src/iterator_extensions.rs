@@ -37,6 +37,20 @@ pub(crate) fn map_btree<T, K: Ord, V>(
     map(items, f)
 }
 
+/// Sort each group of `items` between two boundary items using `compare`. This is a stable sort and
+/// no item is ever moved past a boundary.
+pub(crate) fn sort_runs<T>(
+    items: &mut [T], is_boundary: impl Fn(&T) -> bool, mut compare: impl FnMut(&T, &T) -> std::cmp::Ordering,
+) {
+    let mut start = 0;
+    for end in 0..=items.len() {
+        if end == items.len() || is_boundary(&items[end]) {
+            items[start..end].sort_by(&mut compare);
+            start = end + 1;
+        }
+    }
+}
+
 pub(crate) fn join_arc_str(strings: &[Arc<String>], separator: &str) -> String {
     let mut strings_iter = strings.iter();
     let Some(first) = strings_iter.next() else {

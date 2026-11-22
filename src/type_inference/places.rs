@@ -783,7 +783,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn discharge_effects(
         &mut self, deferred: Vec<Type>, function: &FunctionType, lambda: ExprId, implicits_delayed: bool,
     ) {
-        if deferred.is_empty() {
+        let is_loop_part = self.is_loop_part(lambda);
+        if deferred.is_empty() && !is_loop_part {
             return;
         }
         let none = TypeBindings::default();
@@ -815,15 +816,30 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // An unbound open end in a closed row performs no effects. We wait until the item
                 // is borrow checked to close it though, since a drop within the body or a branch
                 // of a `handle` may still perform any effect of the row.
-                (None, Type::Variable(id)) if closed && !implicits_delayed => {
+                (None, Type::Variable(id)) if closed && !implicits_delayed || self.loop_row_ends.contains(&id) => {
                     self.effect_bounds.insert(id, function.effects.clone());
                     self.deferred_effect_defaults.push(id);
                 },
                 (None, entry) => kept.push(entry),
             }
         }
+        // Loops run in place, so a drop at the end of a loop condition or body may perform any
+        // effect the enclosing function can. We don't know which until the item is borrow checked,
+        // so we leave the row open for them.
+        if is_loop_part {
+            kept.push(self.next_variable(Kind::Effect));
+        }
         let kept = Type::effects(&kept, &self.bindings, &none);
         self.unify(&kept, &function.effects, TypeErrorKind::Effects, lambda);
+
+        if is_loop_part {
+            for entry in self.collect_effects(&function.effects, &none) {
+                if let Type::Variable(end) = entry {
+                    self.loop_row_ends.insert(end);
+                    self.deferred_effect_defaults.push(end);
+                }
+            }
+        }
     }
 
     /// Every place a function's type mentions, including those of each variable it captures
@@ -1014,7 +1030,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// True if `place` is rooted in a `var`
     fn place_root_is_mutable(&self, place: &Place) -> bool {
         match place.root {
-            PlaceRoot::Variable(name) => self.item.mutable_definitions.contains(&name),
+            PlaceRoot::Variable(name) => self.current_extended_context().is_mutable_name(name),
             PlaceRoot::Anonymous(..) => false,
         }
     }

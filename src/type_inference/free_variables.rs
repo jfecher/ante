@@ -46,7 +46,11 @@ impl TypeChecker<'_, '_> {
         }
 
         let is_handle_lambda = self.item.handle_lambdas.contains(&id);
-        let moved = if is_move || is_handle_lambda || context.free_vars.is_empty() || self.is_impl_method(id) {
+        // Loop conditions and bodies run once per iteration so they can't own anything they move.
+        // We leave their captures as references so that the borrow checker reports any such move as
+        // a move in a loop.
+        let never_owns = is_move || is_handle_lambda || self.is_loop_part(id);
+        let moved = if never_owns || context.free_vars.is_empty() || self.is_impl_method(id) {
             BTreeSet::new()
         } else {
             self.moved_captures(id, &context.free_vars)
@@ -81,6 +85,11 @@ impl TypeChecker<'_, '_> {
         }
     }
 
+    /// True if `id` is the condition or body of a desugared loop
+    pub(super) fn is_loop_part(&self, id: ExprId) -> bool {
+        matches!(self.resolved_expr(id).as_ref(), cst::Expr::Lambda(lambda) if lambda.is_loop_part())
+    }
+
     /// Returns the environment type of the lambda `id` capturing `free_vars`. A `move` closure
     /// captures everything by value. Other closures capture what their body may move by value,
     /// a `var` by mutable reference, and everything else by read-only reference.
@@ -92,7 +101,7 @@ impl TypeChecker<'_, '_> {
             if is_move || moved.contains(name) {
                 return typ;
             }
-            let kind = match self.item.mutable_definitions.contains(name) {
+            let kind = match self.current_extended_context().is_mutable_name(*name) {
                 true => cst::ReferenceKind::Mut,
                 false => cst::ReferenceKind::Ref,
             };
@@ -271,18 +280,9 @@ impl FreeVars {
                     self.find_free_variables(*expr, checker);
                 }
             },
-            cst::Expr::Loop(_) => unreachable!("Loops should be desugared before finding free variables"),
-            cst::Expr::While(w) => {
-                self.find_free_variables(w.condition, checker);
-                self.find_free_variables(w.body, checker);
+            cst::Expr::Loop(_) | cst::Expr::While(_) | cst::Expr::For(_) | cst::Expr::Break | cst::Expr::Continue => {
+                unreachable!("Loops should be desugared before finding free variables")
             },
-            cst::Expr::For(fo) => {
-                self.find_free_variables(fo.start, checker);
-                self.find_free_variables(fo.end, checker);
-                self.defined_in_fn.insert(fo.variable);
-                self.find_free_variables(fo.body, checker);
-            },
-            cst::Expr::Break | cst::Expr::Continue => (),
             cst::Expr::Quoted(_) => (),
             cst::Expr::Return(return_) => self.find_free_variables(return_.expression, checker),
             cst::Expr::Assignment(assignment) => {

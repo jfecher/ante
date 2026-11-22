@@ -90,11 +90,27 @@ pub(super) struct ConvertTypeContext<'a, Db> {
 
 #[derive(Clone)]
 pub(super) struct Effects {
-    /// The concrete effects of the row, each carrying its capability
-    pub(super) entries: Vec<TCType>,
+    /// Each effect in the row along with any in-scope row generics the row is still polymorphic
+    /// over, in the same order as the row. Once a row generic is bound, the effects it is bound to
+    /// are put in its place. So the ordering between repeats of an effect also needs to account for
+    /// any generics between them.
+    pub(super) items: Vec<RowItem>,
+}
 
-    /// The row generics in scope this row stays polymorphic over
-    pub(super) generics: Vec<Generic>,
+impl Effects {
+    /// The concrete effects of the row, each carrying its capability
+    pub(super) fn effects(&self) -> impl Iterator<Item = &TCType> {
+        self.items.iter().filter_map(|item| match item {
+            RowItem::Effect(effect) => Some(effect),
+            RowItem::Generic(_) => None,
+        })
+    }
+}
+
+#[derive(Clone)]
+pub(super) enum RowItem {
+    Effect(TCType),
+    Generic(Generic),
 }
 
 impl<Db> ConvertTypeContext<'_, Db>
@@ -152,12 +168,18 @@ where
     }
 
     pub(super) fn row_evidence_type(&self, row: &Effects) -> Type {
-        let mut entries = mapvec(&row.entries, |effect| EvidenceEntry::Capability {
-            key: self.effect_key(effect),
-            capability: self.effect_capability_tuple_type_of(effect),
-        });
-        entries.extend(row.generics.iter().map(|generic| EvidenceEntry::Rest(*generic)));
-        Type::evidence(entries)
+        Type::evidence(self.row_evidence_entries(row))
+    }
+
+    /// Returns the evidence entries for `row`, in the same order as the row
+    pub(super) fn row_evidence_entries(&self, row: &Effects) -> Vec<EvidenceEntry> {
+        mapvec(&row.items, |item| match item {
+            RowItem::Effect(effect) => EvidenceEntry::Capability {
+                key: self.effect_key(effect),
+                capability: self.effect_capability_tuple_type_of(effect),
+            },
+            RowItem::Generic(generic) => EvidenceEntry::Rest { generic: *generic },
+        })
     }
 
     /// The mir generic a row's open end converts to
@@ -168,7 +190,7 @@ where
         }
     }
 
-    /// The identity of a row entry's effect within evidence
+    /// Converts an effect in a row to the key used to refer to it within evidence
     pub(super) fn effect_key(&self, effect: &TCType) -> EffectKey {
         let Some((name, args)) = effect.definition_head(self.type_bindings) else {
             panic!("effect_key: not an effect type: {effect:?}");
@@ -184,42 +206,30 @@ where
 
     /// Resolves a row into its concrete effects and its open ends.
     pub(super) fn split_row(&self, effects: &TCType) -> Effects {
-        let mut entries = Vec::new();
-        let mut ends = Vec::new();
-
-        self.collect_row_items(effects, &mut entries, &mut ends);
-
-        let mut deduped: Vec<TCType> = Vec::with_capacity(entries.len());
-        for entry in entries {
-            if !deduped.contains(&entry) {
-                deduped.push(entry);
-            }
-        }
-
-        // No reason to carry capabilities for effects with no operations
-        deduped.retain(|effect| !self.effect_has_no_operations(effect));
-        Effects { entries: deduped, generics: mapvec(&ends, |end| self.row_generic(end)) }
+        let mut items = Vec::new();
+        self.collect_row_items(effects, &mut items);
+        Effects { items }
     }
 
     /// Recursively flattens `typ` into concrete effects and any open ends
-    fn collect_row_items(&self, typ: &TCType, entries: &mut Vec<TCType>, ends: &mut Vec<TCType>) {
+    fn collect_row_items(&self, typ: &TCType, items: &mut Vec<RowItem>) {
         let followed = typ.follow(self.type_bindings);
         match followed {
             TCType::Effects(_) => {
                 for effect in followed.effect_entries() {
-                    self.collect_row_items(effect, entries, ends);
+                    self.collect_row_items(effect, items);
                 }
             },
             // An unbound variable is only open if it is one of the enclosing function's own generics,
             // anything else is defaulted to `pure`
             TCType::Generic(_) | TCType::Variable(_) if self.is_open_end(followed) => {
-                if !ends.contains(followed) {
-                    ends.push(followed.clone());
-                }
+                items.push(RowItem::Generic(self.row_generic(followed)));
             },
             TCType::Variable(_) => (),
             other if other.is_error() => (),
-            typ => entries.push(typ.clone()),
+            // No reason to carry capabilities for effects with no operations
+            effect if self.effect_has_no_operations(effect) => (),
+            effect => items.push(RowItem::Effect(effect.clone())),
         }
     }
 

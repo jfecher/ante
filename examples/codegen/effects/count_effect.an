@@ -1,4 +1,6 @@
-import Std.Iterator.repeat
+repeat (count: Usz) (f: fn Usz [env] -> Unit can e) {Drop env e}: Unit can e =
+    for i in 0 .. count do f i
+
 effect Count =
     count: fn Unit -> Unit
 

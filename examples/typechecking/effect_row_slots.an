@@ -1,0 +1,37 @@
+// Function types distinguish repeats of an effect by position, so they only match if their effects match slot for slot
+effect Ask =
+    ask: fn Unit -> I32
+
+effect Give a =
+    give: fn a -> Unit
+
+seven (): I32 can Ask = ask ()
+
+twice (g: fn Unit -> I32 can e) = move fn () -> ask () + g ()
+once_ (g: fn Unit -> I32 can e) = move fn () -> g ()
+
+first (x: I32) = move fn () -> (give 1u8; give x)
+second (x: I32) = move fn () -> (give x; give 2u8)
+
+run () =
+    _a = if true then twice seven else once_ seven
+    _b = if true then first 3 else second 4
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/effect_row_slots.an:17:40
+// 16 | run () =
+//    |     // error: Then branch's type of fn Unit => I32 can Ask, Ask does not match the else branch's type fn Unit => I32 can Ask
+// 17 |     _a = if true then twice seven else once_ seven
+//    |                                        ^^^^^^^^^^^
+// 18 |     _b = if true then first 3 else second 4
+// 
+// examples/typechecking/effect_row_slots.an:18:36
+// 17 |     _a = if true then twice seven else once_ seven
+//    |     // error: Then branch's type of fn Unit => Unit can Give U8, Give I32 does not match the else branch's type fn Unit => Unit can Give I32, Give U8
+// 18 |     _b = if true then first 3 else second 4
+//    |                                    ^^^^^^^^
+// 
+// Found 2 errors and 0 warnings
+

@@ -73,11 +73,7 @@ impl<'a> Rewriter<'a> {
         let (mut builder, addresses, result) = FunctionBuilder::new_uniform(shared, old.name.clone(), old.id, old);
         let mut values = FxHashMap::default();
         for (index, (address, typ)) in addresses.into_iter().zip(&old.entry_block().parameter_types).enumerate() {
-            let value = match typ {
-                Type::Evidence(_) => address,
-                _ if builder.indirect(typ) => address,
-                _ => builder.load_immutable(address, typ),
-            };
+            let value = if builder.indirect(typ) { address } else { builder.load_immutable(address, typ) };
             values.insert(Value::Parameter(BlockId::ENTRY_BLOCK, index as u32), value);
         }
         Self::finish_new(builder, old, values, Some(result), false)

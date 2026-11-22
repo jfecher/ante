@@ -84,6 +84,11 @@ pub struct ExtendedTopLevelContext {
     /// Closures declared with `move`, which capture by value instead of by reference.
     move_closures: FxHashSet<ExprId>,
 
+    /// Names defined with `var` or as mutable parameters. No other local can be assigned to after
+    /// it is bound. Closures capture these by mutable reference so that they share the same
+    /// storage.
+    mutable_names: FxHashSet<NameId>,
+
     /// The captures each other closure moves, which it captures by value
     moved_captures: FxHashMap<ExprId, BTreeSet<NameId>>,
 
@@ -189,6 +194,11 @@ impl<'local, 'innter> TypeChecker<'local, 'innter> {
     /// Create a new expression of type `typ` referring to the Prelude definition `name`
     pub(super) fn prelude_variable(&mut self, name: &'static str, typ: Type, location: Location) -> ExprId {
         let origin = self.prelude_definition_origin(name);
+        self.variable_of_origin(name, origin, typ, location)
+    }
+
+    /// Create a new expression of type `typ` referring to the definition `origin` by `name`
+    pub(super) fn variable_of_origin(&mut self, name: &str, origin: Origin, typ: Type, location: Location) -> ExprId {
         // The path's type is overwritten if the expression is type checked
         let path = Path::ident(std::sync::Arc::new(name.to_string()), location.clone());
         let path = self.push_path(path, Type::ERROR, location.clone());
@@ -231,6 +241,7 @@ impl ExtendedTopLevelContext {
             instantiations: Default::default(),
             closure_environments: Default::default(),
             move_closures: Default::default(),
+            mutable_names: Default::default(),
             moved_captures: Default::default(),
             function_coercions: Default::default(),
             dictionary_coercions: Default::default(),
@@ -434,6 +445,15 @@ impl ExtendedTopLevelContext {
     /// Retrieves a closure's captured variables. Returns `None` if no variables are captured.
     pub(crate) fn get_closure_environment(&self, expr: ExprId) -> Option<&BTreeSet<NameId>> {
         self.closure_environments.get(&expr)
+    }
+
+    pub(crate) fn mark_mutable_name(&mut self, name: NameId) {
+        self.mutable_names.insert(name);
+    }
+
+    /// True if `name` was defined with `var` or as a mutable parameter
+    pub fn is_mutable_name(&self, name: NameId) -> bool {
+        self.mutable_names.contains(&name)
     }
 
     /// Every name captured by reference by some closure

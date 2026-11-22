@@ -13,8 +13,9 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
-        Block, BlockId, Definition, DefinitionId, EffectKey, FloatConstant, FunctionType, Generic, GenericBindings,
-        Instruction, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
+        Block, BlockId, Definition, DefinitionId, EffectKey, EvidenceEntry, EvidenceItem, FloatConstant, FunctionType,
+        Generic, GenericBindings, Instruction, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value,
+        evidence, next_definition_id,
     },
     name_resolution::Origin,
     parser::{
@@ -150,7 +151,6 @@ struct ImplContext<'a> {
 struct LambdaSignature {
     /// The effects of the lambda's type
     effects: TCType,
-    own_row: Effects,
     parameter_types: Vec<Type>,
     evidence_type: Type,
 
@@ -179,7 +179,7 @@ struct SavedScope {
     slot_locals: rustc_hash::FxHashSet<NameId>,
     capabilities: Vec<(EffectKey, Value)>,
     own_evidence: Option<Value>,
-    loop_targets: Vec<(BlockId, BlockId)>,
+    primitive_resume: Option<Value>,
     chain_targets: Vec<BlockId>,
 }
 
@@ -203,9 +203,10 @@ struct Context<'local, Db> {
     /// and each temporary that had a reference taken of it.
     slot_locals: rustc_hash::FxHashSet<NameId>,
 
-    /// Stack of `(continue_target, break_target)` for each enclosing `while`/`for` loop.
-    /// Innermost loop is last. Swapped out across lambda boundaries.
-    loop_targets: Vec<(BlockId, BlockId)>,
+    /// If we're building a handler branch, this is its `resume` parameter. Despite what its type
+    /// says, `resume` is a coroutine primitive which takes no evidence. See
+    /// [Self::captured_resume].
+    primitive_resume: Option<Value>,
 
     /// Stack of `else` blocks for each enclosing [cst::Chain]. Innermost chain is last.
     chain_targets: Vec<BlockId>,
@@ -251,7 +252,6 @@ impl<'local, Db> Context<'local, Db> {
             global_variables: FxHashMap::default(),
             local_variables: FxHashMap::default(),
             slot_locals: Default::default(),
-            loop_targets: Vec::new(),
             chain_targets: Vec::new(),
             builtin_methods: Default::default(),
             reference_captures: Default::default(),
@@ -263,6 +263,7 @@ impl<'local, Db> Context<'local, Db> {
             effect_op_indices: Default::default(),
             capabilities: Default::default(),
             own_evidence: None,
+            primitive_resume: None,
             overflow_checks,
         }
     }
@@ -378,7 +379,11 @@ where
     fn give_slot(&mut self, name: NameId) {
         if self.slot_locals.insert(name) {
             let value = *self.local_variables.get(&name).expect("a local is bound before it is given a slot");
-            let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
+            // If this is `resume` we need to wrap it first so that the slot holds a value of the
+            // variable's type
+            let value = self.captured_resume(name, value);
+            let immutable = !self.context().is_mutable_name(name);
+            let slot = self.push_instruction(Instruction::StackAlloc { value, immutable }, Type::POINTER);
             self.local_variables.insert(name, slot);
         }
     }
@@ -478,13 +483,11 @@ where
             cst::Expr::TypeAnnotation(type_annotation) => self.expression(type_annotation.lhs),
             cst::Expr::Constructor(constructor) => self.constructor(constructor, expr),
             cst::Expr::Quoted(quoted) => self.quoted(quoted),
-            cst::Expr::Loop(_) => unreachable!("Loops should be desugared before MIR generation"),
-            cst::Expr::While(while_) => self.while_(while_),
-            cst::Expr::For(for_) => self.for_(for_),
-            cst::Expr::Break => self.break_(expr),
+            cst::Expr::Loop(_) | cst::Expr::While(_) | cst::Expr::For(_) | cst::Expr::Break | cst::Expr::Continue => {
+                unreachable!("Loops should be desugared before MIR generation")
+            },
             cst::Expr::Chain(chain) => self.chain(chain, expr),
             cst::Expr::Fallthrough => self.fallthrough(expr),
-            cst::Expr::Continue => self.continue_(expr),
             cst::Expr::Return(return_) => self.return_(return_.expression, expr),
             cst::Expr::Assignment(assignment) => self.assignment(assignment, expr),
             cst::Expr::Extern(extern_) => self.extern_(extern_, expr),
@@ -742,6 +745,9 @@ where
             if self.current_block().terminator.is_some() {
                 return Value::Unit;
             }
+            // Before jumping out of a loop we need to drop anything owned by the loop condition or
+            // body we're in
+            self.run_drops_at(DropSlot::BeforeCall(id));
             return self.emit_effect_op_call(call.function, effect_op, op_index, arguments, result_type, diverges);
         }
 
@@ -838,7 +844,8 @@ where
         let impl_data_type = Self::tuple_field_type(&dictionary_type, impl_data_index as usize);
         let impl_data = Instruction::IndexTuple { tuple: dictionary, index: impl_data_index };
         let impl_data = self.push_instruction(impl_data, impl_data_type);
-        (method, self.push_instruction(Instruction::StackAlloc(impl_data), Type::POINTER))
+        // Methods only ever read their impl's data, so the slot can be immutable
+        (method, self.push_instruction(Instruction::immutable_slot(impl_data), Type::POINTER))
     }
 
     /// Returns the method at the given index of the dictionary of type `dictionary_type` which
@@ -897,7 +904,11 @@ where
         self.new_isolated_definition(id, name.clone(), generics_count, uniform_type.clone(), |this| {
             let params = this.push_capability_parameters(&parameters);
             let effect = this.effect_of_operation(&this.types.result.maps.path_types[&path_id]);
-            let capability = this.lookup_capability(params[surface_count], &effect);
+            let key = this.convert_context().effect_key(&effect);
+            let evidence = params[surface_count];
+            let slot = evidence::slot_index(evidence::entries(&this.type_of_value(&evidence)), key.effect, 0)
+                .unwrap_or_else(|| panic!("effect operation: `{evidence}` holds no {key}"));
+            let capability = this.lookup_slot(evidence, slot);
             let method = this.index_capability_method(capability, op_index);
             let arguments = params[..surface_count].to_vec();
             let instruction = Instruction::CallClosure { closure: method, arguments };
@@ -910,14 +921,31 @@ where
     /// The effect an operation of type `typ` performs
     fn effect_of_operation(&self, typ: &TCType) -> TCType {
         let Some(row) = self.function_row(typ) else { panic!("effect operation is not a function") };
-        row.entries.into_iter().next().unwrap_or_else(|| panic!("effect operation has an empty row"))
+        row.effects().next().unwrap_or_else(|| panic!("effect operation has an empty row")).clone()
     }
 
-    /// Looks the capability for `effect` up within the evidence value `evidence`
-    fn lookup_capability(&mut self, evidence: Value, effect: &TCType) -> Value {
-        let key = self.convert_context().effect_key(effect);
-        let typ = self.effect_capability_tuple_type_of(effect);
-        self.push_instruction(Instruction::LookupEvidence { evidence, key }, typ)
+    /// Returns the capability stored in slot `index` of the given evidence value
+    fn lookup_slot(&mut self, evidence: Value, index: usize) -> Value {
+        let evidence_type = self.type_of_value(&evidence);
+        let entries = evidence::entries(&evidence_type);
+        let EvidenceEntry::Capability { key, capability } = &entries[index] else {
+            panic!("lookup_slot: slot {index} of `{evidence}` is a row generic")
+        };
+        let prefix = evidence::prefix(entries, index);
+        let instruction = Instruction::LookupEvidence { evidence, key: key.clone(), prefix };
+        self.push_instruction(instruction, capability.clone())
+    }
+
+    /// Returns the evidence for the row generic in slot `index` of the given evidence value
+    fn rest_evidence(&mut self, evidence: Value, index: usize) -> Value {
+        let evidence_type = self.type_of_value(&evidence);
+        let entries = evidence::entries(&evidence_type);
+        let Some(generic) = entries[index].rest_generic() else {
+            panic!("rest_evidence: slot {index} of `{evidence}` is a capability")
+        };
+        let prefix = evidence::prefix(entries, index);
+        let typ = Type::evidence(vec![EvidenceEntry::Rest { generic }]);
+        self.push_instruction(Instruction::RestEvidence { evidence, prefix }, typ)
     }
 
     /// Wraps a C-shaped extern function value into the uniform evidence convention.
@@ -991,18 +1019,35 @@ where
     /// Wraps a function value type inference coerced to a wider row in a closure of the coerced type.
     /// For example, a pure function `f` may be used in a context where `can Fail` was expected.
     /// This will create a wrapper which ignores the additional capability: `fn fail -> f ()`
+    ///
+    /// If the type we're coercing to has no environment then the value must be a definition, so the
+    /// wrapper can call it directly.
     fn coerce_function_value(&mut self, value: Value, expr: ExprId, target: Type) -> Value {
         let value_type = self.type_of_value(&value);
         let Type::Function(expected_ft) = &target else { return value };
+        if !expected_ft.is_closure() && value_type == target {
+            return value;
+        }
+        let actual = &self.types.result.maps.expr_types[&expr];
+        let Some(value_row) = self.function_row(actual) else { return value };
+        let name = Arc::new("evidence_adapter".to_string());
+
+        if !expected_ft.is_closure() {
+            // Type inference only allows coercing to a type without an environment when the value
+            // is a definition
+            let Some((id, bindings)) = self.current_function().definition_of(value) else {
+                panic!("coerced function without an environment is not a definition: {value}")
+            };
+            let callee = AdaptedCallee::Definition { id, bindings: bindings.unwrap_or_default() };
+            let id = self.evidence_adapter_definition(&name, &target, value_type, &value_row, callee);
+            return self.make_definition_value(id, name, target);
+        }
         assert_eq!(
             expected_ft.environment, value_type,
             "coerced function's environment does not match the value being coerced"
         );
-        let actual = &self.types.result.maps.expr_types[&expr];
-        let Some(value_row) = self.function_row(actual) else { return value };
 
         // The value is the adapter's environment, so the callee is the environment parameter itself
-        let name = Arc::new("evidence_adapter".to_string());
         let callee = AdaptedCallee::Environment;
         let id = self.evidence_adapter_definition(&name, &target, value_type, &value_row, callee);
         let adapter = self.make_definition_value(id, name, target.clone());
@@ -1209,20 +1254,22 @@ where
         Some(self.convert_context().split_row(&value.effects))
     }
 
-    /// Builds the evidence `needed` describes out of the wider evidence value `provided`
+    /// Build the evidence described by `needed` from the wider evidence value `provided`. Each
+    /// entry is taken from whichever slot of `provided` it resolves to. See [evidence::resolve].
     fn project_evidence(&mut self, provided: Value, needed: &Effects) -> Value {
-        let capabilities = mapvec(&needed.entries, |entry| self.lookup_capability(provided, entry));
-        let rest = (!needed.generics.is_empty()).then_some(provided);
-        self.make_evidence(needed, capabilities, rest)
-    }
+        let entries = self.convert_context().row_evidence_entries(needed);
+        let slots = evidence::resolve(&entries, evidence::entries(&self.type_of_value(&provided)));
 
-    /// Assembles the evidence value of `row` from its capabilities and the evidence holding its generics
-    fn make_evidence(&mut self, row: &Effects, capabilities: Vec<Value>, rest: Option<Value>) -> Value {
-        let context = self.convert_context();
-        let typ = context.row_evidence_type(row);
-        let keys = mapvec(&row.entries, |effect| context.effect_key(effect));
-        let capabilities = keys.into_iter().zip(capabilities).collect();
-        self.push_instruction(Instruction::MakeEvidence { capabilities, rest }, typ)
+        let items = mapvec(entries.iter().zip(slots), |(entry, slot)| {
+            let slot = slot.unwrap_or_else(|| panic!("project_evidence: `{provided}` holds no {entry:?}"));
+            match entry {
+                EvidenceEntry::Capability { key, .. } => {
+                    EvidenceItem::Capability(key.clone(), self.lookup_slot(provided, slot))
+                },
+                EvidenceEntry::Rest { .. } => EvidenceItem::Splice(self.rest_evidence(provided, slot)),
+            }
+        });
+        self.push_instruction(Instruction::MakeEvidence(items), Type::evidence(entries))
     }
 
     /// Appends the callee's evidence argument. A callee whose value type has no evidence
@@ -1254,11 +1301,33 @@ where
 
     /// Builds the evidence value for an effect row from the capabilities in scope and this
     /// function's own evidence for each row generic it forwards.
+    ///
+    /// A function body can only see one capability per effect (the nearest handler's), so if an
+    /// effect is repeated in the row we use that same capability for each repeat. Row generics are
+    /// taken from whichever slot of the function's own evidence they resolve to, see
+    /// [evidence::resolve].
     fn build_evidence(&mut self, effects: &TCType) -> Value {
         let row = self.convert_context().split_row(effects);
-        let capabilities = mapvec(&row.entries, |entry| self.capability_of(entry));
-        let rest = (!row.generics.is_empty()).then(|| self.own_evidence_value());
-        self.make_evidence(&row, capabilities, rest)
+        let entries = self.convert_context().row_evidence_entries(&row);
+        let own = self.own_evidence;
+        // Row generics are the only entries we need the function's own evidence for
+        let own_slots = match own {
+            Some(own) if entries.iter().any(|entry| entry.rest_generic().is_some()) => {
+                evidence::resolve(&entries, evidence::entries(&self.type_of_value(&own)))
+            },
+            _ => vec![None; entries.len()],
+        };
+
+        let items = mapvec(entries.iter().zip(own_slots), |(entry, slot)| match entry {
+            EvidenceEntry::Capability { key, .. } => EvidenceItem::Capability(key.clone(), self.capability(key)),
+            EvidenceEntry::Rest { generic } => {
+                let (Some(own), Some(slot)) = (own, slot) else {
+                    panic!("no evidence in scope holds the row generic {generic:?}")
+                };
+                EvidenceItem::Splice(self.rest_evidence(own, slot))
+            },
+        });
+        self.push_instruction(Instruction::MakeEvidence(items), Type::evidence(entries))
     }
 
     /// The evidence value holding this function's own row generics
@@ -1285,10 +1354,11 @@ where
     fn handled_effect(&self, handler_name: NameId) -> TCType {
         let h_tc_type = self.types.result.maps.name_types[&handler_name].follow_all(&self.types.bindings);
         let handled = self.convert_context().split_row(&h_tc_type);
-        let [handled] = handled.entries.as_slice() else {
+        let mut handled = handled.effects();
+        let (Some(effect), None) = (handled.next(), handled.next()) else {
             panic!("a handler handles exactly one effect, found {h_tc_type:?}")
         };
-        handled.clone()
+        effect.clone()
     }
 
     /// The capabilities a handler branch needs from the enclosing scope.
@@ -1300,10 +1370,11 @@ where
         let handled =
             handle_body_handler_name.map(|name| self.convert_context().effect_key(&self.handled_effect(name)));
 
-        let mut needed = Vec::with_capacity(row.entries.len());
-        for effect in &row.entries {
+        let mut needed = Vec::new();
+        for effect in row.effects() {
             let key = self.convert_context().effect_key(effect);
-            if handled.as_ref() != Some(&key) {
+            let repeated = needed.iter().any(|(previous, _): &(EffectKey, Value)| *previous == key);
+            if handled.as_ref() != Some(&key) && !repeated {
                 let value = self.capability(&key);
                 needed.push((key, value));
             }
@@ -1485,7 +1556,7 @@ where
             slot_locals: std::mem::take(&mut self.slot_locals),
             capabilities: std::mem::take(&mut self.capabilities),
             own_evidence: self.own_evidence.take(),
-            loop_targets: std::mem::take(&mut self.loop_targets),
+            primitive_resume: self.primitive_resume.take(),
             chain_targets: std::mem::take(&mut self.chain_targets),
         }
     }
@@ -1496,7 +1567,7 @@ where
         self.slot_locals = saved.slot_locals;
         self.capabilities = saved.capabilities;
         self.own_evidence = saved.own_evidence;
-        self.loop_targets = saved.loop_targets;
+        self.primitive_resume = saved.primitive_resume;
         self.chain_targets = saved.chain_targets;
     }
 
@@ -1524,7 +1595,8 @@ where
 
     fn end_global(&mut self, start_global_state: (Option<Definition>, BlockId)) -> DefinitionId {
         // Safety: This function must always be paired with [Self::start_global]
-        let finished_function = std::mem::replace(&mut self.current_function, start_global_state.0).unwrap();
+        let mut finished_function = std::mem::replace(&mut self.current_function, start_global_state.0).unwrap();
+        finished_function.self_tail_calls_to_jumps();
 
         let definition_id = finished_function.id;
         self.current_block = start_global_state.1;
@@ -1553,7 +1625,7 @@ where
 
         // A suppressed lambda routes capabilities through the environment instead of an evidence parameter.
         let signature = self.lambda_signature(expr, lambda, is_handler_branch, !suppress_capabilities);
-        let LambdaSignature { effects, own_row, parameter_types, evidence_type, function_type: full_type } = signature;
+        let LambdaSignature { effects, parameter_types, evidence_type, function_type: full_type } = signature;
 
         // Resolved against the enclosing scope's still-current tables, before they're taken below.
         let needed_capabilities = if suppress_capabilities {
@@ -1566,8 +1638,8 @@ where
 
         // A suppressed lambda must use its environment to capture the evidence holding the row
         // generics it forwards.
-        let forwarded_evidence =
-            (suppress_capabilities && !own_row.generics.is_empty()).then(|| self.own_evidence_value());
+        let forwards_generics = evidence::rest_count(evidence::entries(&evidence_type)) > 0;
+        let forwarded_evidence = (suppress_capabilities && forwards_generics).then(|| self.own_evidence_value());
         let forwarded_evidence_type = forwarded_evidence.map(|value| self.type_of_value(&value));
 
         let full_type = self.extend_environment_with_capabilities(full_type, &needed_capability_values);
@@ -1598,10 +1670,16 @@ where
 
         let id = self.definition_id_for(name_id);
         self.new_definition(id, name.clone(), generics_count, full_type.clone(), |this| {
-            this.bind_lambda_parameters(&lambda.parameters, &parameter_types);
+            // This needs to be set first since binding `resume` may already move it into a slot
+            if is_handler_branch {
+                let resume = lambda.parameters.len() as u32 - 1;
+                this.primitive_resume = Some(Value::Parameter(this.current_block, resume));
+            }
+            let parameters = this.bind_lambda_parameters(&lambda.parameters, &parameter_types);
+            assert!(!is_handler_branch || this.primitive_resume == parameters.last().copied());
 
             if !suppress_capabilities {
-                this.bind_own_evidence(evidence_type.clone(), &own_row);
+                this.bind_own_evidence(evidence_type.clone());
             }
 
             let free_vars = this.context().get_closure_environment(expr);
@@ -1693,6 +1771,7 @@ where
         let mut values = mapvec(free_vars, |var| {
             let value = *self.local_variables.get(var).unwrap();
             let has_slot = self.slot_locals.contains(var);
+            let value = if has_slot { value } else { self.captured_resume(*var, value) };
             let by_reference = !self.context().captures_by_value(closure, *var);
 
             match (by_reference, has_slot) {
@@ -1700,7 +1779,7 @@ where
                 // This only happens for variables bound without a pattern, such as a `for` loop variable,
                 // which won't have a slot yet. We give it one here, but the variable still owns the value
                 // since the closure only reads it.
-                (true, false) => self.push_instruction(Instruction::StackAlloc(value), Type::POINTER),
+                (true, false) => self.push_instruction(Instruction::immutable_slot(value), Type::POINTER),
                 // Captured by value: load the variable's current value from its slot
                 (false, true) => {
                     let tc_type = &self.types.result.maps.name_types[var];
@@ -1717,6 +1796,48 @@ where
         }
         values.extend_from_slice(capability_values);
         self.make_tuple(values)
+    }
+
+    /// A handler branch's `resume` is a coroutine primitive which takes no evidence, despite what
+    /// its type says. Code calling `resume` directly accounts for this, but a lambda capturing it
+    /// only knows its type. So if `value` (the variable `name`) is that `resume`, we return a
+    /// closure matching its type to be captured instead.
+    fn captured_resume(&mut self, name: NameId, value: Value) -> Value {
+        if self.primitive_resume != Some(value) {
+            return value;
+        }
+        let primitive_type = self.type_of_value(&value);
+        let uniform_type = self.convert_type(&self.types.result.maps.name_types[&name], None);
+        let (Type::Function(primitive), Type::Function(uniform)) = (&primitive_type, &uniform_type) else {
+            unreachable!("`resume` is not a function")
+        };
+        let parameters = uniform.parameters.clone();
+        let return_type = uniform.return_type.clone();
+        let argument_count = primitive.parameters.len();
+
+        // The closure's environment is a pointer, so store `resume` in the branch's frame for it to
+        // read from
+        let slot = self.push_instruction(Instruction::immutable_slot(value), Type::POINTER);
+        let wrapper_type = Type::Function(Arc::new(FunctionType {
+            parameters: parameters.clone(),
+            environment: Type::POINTER,
+            return_type: return_type.clone(),
+        }));
+
+        let generics_count = self.generics_in_scope.len() as u32;
+        let wrapper_name = Arc::new("resume_wrapper".to_string());
+        let id = next_definition_id();
+        self.new_isolated_definition(id, wrapper_name.clone(), generics_count, wrapper_type.clone(), |this| {
+            let arguments = this.push_capability_parameters(&parameters)[..argument_count].to_vec();
+            this.push_parameter(Type::POINTER);
+            let environment = Value::Parameter(this.current_block, parameters.len() as u32);
+            let resume = this.push_instruction(Instruction::Deref(environment), primitive_type.clone());
+            let call = Instruction::CallClosure { closure: resume, arguments };
+            let result = this.push_instruction(call, return_type.clone());
+            this.terminate_block(TerminatorInstruction::Return(result));
+        });
+        let function = self.instantiate_in_scope(id, wrapper_name, wrapper_type);
+        self.push_instruction(Instruction::PackClosure { function, environment: slot }, uniform_type)
     }
 
     /// Unpack a closure environment parameter, binding each captured name, needed capability and
@@ -1766,88 +1887,6 @@ where
             let instruction = Instruction::IndexTuple { tuple: env_value, index: index as u32 };
             self.own_evidence = Some(self.push_instruction(instruction, field_type));
         }
-    }
-
-    fn while_(&mut self, while_: &cst::While) -> Value {
-        let header = self.push_block_no_params();
-        let body = self.push_block_no_params();
-        let exit = self.push_block_no_params();
-
-        self.terminate_block(TerminatorInstruction::jmp_no_args(header));
-
-        self.switch_to_block(header);
-        let cond = self.expression(while_.condition);
-        self.terminate_block(TerminatorInstruction::if_(cond, body, exit, exit));
-
-        self.switch_to_block(body);
-        self.loop_targets.push((header, exit));
-        let _ = self.expression(while_.body);
-        self.loop_targets.pop();
-        self.terminate_block(TerminatorInstruction::jmp_no_args(header));
-
-        self.switch_to_block(exit);
-        Value::Unit
-    }
-
-    fn for_(&mut self, for_: &cst::For) -> Value {
-        let variable_type = self.expr_type(for_.start);
-        let kind = match &variable_type {
-            Type::Primitive(crate::mir::PrimitiveType::Int(k)) => *k,
-            _ => unreachable!("for-loop range was not inferred to an integer type: {variable_type:?}"),
-        };
-
-        let start_value = self.expression(for_.start);
-        let end_value = self.expression(for_.end);
-
-        let header = self.push_block(vec![variable_type.clone()]);
-        let body = self.push_block_no_params();
-        let step = self.push_block_no_params();
-        let exit = self.push_block_no_params();
-
-        let variable = Value::Parameter(header, 0);
-        self.local_variables.insert(for_.variable, variable);
-
-        self.terminate_block(TerminatorInstruction::jmp(header, start_value));
-
-        self.switch_to_block(header);
-        let cmp = if kind.is_signed() {
-            Instruction::LessSigned(variable, end_value)
-        } else {
-            Instruction::LessUnsigned(variable, end_value)
-        };
-        let cond = self.push_instruction(cmp, Type::BOOL);
-        self.terminate_block(TerminatorInstruction::if_(cond, body, exit, exit));
-
-        self.switch_to_block(body);
-        self.loop_targets.push((step, exit));
-        let _ = self.expression(for_.body);
-        self.loop_targets.pop();
-        self.terminate_block(TerminatorInstruction::jmp_no_args(step));
-
-        self.switch_to_block(step);
-        let one = Self::integer(Integer::positive(1), kind);
-        let variable_plus_one = self.push_instruction(Instruction::AddInt(variable, one), variable_type);
-        self.terminate_block(TerminatorInstruction::jmp(header, variable_plus_one));
-
-        self.switch_to_block(exit);
-        Value::Unit
-    }
-
-    fn break_(&mut self, expr: ExprId) -> Value {
-        let exit = self.loop_targets.last().expect("`break` outside of a loop").1;
-        self.jump_after_drops(expr, exit)
-    }
-
-    fn continue_(&mut self, expr: ExprId) -> Value {
-        let cont = self.loop_targets.last().expect("`continue` outside of a loop").0;
-        self.jump_after_drops(expr, cont)
-    }
-
-    /// Run the drops recorded before the jump `expr`, then jump to `target`
-    fn jump_after_drops(&mut self, expr: ExprId, target: BlockId) -> Value {
-        self.run_drops_at(DropSlot::BeforeJump(expr));
-        self.terminate_block(TerminatorInstruction::jmp_no_args(target));
-        Value::Error
     }
 
     fn if_(&mut self, if_: &cst::If, expr: ExprId) -> Value {
@@ -1908,7 +1947,9 @@ where
 
     fn fallthrough(&mut self, expr: ExprId) -> Value {
         let else_ = *self.chain_targets.last().expect("`Fallthrough` outside of a chain");
-        self.jump_after_drops(expr, else_)
+        self.run_drops_at(DropSlot::BeforeJump(expr));
+        self.terminate_block(TerminatorInstruction::jmp_no_args(else_));
+        Value::Error
     }
 
     fn match_(&mut self, expr: ExprId) -> Value {
@@ -2229,7 +2270,7 @@ where
 
         // Not addressable, likely a temporary, so stack-allocate it
         let value = self.expression(rhs);
-        let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
+        let slot = self.push_instruction(Instruction::slot(value), Type::POINTER);
 
         // The temporary may be mutated through the reference, so we drop it from its slot
         // rather than dropping the original value
@@ -2407,7 +2448,7 @@ where
         let signature = self.lambda_signature(definition.rhs, lambda, false, true);
         self.new_definition(id, name, generic_count, signature.function_type, |this| {
             let values = this.bind_lambda_parameters(&lambda.parameters, &signature.parameter_types);
-            this.bind_own_evidence(signature.evidence_type, &signature.own_row);
+            this.bind_own_evidence(signature.evidence_type);
             let dictionary = this.impl_constructor(impl_info, &lambda.parameters, &values);
             this.terminate_block(TerminatorInstruction::Return(dictionary));
         });
@@ -2468,7 +2509,7 @@ where
             this.bind_impl_parameters(data, impl_);
 
             this.bind_lambda_parameters(&lambda.parameters, &signature.parameter_types);
-            this.bind_own_evidence(signature.evidence_type, &signature.own_row);
+            this.bind_own_evidence(signature.evidence_type);
 
             let return_value = this.expression(lambda.body);
             this.terminate_block(TerminatorInstruction::Return(return_value));
@@ -2514,7 +2555,7 @@ where
         }
         let function_type = self.convert_context().build_function_type(tc_function_type, parameters);
         let effects = tc_function_type.effects.clone();
-        LambdaSignature { effects, own_row, parameter_types, evidence_type, function_type }
+        LambdaSignature { effects, parameter_types, evidence_type, function_type }
     }
 
     /// Push a parameter for each of a lambda's parameters and bind its pattern to it, returning each
@@ -2538,12 +2579,18 @@ where
         }
     }
 
-    /// Push the evidence parameter and register the capability of each effect within `own_row`
-    fn bind_own_evidence(&mut self, evidence_type: Type, own_row: &Effects) {
-        let evidence = self.push_capability_parameter(evidence_type);
-        for effect in own_row.entries.iter() {
-            let capability = self.lookup_capability(evidence, effect);
-            self.capabilities.push((self.convert_context().effect_key(effect), capability));
+    /// Push the evidence parameter and register the capability of each effect it holds
+    fn bind_own_evidence(&mut self, evidence_type: Type) {
+        let evidence = self.push_capability_parameter(evidence_type.clone());
+        for (index, entry) in evidence::entries(&evidence_type).iter().enumerate() {
+            // A body can't distinguish between several slots for the same effect. The first is the
+            // nearest handler, so that is the only one we register.
+            if let EvidenceEntry::Capability { key, .. } = entry
+                && !self.capabilities.iter().any(|(previous, _)| previous == key)
+            {
+                let capability = self.lookup_slot(evidence, index);
+                self.capabilities.push((key.clone(), capability));
+            }
         }
         self.own_evidence = Some(evidence);
     }

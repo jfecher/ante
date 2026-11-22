@@ -378,6 +378,10 @@ impl Token {
                 | IndexAssign
                 | Copy
                 | Semicolon
+                | For
+                | While
+                | Break
+                | Continue
         )
     }
 }

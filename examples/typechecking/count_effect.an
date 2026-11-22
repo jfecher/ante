@@ -1,4 +1,6 @@
-import Std.Iterator.repeat
+repeat (count: Usz) (f: fn Usz [env] -> Unit can e) {Drop env e}: Unit can e =
+    for i in 0 .. count do f i
+
 effect Count =
     count: fn Unit -> Unit
 
@@ -18,7 +20,8 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// import Std.Iterator.repeat
+// (repeat: fn Usz (fn Usz [env] -> Unit can e) {Drop env e _} -> Unit can e) (count: Usz) (f: fn Usz [env] -> Unit can e) {(_: Drop env e _)}: Unit can e =
+//     (Std.Stream.for: fn (Range Usz) {Stream (Range Usz) Usz e (stream_range (Num Usz add_usz sub_usz mul_usz div_usz eq_usz cmp_usz num_usz) (Copy Usz copy_usz))} (fn Usz [ref 'f (fn Usz [env] -> Unit can e)] -> Unit can Loop, e) {Drop (ref 'f (fn Usz [env] -> Unit can e)) e Unit} -> Unit can e) (0 (..: fn Usz Usz -> Range Usz is pure) (count: Usz)) {(stream_range: fn {Num Usz add_usz sub_usz mul_usz div_usz eq_usz cmp_usz num_usz} {Copy Usz copy_usz} -> Stream (Range Usz) Usz pure (stream_range (Num Usz add_usz sub_usz mul_usz div_usz eq_usz cmp_usz num_usz) (Copy Usz copy_usz)) is pure) {(num_usz: Num Usz add_usz sub_usz mul_usz div_usz eq_usz cmp_usz num_usz)} {(copy_usz: Copy Usz copy_usz)}} (fn (i: Usz) [(f: fn Usz [env] -> Unit can e)] -> (f: fn Usz [env] -> Unit can e) (i: Usz)) {()}
 // 
 // effect Count =
 //     count: fn Unit -> Unit

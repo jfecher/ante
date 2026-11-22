@@ -1,12 +1,19 @@
 //! Control-flow and dataflow utilities shared by inlining and the local handler optimization
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::mir::{
-    Block, BlockId, Definition, DefinitionId, EffectKey, GenericBindings, Instruction, InstructionId,
-    TerminatorInstruction, Type, Value,
+use crate::{
+    mir::{
+        Block, BlockId, Definition, DefinitionId, EvidenceEntry, EvidenceItem, GenericBindings, Instruction,
+        InstructionId, TerminatorInstruction, Type, Value, evidence,
+    },
+    parser::ids::TopLevelName,
 };
+
+/// Limits how deep `resolve` and its helpers may recurse so that we don't get stuck on
+/// pathologically long chains
+const MAX_RESOLVE_DEPTH: u32 = 64;
 
 impl TerminatorInstruction {
     /// Invoke `f` on each block this terminator may transfer control to or names as a merge point
@@ -76,10 +83,13 @@ fn is_pure(instruction: &Instruction) -> bool {
             | Instruction::MakeTuple(_)
             | Instruction::MakeEvidence { .. }
             | Instruction::LookupEvidence { .. }
+            | Instruction::RestEvidence { .. }
             | Instruction::PackClosure { .. }
             | Instruction::ClosureEnvironment(_)
             | Instruction::Instantiate(..)
             | Instruction::Capability
+            // A slot can't be read if nothing points to it
+            | Instruction::StackAlloc { .. }
     )
 }
 
@@ -139,15 +149,16 @@ impl Definition {
         new_block
     }
 
-    /// Resolve `value` through any `Id`s, `IndexTuple`s of `MakeTuple`s, and `LookupEvidence`s
-    /// of `MakeEvidence`s, returning the value it is statically known to be.
+    /// Resolve `value` through any `Id`s, `IndexTuple`s of `MakeTuple`s, `LookupEvidence`s
+    /// of `MakeEvidence`s, and `Deref`s of immutable slots, returning the value it is statically
+    /// known to be.
     pub(crate) fn resolve(&self, value: Value) -> Value {
         self.resolve_with_depth(value, 0)
     }
 
     fn resolve_with_depth(&self, value: Value, depth: u32) -> Value {
         // Guard against pathological chains
-        if depth > 64 {
+        if depth > MAX_RESOLVE_DEPTH {
             return value;
         }
         let value = self.follow_ids(value);
@@ -162,30 +173,185 @@ impl Definition {
                 }
                 value
             },
-            Instruction::LookupEvidence { evidence, key } => match self.lookup_known_evidence(*evidence, key, depth) {
-                Some(capability) => self.resolve_with_depth(capability, depth + 1),
+            Instruction::LookupEvidence { evidence, key, prefix } => {
+                match self.known_slot(*evidence, key.effect, evidence::entries(prefix), depth) {
+                    KnownSlot::Capability(capability) => self.resolve_with_depth(capability, depth + 1),
+                    KnownSlot::In(..) => value,
+                }
+            },
+            Instruction::RestEvidence { evidence, prefix } => {
+                match self.known_rest(id, *evidence, evidence::entries(prefix), depth) {
+                    Some(rest) => self.resolve_with_depth(rest, depth + 1),
+                    None => value,
+                }
+            },
+            Instruction::MakeEvidence(items) => match self.repacked_evidence(id, items, depth) {
+                Some(source) => self.resolve_with_depth(source, depth + 1),
                 None => value,
+            },
+            // Immutable slots are never stored to after they're created, so anywhere the slot can
+            // be read from will still see the value it was created with
+            Instruction::Deref(pointer) => {
+                let pointer = self.resolve_with_depth(*pointer, depth + 1);
+                if let Some(stored) = self.immutable_slot_value(pointer, depth) {
+                    return stored;
+                }
+                // This is a field of a known tuple stored in an immutable slot. E.g. a method of a
+                // dictionary which was passed by pointer.
+                if let Value::InstructionResult(pointer) = pointer
+                    && let Instruction::GetFieldPtr { struct_ptr, index, .. } = &self.instructions[pointer]
+                    && let slot = self.resolve_with_depth(*struct_ptr, depth + 1)
+                    && let Some(Value::InstructionResult(tuple)) = self.immutable_slot_value(slot, depth)
+                    && let Instruction::MakeTuple(fields) = &self.instructions[tuple]
+                    && let Some(field) = fields.get(*index as usize)
+                {
+                    return self.resolve_with_depth(*field, depth + 1);
+                }
+                value
             },
             _ => value,
         }
     }
 
-    /// If `evidence` is a known `MakeEvidence` (possibly nested via its `rest`), return the
-    /// capability for `key` within it.
-    fn lookup_known_evidence(&self, evidence: Value, key: &EffectKey, depth: u32) -> Option<Value> {
-        let Value::InstructionResult(evidence) = self.resolve_with_depth(evidence, depth + 1) else { return None };
-        let Instruction::MakeEvidence { capabilities, rest } = &self.instructions[evidence] else { return None };
-        for (other, capability) in capabilities {
-            if other == key {
-                return Some(*capability);
-            }
-            // `other` may become equal to `key` once generics are substituted
-            if other.effect == key.effect && (other.contains_generics() || key.contains_generics()) {
+    /// Returns the value the immutable slot `slot` was created with, or `None` if it isn't an
+    /// immutable slot. Expects `slot` to already be resolved.
+    fn immutable_slot_value(&self, slot: Value, depth: u32) -> Option<Value> {
+        let Value::InstructionResult(slot) = slot else { return None };
+        match &self.instructions[slot] {
+            Instruction::StackAlloc { value: stored, immutable: true } => {
+                Some(self.resolve_with_depth(*stored, depth + 1))
+            },
+            _ => None,
+        }
+    }
+
+    /// Try to find where the capability for `effect` in the slot of `evidence` after `prefix` comes
+    /// from. This looks through any known `MakeEvidence` and `RestEvidence` instructions along the
+    /// way.
+    fn known_slot<'a>(
+        &'a self, evidence: Value, effect: TopLevelName, prefix: &'a [EvidenceEntry], depth: u32,
+    ) -> KnownSlot<'a> {
+        let unknown = || KnownSlot::In(evidence, Cow::Borrowed(prefix));
+        let Value::InstructionResult(id) = self.resolve_with_depth(evidence, depth + 1) else { return unknown() };
+        if depth > MAX_RESOLVE_DEPTH {
+            return unknown();
+        }
+        match &self.instructions[id] {
+            // The slot we're looking for also comes after everything ahead of the row generic
+            Instruction::RestEvidence { evidence: inner, prefix: inner_prefix } => {
+                let ahead = [evidence::entries(inner_prefix), prefix].concat();
+                self.known_slot(*inner, effect, &ahead, depth + 1).into_owned()
+            },
+            Instruction::MakeEvidence(items) => {
+                let Some(mut ahead) = evidence::count(prefix, effect) else { return unknown() };
+                for item in items {
+                    match item {
+                        EvidenceItem::Capability(key, value) if key.effect == effect => {
+                            if ahead == 0 {
+                                return KnownSlot::Capability(*value);
+                            }
+                            ahead -= 1;
+                        },
+                        EvidenceItem::Capability(..) => (),
+                        EvidenceItem::Splice(spliced) => {
+                            let Some(Type::Evidence(entries)) = self.local_value_type(spliced) else {
+                                return unknown();
+                            };
+                            let Some(held) = evidence::count(entries, effect) else { return unknown() };
+                            if ahead < held {
+                                let slot = evidence::slot_index(entries, effect, ahead).unwrap();
+                                return self.known_slot(*spliced, effect, &entries[..slot], depth + 1);
+                            }
+                            ahead -= held;
+                        },
+                    }
+                }
+                unknown()
+            },
+            _ => unknown(),
+        }
+    }
+
+    /// If the `MakeEvidence` at `id` only rebuilds a single evidence value with every slot in its
+    /// original position, return that value. This is what a function builds when calling itself
+    /// with its own row.
+    fn repacked_evidence(&self, id: InstructionId, items: &[EvidenceItem], depth: u32) -> Option<Value> {
+        let mut source = None;
+        for (index, item) in items.iter().enumerate() {
+            let (EvidenceItem::Capability(_, value) | EvidenceItem::Splice(value)) = item;
+            let Value::InstructionResult(read) = self.resolve_with_depth(*value, depth + 1) else { return None };
+            let (evidence, prefix) = match (item, &self.instructions[read]) {
+                (EvidenceItem::Capability(..), Instruction::LookupEvidence { evidence, prefix, .. }) => {
+                    (evidence, prefix)
+                },
+                (EvidenceItem::Splice(_), Instruction::RestEvidence { evidence, prefix })
+                    if self.instruction_result_type(read).is_single_rest() =>
+                {
+                    (evidence, prefix)
+                },
+                _ => return None,
+            };
+            // This only reads the slot at `index` if everything ahead of both slots is the same
+            let held = evidence::entries(self.local_value_type(evidence)?);
+            let prefix = evidence::entries(prefix);
+            let evidence = self.follow_ids(*evidence);
+            if prefix.len() != index || !held.starts_with(prefix) || *source.get_or_insert(evidence) != evidence {
                 return None;
             }
         }
-        // No capability here can become `key`, so it can only be in `rest`
-        self.lookup_known_evidence((*rest)?, key, depth + 1)
+        let source = source?;
+        (self.local_value_type(&source) == Some(self.instruction_result_type(id))).then_some(source)
+    }
+
+    /// If the `RestEvidence` at `id` reads a single row generic out of a known `MakeEvidence`,
+    /// return the value the `MakeEvidence` used for that generic. This only works while the generic
+    /// is unsubstituted. Afterward, the instruction reads every slot the generic was bound to,
+    /// which isn't any single value.
+    fn known_rest(&self, id: InstructionId, evidence: Value, prefix: &[EvidenceEntry], depth: u32) -> Option<Value> {
+        let result = self.instruction_result_type(id);
+        if !result.is_single_rest() {
+            return None;
+        }
+        let (source, ahead) = self.spliced_rest(evidence, prefix, depth)?;
+        (ahead.is_empty() && self.local_value_type(&source) == Some(result)).then_some(source)
+    }
+
+    /// If `evidence` is a known `MakeEvidence`, return the value it was built from which holds the
+    /// row generic after `prefix`, along with the entries ahead of that row generic within the
+    /// returned value.
+    fn spliced_rest(&self, evidence: Value, prefix: &[EvidenceEntry], depth: u32) -> Option<(Value, &[EvidenceEntry])> {
+        let Value::InstructionResult(id) = self.resolve_with_depth(evidence, depth + 1) else { return None };
+        let Instruction::MakeEvidence(items) = &self.instructions[id] else { return None };
+        let mut ahead = evidence::rest_count(prefix);
+        for item in items {
+            let EvidenceItem::Splice(spliced) = item else { continue };
+            let Some(Type::Evidence(entries)) = self.local_value_type(spliced) else { return None };
+            let held = evidence::rest_count(entries);
+            if ahead < held {
+                let index = evidence::rest_index(entries, ahead)?;
+                return Some((*spliced, &entries[..index]));
+            }
+            ahead -= held;
+        }
+        None
+    }
+
+    /// Returns the innermost evidence value we know holds the row generic after `prefix` in
+    /// `evidence`
+    pub(crate) fn rest_source(&self, evidence: Value, prefix: &[EvidenceEntry]) -> Value {
+        let (mut evidence, mut prefix) = (evidence, Cow::Borrowed(prefix));
+        for _ in 0..MAX_RESOLVE_DEPTH {
+            if let Some((source, ahead)) = self.spliced_rest(evidence, &prefix, 0) {
+                (evidence, prefix) = (source, Cow::Borrowed(ahead));
+            } else if let Value::InstructionResult(id) = self.resolve(evidence)
+                && let Instruction::RestEvidence { evidence: inner, prefix: inner_prefix } = &self.instructions[id]
+            {
+                (evidence, prefix) = (*inner, Cow::Owned([evidence::entries(inner_prefix), &prefix].concat()));
+            } else {
+                break;
+            }
+        }
+        evidence
     }
 
     /// The function `value` is statically known to be, if any. See [KnownFunction].
@@ -231,11 +397,30 @@ impl Definition {
     pub(crate) fn fold_known_values(&mut self) {
         let ids: Vec<_> = self.block_instructions().collect();
         for id in ids {
-            if matches!(self.instructions[id], Instruction::IndexTuple { .. } | Instruction::LookupEvidence { .. }) {
-                let resolved = self.resolve(Value::InstructionResult(id));
-                if resolved != Value::InstructionResult(id) {
-                    self.instructions[id] = Instruction::Id(resolved);
-                }
+            let this = Value::InstructionResult(id);
+            let folded = match &self.instructions[id] {
+                Instruction::LookupEvidence { evidence, key, prefix } => {
+                    match self.known_slot(*evidence, key.effect, evidence::entries(prefix), 0) {
+                        KnownSlot::Capability(capability) => Some(Instruction::Id(self.resolve(capability))),
+                        // If we know this lookup really reads a slot of some other evidence, read
+                        // from that evidence directly
+                        KnownSlot::In(source, ahead) if source != *evidence => {
+                            let prefix = Type::Evidence(Arc::new(ahead.into_owned()));
+                            Some(Instruction::LookupEvidence { evidence: source, key: key.clone(), prefix })
+                        },
+                        KnownSlot::In(..) => None,
+                    }
+                },
+                Instruction::IndexTuple { .. }
+                | Instruction::RestEvidence { .. }
+                | Instruction::MakeEvidence(_)
+                | Instruction::Deref(_) => Some(Instruction::Id(self.resolve(this))),
+                _ => None,
+            };
+            if let Some(folded) = folded
+                && !matches!(folded, Instruction::Id(resolved) if resolved == this)
+            {
+                self.instructions[id] = folded;
             }
         }
     }
@@ -477,5 +662,21 @@ impl Definition {
         self.remove_dead_instructions();
         self.simplify_cfg();
         self.compact_instructions();
+    }
+}
+
+/// Describes where the capability in an evidence slot comes from, as far as we can tell statically
+enum KnownSlot<'a> {
+    Capability(Value),
+    /// The capability is in the slot of this evidence value which comes after these entries
+    In(Value, Cow<'a, [EvidenceEntry]>),
+}
+
+impl KnownSlot<'_> {
+    fn into_owned(self) -> KnownSlot<'static> {
+        match self {
+            KnownSlot::Capability(capability) => KnownSlot::Capability(capability),
+            KnownSlot::In(evidence, ahead) => KnownSlot::In(evidence, Cow::Owned(ahead.into_owned())),
+        }
     }
 }

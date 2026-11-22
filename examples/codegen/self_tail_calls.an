@@ -1,0 +1,30 @@
+// A function calling itself in tail position runs in constant stack space.
+// Each of these would overflow the stack otherwise.
+
+count_down (n: I64) (acc: I64): I64 =
+    if n == 0 then acc else count_down (n - 1) (acc + n)
+
+sum_to (n: I64): I64 =
+    loop (i = 0) (acc = 0) ->
+        if i > n then acc else recur (i + 1) (acc + i)
+
+// A function returning unit returns the same value its self call would have returned,
+// so this is still a tail call
+spin (n: I64) (counter: mut I64) =
+    if n != 0 then
+        counter := counter.* + 1
+        spin (n - 1) counter
+
+main () =
+    abort_on_fail do
+    assert (count_down 5000000 0 == 12500002500000)
+    assert (sum_to 5000000 == 12500002500000)
+    var counter = 0i64
+    spin 5000000 (mut counter)
+    assert (counter == 5000000)
+    var i = 0i64
+    while i < 5000000 do
+        i += 1
+    assert (i == 5000000)
+
+// args: --delete-binary --no-color

@@ -1,0 +1,33 @@
+import Std.Collections.Vec
+import Std.Stream.enumerate
+
+main () =
+    abort_on_panic do
+    abort_on_fail do
+
+    // A range is a value
+    range = 2 .. 5
+    var digits = 0
+    for i in range do digits := digits * 10 + i
+    assert (digits == 234)
+
+    var elements = 0
+    for x in [10, 20, 30] do
+        elements := elements * 100 + x
+    assert (elements == 102030)
+
+    expected = ["a", "b"]
+    v = Vec.of ["a", "b"]
+    var borrowed = 0
+    for s in ref v do
+        assert (s == expected.[borrowed])
+        borrowed += 1
+    assert (borrowed == 2)
+
+    var enumerated = 0
+    for index, s in enumerate v do
+        assert (index == enumerated and s == expected.[index])
+        enumerated += 1
+    assert (enumerated == 2)
+
+// args: --delete-binary --no-color

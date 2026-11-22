@@ -551,7 +551,7 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
     let null_ptr = emitter.push_instruction(Instruction::Transmute(Value::Integer(IntConstant::Usz(0))), Type::POINTER);
     let initial_cap_state = emitter.push_instruction(Instruction::MakeTuple(vec![null_ptr]), cap_state_type.clone());
-    let cap_state_ptr = emitter.push_instruction(Instruction::StackAlloc(initial_cap_state), Type::POINTER);
+    let cap_state_ptr = emitter.push_instruction(Instruction::slot(initial_cap_state), Type::POINTER);
 
     let cap_closures = mapvec(wrapper_ids.iter().zip(wrapper_closure_types.iter()), |(wrap_id, wrap_type)| {
         let pack = Instruction::PackClosure { function: Value::Definition(*wrap_id), environment: cap_state_ptr };
@@ -572,7 +572,7 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     user_data_fields.extend([cap_tuple, env_value, body_result_slot]);
     let user_data_type = layout.typ(&cap_tuple_type, &env_type);
     let user_data = emitter.push_instruction(Instruction::MakeTuple(user_data_fields), user_data_type);
-    let user_data_ptr = emitter.push_instruction(Instruction::StackAlloc(user_data), Type::POINTER);
+    let user_data_ptr = emitter.push_instruction(Instruction::slot(user_data), Type::POINTER);
 
     let entry_ptr = emitter.push_instruction(Instruction::Transmute(entry), Type::POINTER);
     let coro = emitter.call_extern(&context.mco.init, vec![entry_ptr, user_data_ptr]);
@@ -699,14 +699,14 @@ fn generate_capability_wrapper(
     } else {
         let argument_tuple_type = Type::tuple(shape.op_arg_types.clone());
         let argument_tuple = emitter.push_instruction(Instruction::MakeTuple(op_arg_values), argument_tuple_type);
-        emitter.push_instruction(Instruction::StackAlloc(argument_tuple), Type::POINTER)
+        emitter.push_instruction(Instruction::slot(argument_tuple), Type::POINTER)
     };
     let result_slot =
         emitter.push_instruction(Instruction::StackAllocUninit(shape.op_return_type.clone()), Type::POINTER);
 
     let fields = vec![target, Value::Integer(IntConstant::U32(case_index)), arguments, result_slot];
     let message = emitter.push_instruction(Instruction::MakeTuple(fields), message_type());
-    let message = emitter.push_instruction(Instruction::StackAlloc(message), Type::POINTER);
+    let message = emitter.push_instruction(Instruction::slot(message), Type::POINTER);
 
     emitter.call_extern(&context.mco.set_message, vec![current, message]);
     emitter.call_extern(&context.mco.suspend, vec![current]);
@@ -1024,7 +1024,7 @@ fn emit_handler_case(
             let state_field_types = [Type::POINTER, Type::POINTER].into_iter().chain(param_types).collect();
             let state_type = Type::Tuple(Arc::new(state_field_types));
             let state = emitter.push_instruction(Instruction::MakeTuple(state_elements), state_type);
-            let environment = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
+            let environment = emitter.push_instruction(Instruction::slot(state), Type::POINTER);
 
             let resume_function_value = emitter.emit_definition_value(
                 resume_function_id,
@@ -1097,7 +1097,7 @@ impl DeferredResume {
         let out = emitter.push_instruction(Instruction::StackAllocUninit(result_type.clone()), Type::POINTER);
         let state = Instruction::MakeTuple(vec![result_slot_cell, out]);
         let state = emitter.push_instruction(state, Self::state_type());
-        let state = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
+        let state = emitter.push_instruction(Instruction::slot(state), Type::POINTER);
         DeferredResume { state, result_slot_cell, out }
     }
 }

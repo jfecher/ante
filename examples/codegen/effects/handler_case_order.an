@@ -1,6 +1,5 @@
 // Ensure handler cases written in a different order than the effect declares its operations
 // do not break things horribly
-import Std.Stream.Loop, break_, continue_
 
 effect Two =
     first: fn Unit -> I32
@@ -19,7 +18,7 @@ mixed (limit: I32): I32 =
     | first () -> resume 1
 
 body (i: I32): Unit can Loop =
-    if i == 3 then break_ ()
+    if i == 3 then break
 
 loop_count (): I32 =
     var broke = false
@@ -27,8 +26,8 @@ loop_count (): I32 =
     for i in 0 .. 10 do
         if not broke then
             handle body i
-            | continue_ () -> ()
-            | break_ () -> broke := true
+            | (continue) () -> ()
+            | (break) () -> broke := true
             if not broke then count += 1
     count
 
@@ -59,17 +58,11 @@ non_tail_resumes (): I32 =
     | second () -> (resume 2) + 1000
 
 main () =
-    print_to_stdout do
-    println (mixed 0)
-    println (loop_count ())
-    println (state ())
-    println (tail_resumes ())
-    println (non_tail_resumes ())
+    abort_on_fail do
+    assert (mixed 0 == 21)
+    assert (loop_count () == 3)
+    assert (state () == 11)
+    assert (tail_resumes () == 21)
+    assert (non_tail_resumes () == 1121)
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 21
-// 3
-// 11
-// 21
-// 1121

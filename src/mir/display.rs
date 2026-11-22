@@ -131,7 +131,7 @@ impl Display for Type {
                     }
                     match entry {
                         mir::EvidenceEntry::Capability { key, capability } => write!(f, "{key}: {capability}")?,
-                        mir::EvidenceEntry::Rest(generic) => write!(f, "'{}", generic.0)?,
+                        mir::EvidenceEntry::Rest { generic } => write!(f, "'{}", generic.0)?,
                     }
                 }
                 write!(f, "]")
@@ -335,16 +335,18 @@ fn fmt_instruction(
             }
         },
         mir::Instruction::Capability => write!(f, "handler_cap")?,
-        mir::Instruction::LookupEvidence { evidence, key } => write!(f, "lookup {} {key}", v(evidence))?,
-        mir::Instruction::MakeEvidence { capabilities, rest } => {
+        mir::Instruction::LookupEvidence { evidence, key, prefix } => {
+            write!(f, "lookup {} {key} after {prefix}", v(evidence))?
+        },
+        mir::Instruction::RestEvidence { evidence, prefix } => write!(f, "rest {} after {prefix}", v(evidence))?,
+        mir::Instruction::MakeEvidence(items) => {
             write!(f, "evidence(")?;
-            let mut separator = "";
-            for (key, value) in capabilities {
-                write!(f, "{separator}{key}: {}", v(value))?;
-                separator = ", ";
-            }
-            if let Some(rest) = rest {
-                write!(f, "{separator}..{}", v(rest))?;
+            for (i, item) in items.iter().enumerate() {
+                let separator = if i == 0 { "" } else { ", " };
+                match item {
+                    mir::EvidenceItem::Capability(key, value) => write!(f, "{separator}{key}: {}", v(value))?,
+                    mir::EvidenceItem::Splice(value) => write!(f, "{separator}..{}", v(value))?,
+                }
             }
             write!(f, ")")?;
         },
@@ -359,7 +361,7 @@ fn fmt_instruction(
             let preview = String::from_utf8_lossy(bytes);
             write!(f, "bytes {preview:?}")?;
         },
-        mir::Instruction::StackAlloc(value) => write!(f, "alloca {}", v(value))?,
+        mir::Instruction::StackAlloc { value, .. } => write!(f, "alloca {}", v(value))?,
         mir::Instruction::Store { pointer, value } => write!(f, "store {}, {}", v(pointer), v(value))?,
         mir::Instruction::GetFieldPtr { struct_ptr, index, .. } => write!(f, "field_ptr {}.{index}", v(struct_ptr))?,
         mir::Instruction::Transmute(value) => write!(f, "transmute {}", v(value))?,

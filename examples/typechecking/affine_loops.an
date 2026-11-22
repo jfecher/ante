@@ -1,3 +1,5 @@
+import Std.Collections.Vec
+
 type Resource = id: I32
 
 consume x = Std.Mem.forget x
@@ -37,6 +39,16 @@ start_consumes (r: Resource) : I32 =
     consume r
     0
 
+// The iterated expression only runs once, and each element is owned by the body
+move_iterable_and_elements (v: Vec Resource) =
+    for r in v do consume r
+
+// This is still an error since we can't track how many times the loop already ran
+move_then_break (r: Resource) =
+    for _i in 0..3 do
+        consume r
+        break
+
 // A move in a while's condition should error
 move_in_while_condition (r: Resource) =
     while
@@ -52,23 +64,31 @@ impl drop_resource: Drop Resource pure with
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/affine_loops.an:8:17
-//  7 |     for _i in 0..3 do
+// examples/typechecking/affine_loops.an:10:17
+//  9 |     for _i in 0..3 do
 //    |         // error: Cannot move r1 in a for loop because it may be executed multiple times
-//  8 |         consume r1
+// 10 |         consume r1
 //    |                 ^^
 // 
-// examples/typechecking/affine_loops.an:11:17
-// 10 |     while false do
+// examples/typechecking/affine_loops.an:13:17
+// 12 |     while false do
 //    |         // error: Cannot move r2 in a while loop because it may be executed multiple times
-// 11 |         consume r2
+// 13 |         consume r2
 //    |                 ^^
 // 
-// examples/typechecking/affine_loops.an:43:17
-// 42 |     while
-//    |         // error: Cannot move r in a while loop because it may be executed multiple times
-// 43 |         consume r
+// examples/typechecking/affine_loops.an:49:17
+// 48 |     for _i in 0..3 do
+//    |         // error: Cannot move r in a for loop because it may be executed multiple times
+// 49 |         consume r
 //    |                 ^
-// 44 |         false
+// 50 |         break
 // 
-// Found 3 errors and 0 warnings
+// examples/typechecking/affine_loops.an:55:17
+// 54 |     while
+//    |         // error: Cannot move r in a while loop because it may be executed multiple times
+// 55 |         consume r
+//    |                 ^
+// 56 |         false
+// 
+// Found 4 errors and 0 warnings
+

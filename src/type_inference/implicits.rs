@@ -311,16 +311,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         ScopeDepth(self.scope_depth)
     }
 
-    /// Increment the scope counter used to tag the lifetime of anonymous references
-    pub(super) fn push_escape_scope(&mut self) {
-        self.scope_depth += 1;
-    }
-
-    /// Decrement the scope counter used to tag the lifetime of anonymous references
-    pub(super) fn pop_escape_scope(&mut self) {
-        self.scope_depth -= 1;
-    }
-
     /// Pop an implicit scope:
     /// - Removes implicits in the current scope from being used by outer scopes
     /// - Solves any implicits queued in the current scope
@@ -1653,7 +1643,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let body = self.push_expr(body, Type::ERROR, location);
 
         // The wrapper stands in for the function so it must own the function rather than a reference to it
-        cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: true, effects: None })
+        cst::Expr::Lambda(cst::Lambda { is_move: true, ..cst::Lambda::new(parameters, body) })
     }
 
     /// Creates a new expression referring to the given implicit value.

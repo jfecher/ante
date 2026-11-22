@@ -17,8 +17,8 @@ use crate::{
     cli::GenericsStrategy,
     incremental::{GetCrateGraph, GetItem, GetItemRaw, GetTypeBody, Parse, TargetPointerSize, TypeCheck},
     mir::{
-        self, Block, BlockId, Definition, DefinitionId, EffectKey, FunctionType, GenericBindings, Instruction,
-        InstructionId, Mir, Type, Value, build_effect_lowered_mir, next_definition_id,
+        self, Block, BlockId, Definition, DefinitionId, FunctionType, GenericBindings, Instruction, InstructionId, Mir,
+        Type, Value, build_effect_lowered_mir, next_definition_id,
     },
     vecmap::VecMap,
 };
@@ -281,16 +281,16 @@ impl<'local> FunctionContext<'local> {
     fn remap_definition_values_in_instruction(&mut self, instruction: &mut Instruction) {
         instruction.for_each_value_mut(|value| self.remap_value(value));
         match instruction {
-            Instruction::LookupEvidence { key, .. } => self.specialize_key(key),
-            Instruction::MakeEvidence { capabilities, .. } => {
-                capabilities.iter_mut().for_each(|(key, _)| self.specialize_key(key))
-            },
-            Instruction::StackAllocUninit(typ) | Instruction::GetFieldPtr { struct_type: typ, .. } => {
+            Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => self.specialize_type(typ),
+            Instruction::StackAllocUninit(_)
+            | Instruction::GetFieldPtr { .. }
+            | Instruction::LookupEvidence { .. }
+            | Instruction::RestEvidence { .. }
+            | Instruction::MakeEvidence(_) => {
                 if !self.generic_mapping.is_empty() {
-                    self.specialize_type(typ);
+                    instruction.for_each_type_mut(|typ| self.specialize_type(typ));
                 }
             },
-            Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => self.specialize_type(typ),
             _ => (),
         }
     }
@@ -307,12 +307,6 @@ impl<'local> FunctionContext<'local> {
     fn specialize_type(&self, typ: &mut Type) {
         if let Some(new_type) = self.specialize_type_opt(typ) {
             *typ = new_type;
-        }
-    }
-
-    fn specialize_key(&self, key: &mut EffectKey) {
-        if !self.generic_mapping.is_empty() {
-            key.args.iter_mut().for_each(|arg| self.specialize_type(arg));
         }
     }
 

@@ -9,7 +9,6 @@ use crate::{
         AtomicOrdering, AtomicRmwOp, Block, BlockId, Definition, DefinitionId, Instruction, TerminatorInstruction,
         Type, Value,
         existentialization::{
-            Helper,
             builder::{FunctionBuilder, Op, usz_value},
             emit,
             types::usz,
@@ -45,7 +44,7 @@ impl FunctionBuilder<'_> {
         arguments.extend(operands);
         let slot = has_result.then(|| self.slot(result_type));
         arguments.extend(slot);
-        let function = Value::Definition(self.shared.helper(Helper::Atomic(operation)));
+        let function = Value::Definition(self.shared.helper(operation));
         let unit = self.emit(Instruction::Call { function, arguments }, Type::UNIT);
         slot.unwrap_or(unit)
     }

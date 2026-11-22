@@ -60,7 +60,7 @@ mod moved_captures;
 pub mod patterns;
 mod places;
 mod recursive_types;
-mod row;
+pub(crate) mod row;
 pub(crate) mod type_body;
 mod type_definitions;
 pub mod types;
@@ -213,6 +213,10 @@ struct TypeChecker<'local, 'inner> {
     /// The return type of the current function. Used to type check `return` statements.
     function_return_type: Option<Type>,
 
+    /// True if the innermost lambda being checked is the condition or body of a loop. A `return`
+    /// here performs an effect to leave the loop, see [Self::perform_early_return].
+    in_loop_part: bool,
+
     /// The effect row of the function whose body is currently being checked.
     current_effect_row: Type,
 
@@ -250,8 +254,8 @@ struct TypeChecker<'local, 'inner> {
     /// Cached type for the Prelude's `String` struct, lazily resolved on first use.
     string_type: Option<Type>,
 
-    /// Cached origins of Prelude definitions, by name. See [Self::prelude_definition_origin].
-    prelude_origins: FxHashMap<&'static str, Origin>,
+    /// Cached origins of stdlib definitions, by module and name. See [Self::std_definition_origin].
+    std_origins: FxHashMap<(SourceFileId, &'static str), Origin>,
 
     /// Cached TopLevelName for the Prelude's `Copy` trait and its number of generics, lazily
     /// resolved on first use.
@@ -266,6 +270,10 @@ struct TypeChecker<'local, 'inner> {
     /// Open effect rows. These are only defaulted to pure once every item in the SCC is borrow
     /// checked since a drop may still add effects to them.
     deferred_effect_defaults: Vec<TypeVariableId>,
+
+    /// Each loop condition and body has its effect row left open so that it can include the effects
+    /// of its drops. These are the row variables used for that. See [Self::discharge_effects].
+    loop_row_ends: FxHashSet<TypeVariableId>,
 
     /// Environment variables for the body and each branch of every `handle`. These are only decided
     /// once the `handle` is borrow checked.
@@ -337,10 +345,6 @@ struct ItemState {
     /// For each value the borrow walk may copy or drop, the implicits we search with and the impl
     /// we found. See [value_impls].
     value_impls: value_impls::ValueImplTable,
-
-    /// Names defined with `var` or as mutable parameters. Used by closure capture analysis
-    /// to wrap mutable captures in a reference type so the closure shares the outer scope's storage.
-    mutable_definitions: FxHashSet<NameId>,
 
     /// Failed implicit searches by destination
     failed_implicit_searches: FxHashMap<ExprId, implicits::ImplicitError>,
@@ -423,6 +427,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             declared_types: Default::default(),
             current_item: None,
             function_return_type: None,
+            in_loop_part: false,
             current_effect_row: Type::pure(),
             deferred_effects: Vec::new(),
             item_contexts,
@@ -433,13 +438,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             current_impl: None,
             pending_dictionary_coercions: Default::default(),
             string_type: None,
-            prelude_origins: Default::default(),
+            std_origins: Default::default(),
             copy_trait: None,
             drop_trait: None,
             pair_type: Default::default(),
             deferred_effect_defaults: Vec::new(),
             once_variables: Vec::new(),
             handle_environments: Default::default(),
+            loop_row_ends: Default::default(),
             effect_bounds: Default::default(),
             variable_kinds: Default::default(),
             type_subject_traits: Default::default(),
@@ -592,18 +598,47 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Returns the origin of the Prelude definition `name`, caching it.
     fn prelude_definition_origin(&mut self, name: &'static str) -> Origin {
-        if let Some(origin) = self.prelude_origins.get(name) {
+        self.std_definition_origin(SourceFileId::prelude(), name)
+    }
+
+    /// Returns the origin of the `Std.EarlyReturn.early_return` operation
+    fn early_return_origin(&mut self) -> Origin {
+        let module = SourceFileId::new(CrateId::STDLIB, std::path::Path::new("EarlyReturn.an"));
+        self.std_definition_origin(module, "early_return")
+    }
+
+    /// Returns the origin of the definition `name` exported by the stdlib `module`, caching it.
+    fn std_definition_origin(&mut self, module: SourceFileId, name: &'static str) -> Origin {
+        if let Some(origin) = self.std_origins.get(&(module, name)) {
             return *origin;
         }
-        let exported = ExportedDefinitions(SourceFileId::prelude()).get(self.compiler);
+        let exported = ExportedDefinitions(module).get(self.compiler);
         let top_level_name = *exported
             .definitions
             .get(&Arc::new(name.to_string()))
-            .unwrap_or_else(|| panic!("`{name}` not found in Prelude"));
+            .unwrap_or_else(|| panic!("`{name}` not found in its stdlib module"));
         let (item, _) = GetItem(top_level_name.top_level_item).get(self.compiler);
         let origin = crate::name_resolution::origin_of_top_level_definition(top_level_name, &item.kind);
-        self.prelude_origins.insert(name, origin);
+        self.std_origins.insert((module, name), origin);
         origin
+    }
+
+    /// If `callee` resolved to an operation which exits a loop, return which kind. We check what
+    /// `callee` resolved to rather than its syntax since these operations can also be called by
+    /// name or through an alias.
+    fn loop_exit(&mut self, callee: ExprId) -> Option<LoopExit> {
+        let path = match self.resolved_expr(callee).as_ref() {
+            cst::Expr::Variable(path) => *path,
+            _ => return None,
+        };
+        let origin @ Origin::EffectOperation { .. } = self.path_origin(path)? else { return None };
+        if origin == self.prelude_definition_origin("break") || origin == self.prelude_definition_origin("continue") {
+            Some(LoopExit::Jump)
+        } else if origin == self.early_return_origin() {
+            Some(LoopExit::Return)
+        } else {
+            None
+        }
     }
 
     /// Returns the `IO` effect alias defined in the Prelude
@@ -948,7 +983,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let function = self.copied_or_dropped_function(&target);
             let kept = function.map_or(Vec::new(), |function| self.unbound_effect_variables(&function));
             for id in self.unbound_effect_variables(&target) {
-                if !kept.contains(&id) {
+                if !kept.contains(&id) && !self.loop_row_ends.contains(&id) {
                     self.try_default_effect_to_pure(id, location.clone());
                 }
             }
@@ -1025,6 +1060,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn diverges(&self, typ: &Type) -> bool {
         matches!(typ.follow(&self.bindings), &Type::NEVER)
     }
+}
+
+/// The ways a loop can be exited by calling one of the operations loops desugar to
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoopExit {
+    /// `Std.Stream.(break)` or `Std.Stream.(continue)`, which the loop itself handles
+    Jump,
+    /// `Std.EarlyReturn.early_return`, which returns from the function the loop is in
+    Return,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1117,6 +1161,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>,
     ) -> CoercionOutcome {
         match (self.follow_type(actual), self.follow_type(expected)) {
+            // The bottom type is already a subtype of `expected`
+            (Type::Primitive(PrimitiveType::Never), _) => CoercionOutcome::None,
             // Fire when the callee needs implicit arguments the call site didn't supply.
             // We also allow a function with only implicit args to be called with `()` as its sole argument.
             (Type::Function(actual_fn), Type::Function(expected_fn))
@@ -1318,12 +1364,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let actual_fn = actual_fn.clone();
         let expected_fn = expected_fn.clone();
 
-        // Without an environment to infer (e.g. a bare `fn` annotation) no closure can be introduced
+        // Without an environment to infer (e.g. a bare `fn` annotation) we can't introduce a
+        // closure, so the rows need to match slot for slot. See [row::RowRelation::Same].
         if !already_coerced && !matches!(self.follow_type(&expected_fn.environment), Type::Variable(_)) {
-            if self.unify(actual, expected, kind, expr)
-                && let Err(()) =
-                    self.try_unify(&expected_fn.effects, &actual_fn.effects).map(|b| self.bindings.extend(b))
-            {
+            if !self.unify(actual, expected, kind, expr) {
+                return true;
+            }
+            // `unify` already found the actual row within the expected one. If the reverse holds as
+            // well then both rows have the same effects, although not necessarily in the same
+            // slots.
+            let same_effects =
+                self.try_unify(&expected_fn.effects, &actual_fn.effects).map(|b| self.bindings.extend(b));
+            let mut bindings = TypeBindings::default();
+            let same_slots = self.row_unify(&actual_fn.effects, &expected_fn.effects, &mut bindings);
+            if same_effects.is_ok() && same_slots.is_ok() {
+                self.bindings.extend(bindings);
+            } else if same_effects.is_ok() && self.is_top_level_function(expr) {
+                // Top-level functions and effect operations can be called without an environment,
+                // so we can wrap them in a function which passes each effect from the slot it
+                // resolves to
+                self.current_extended_context_mut().insert_function_coercion(expr, expected.clone());
+            } else {
                 let (actual, expected) = self.type_pair_to_error_strings(actual, expected);
                 let location = expr.locate(self);
                 let function_environments_differ = false;
@@ -1348,6 +1409,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.unify(&adapted, expected, kind, expr);
         self.current_extended_context_mut().insert_function_coercion(expr, expected.clone());
         true
+    }
+
+    /// True if `expr` names a function defined at the top level or an effect operation
+    fn is_top_level_function(&self, expr: ExprId) -> bool {
+        let cst::Expr::Variable(path) = &self.current_extended_context()[expr] else { return false };
+        matches!(self.path_origin(*path), Some(Origin::TopLevelDefinition(_) | Origin::EffectOperation { .. }))
     }
 
     /// True if checking `actual` against `expected` requires [Self::try_function_row_coercion]
@@ -1739,11 +1806,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         None
     }
 
-    /// Flatten `effects` into a zonked, sorted, deduplicated list of effects
+    /// Flatten `effects` into a zonked, sorted list of effects
     pub(super) fn collect_and_merge_effects(&self, effects: &Type, new_bindings: &mut TypeBindings) -> Vec<Type> {
         let mut effects = self.collect_effects(effects, new_bindings);
         Type::follow_effects(&mut effects, &self.bindings, new_bindings);
-        Type::sort_and_dedup_effects(&mut effects);
+        Type::sort_effects(&mut effects);
         effects
     }
 

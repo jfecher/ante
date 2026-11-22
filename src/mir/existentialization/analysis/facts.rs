@@ -14,7 +14,7 @@ use crate::mir::{
 
 /// What a single definition contributes to the analysis
 pub(super) struct Facts {
-    /// The generics its own values' layouts and effect keys depend on
+    /// The generics which the layouts of this definition's own values depend on
     pub(super) layout_generics: FxHashSet<u32>,
 
     /// Each generic definition it references, with the bindings it references it with
@@ -34,9 +34,6 @@ pub(super) struct Facts {
 
     /// See [super::Info::keys]
     pub(super) keys: Vec<Type>,
-
-    /// Whether any type ids are actually read
-    pub(super) reads_ids: bool,
 
     pub(super) materialized: FxHashSet<Value>,
 }
@@ -79,7 +76,6 @@ fn facts(definition: &Definition, mir: &Mir, kind: &impl Fn(DefinitionId) -> Kin
     let mut function_values = Vec::new();
     let mut direct_uses = Vec::new();
     let mut globals = Vec::new();
-    let mut key_generics = Vec::new();
     let mut runtime_work = false;
     for instruction in definition.instructions.values() {
         runtime_work |= !matches!(
@@ -93,14 +89,9 @@ fn facts(definition: &Definition, mir: &Mir, kind: &impl Fn(DefinitionId) -> Kin
                 | Instruction::AllocShared(_)
                 | Instruction::PackClosure { .. }
                 | Instruction::Instantiate(..)
-                | Instruction::MakeEvidence { capabilities: _, rest: None }
         );
         instruction.for_each_value(|value| add_reference(value, &mut references, &mut globals));
         match instruction {
-            Instruction::LookupEvidence { key, .. } => key_generics.extend(&key.args),
-            Instruction::MakeEvidence { capabilities, .. } => {
-                key_generics.extend(capabilities.iter().flat_map(|(key, _)| &key.args))
-            },
             Instruction::Instantiate(id, bindings) => {
                 references.push((*id, Bindings::Explicit(bindings.clone())));
                 globals.push(*id);
@@ -137,13 +128,6 @@ fn facts(definition: &Definition, mir: &Mir, kind: &impl Fn(DefinitionId) -> Kin
     for terminator in definition.blocks.values().filter_map(|block| block.terminator.as_ref()) {
         terminator.for_each_value(|value| add_reference(value, &mut references, &mut globals));
     }
-    let mut reads_ids = false;
-    for arg in key_generics {
-        for_each_generic(arg, false, &mut |generic| {
-            layout_generics.insert(generic);
-            reads_ids = true;
-        });
-    }
     layout_generics.retain(|generic| *generic < definition.generic_count);
 
     let materialized = materialized_values(definition, kind);
@@ -152,20 +136,9 @@ fn facts(definition: &Definition, mir: &Mir, kind: &impl Fn(DefinitionId) -> Kin
             function_values.push(id);
         }
     }
-    reads_ids |= !function_values.is_empty();
 
     globals.retain(|id| kind(*id) == Kind::Global);
-    Facts {
-        layout_generics,
-        references,
-        function_values,
-        direct_uses,
-        globals,
-        runtime_work,
-        materialized,
-        keys,
-        reads_ids,
-    }
+    Facts { layout_generics, references, function_values, direct_uses, globals, runtime_work, materialized, keys }
 }
 
 /// The generics the layouts of the types in `definition` depend on, and its [Facts::keys]

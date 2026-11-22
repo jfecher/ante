@@ -1,0 +1,50 @@
+// The effects of a row variable are never handled by a handler of the function forwarding them,
+// even when the row variable is bound to the effect that handler handles.
+effect Ask =
+    ask: fn Unit -> I32
+
+// A `break` in `f` never ends the loop here since `f`'s effects are in the row variable `e`
+twice (f: fn Unit [env] -> Unit can e) {Drop env e}: Unit can e =
+    for _ in 0 .. 2 do
+        f ()
+
+// Here `f` is explicitly `can Loop`, so the loop does handle a `break` in `f`
+twice_explicit (f: fn Unit [env] -> Unit can Loop, e) {Drop env e}: Unit can e =
+    for _ in 0 .. 2 do
+        f ()
+
+with_one (f: fn Unit [env] -> I32 can e) {Drop env e}: I32 can e =
+    handle f ()
+    | ask () -> resume 1
+
+with_one_explicit (f: fn Unit [env] -> I32 can Ask, e) {Drop env e}: I32 can e =
+    handle f ()
+    | ask () -> resume 1
+
+main () =
+    abort_on_fail do
+
+    var calls = 0
+    var after = 0
+    for _ in 0 .. 2 do
+        twice fn () ->
+            calls += 1
+            break
+        after += 1
+    assert (calls == 1 and after == 0)
+
+    var explicit_calls = 0
+    var after_explicit = 0
+    for _ in 0 .. 2 do
+        twice_explicit fn () ->
+            explicit_calls += 1
+            break
+        after_explicit += 1
+    assert (explicit_calls == 2 and after_explicit == 2)
+
+    handle
+        assert (with_one ask == 7)
+        assert (with_one_explicit ask == 1)
+    | ask () -> resume 7
+
+// args: --delete-binary --no-color

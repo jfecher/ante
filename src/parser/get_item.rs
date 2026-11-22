@@ -113,11 +113,8 @@ fn desugar_trait_impl(impl_: &TraitImpl, impl_name: TopLevelName, context: &mut 
         constructor
     } else {
         let lambda = Expr::Lambda(Lambda {
-            parameters: impl_.parameters.clone(),
             return_type: Some(ability_type),
-            body: constructor,
-            is_move: false,
-            effects: None,
+            ..Lambda::new(impl_.parameters.clone(), constructor)
         });
         context.push_expr(lambda, location)
     };
@@ -333,13 +330,15 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
                 collect_expressions_to_desugar(w.condition, context, to_desugar);
                 collect_expressions_to_desugar(w.body, context, to_desugar);
             }
+            to_desugar.push(ExprDesugar::While(expr));
         },
         Expr::For(fo) => {
-            collect_expressions_to_desugar(fo.start, context, to_desugar);
-            collect_expressions_to_desugar(fo.end, context, to_desugar);
+            collect_expressions_to_desugar(fo.iterable, context, to_desugar);
             collect_expressions_to_desugar(fo.body, context, to_desugar);
+            to_desugar.push(ExprDesugar::For(expr));
         },
-        Expr::Break | Expr::Continue | Expr::Fallthrough => (),
+        Expr::Break | Expr::Continue => to_desugar.push(ExprDesugar::LoopJump(expr)),
+        Expr::Fallthrough => (),
         Expr::Chain(_) => unreachable!("Expr::Chain is only created by desugaring"),
         Expr::Assignment(assignment) => {
             let rhs = assignment.rhs;
@@ -398,17 +397,13 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
     let recur = cst::Pattern::Variable(name_id);
     let recur = context.push_pattern(recur, location.clone());
 
-    let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false, effects: None });
-    let lambda = context.push_expr(lambda, location.clone());
+    let lambda = push_lambda(parameters, body, cst::LambdaKind::Function, &location, context);
 
     let definition = cst::Expr::Definition(cst::Definition::new(false, false, recur, lambda));
     let definition = context.push_expr(definition, location.clone());
 
     // Create `recur args...`
-    let function_path = cst::Path::ident(Arc::new("recur".to_string()), location.clone());
-    let function_path = context.push_path(function_path, location.clone());
-    let function = cst::Expr::Variable(function_path);
-    let function = context.push_expr(function, location.clone());
+    let function = push_variable(cst::Path::ident(Arc::new("recur".to_string()), location.clone()), &location, context);
     let call = cst::Expr::Call(cst::Call { function, arguments });
     let call = context.push_expr(call, location);
 
@@ -417,6 +412,178 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
 
     let replacement_expr = cst::Expr::Sequence(vec![definition, call]);
     context.set_expr(expr, replacement_expr);
+}
+
+/// `for pattern in iterable do body`
+/// gets desugared to
+/// `Std.Stream.(for) iterable (fn pattern -> body)`
+///
+/// See [desugar_loop_call] for a `return` in the body.
+fn desugar_for(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::For(for_) = context[expr].clone() else { unreachable!() };
+    let location = context.expr_location(expr).clone();
+
+    let has_return = contains_return(for_.body, context);
+
+    let parameters = vec![Parameter::new(for_.pattern)];
+    let body_location = context.expr_location(for_.body).clone();
+    let body = push_lambda(parameters, for_.body, cst::LambdaKind::ForBody, &body_location, context);
+
+    let function = std_variable(&["Std", "Stream", "for"], &location, context);
+    let arguments = vec![Argument::explicit(for_.iterable), Argument::explicit(body)];
+    desugar_loop_call(expr, cst::Call { function, arguments }, has_return, context);
+}
+
+/// `while condition do body`
+/// gets desugared to
+/// `Std.Stream.(while) (fn () -> condition) (fn () -> body)`
+///
+/// See [desugar_loop_call] for a `return` in the condition or body.
+fn desugar_while(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::While(while_) = context[expr].clone() else { unreachable!() };
+    let location = context.expr_location(expr).clone();
+
+    let has_return = contains_return(while_.condition, context) || contains_return(while_.body, context);
+
+    let thunk = |body, kind, context: &mut DesugarContext| {
+        let location = context.expr_location(body).clone();
+        let unit = context.push_pattern(Pattern::Literal(Literal::Unit), location.clone());
+        push_lambda(vec![Parameter::new(unit)], body, kind, &location, context)
+    };
+    let condition = thunk(while_.condition, cst::LambdaKind::WhileCondition, context);
+    let body = thunk(while_.body, cst::LambdaKind::WhileBody, context);
+
+    let function = std_variable(&["Std", "Stream", "while"], &location, context);
+    let arguments = vec![Argument::explicit(condition), Argument::explicit(body)];
+    desugar_loop_call(expr, cst::Call { function, arguments }, has_return, context);
+}
+
+/// Sets `expr` to `loop_call`, the call a loop was desugared into.
+///
+/// The condition and body of a loop are closures, so a `return` inside one would only return from
+/// the closure. To return from the enclosing function instead, we have the `return` perform an
+/// effect: `Std.EarlyReturn.early_return e`. Type inference still checks it as a `return` first
+/// before turning it into that call. `break` and `continue` don't need this since they are already
+/// effects handled by the loop function. If the loop has any `return`s, we wrap it to turn the
+/// effect back into a `return` from the enclosing function:
+/// ```text
+/// match
+///     handle
+///         loop_call
+///         None
+///     | early_return x -> Some x
+/// | Some x -> return x
+/// | None -> ()
+/// ```
+/// Loops are desugared innermost first. So a `return` in a nested loop becomes the `return x`
+/// above, which is now inside the outer loop's body, causing the outer loop to be wrapped in turn.
+fn desugar_loop_call(expr: ExprId, loop_call: cst::Call, has_return: bool, context: &mut DesugarContext) {
+    let location = context.expr_location(expr).clone();
+    let call = Expr::Call(loop_call);
+
+    if !has_return {
+        context.set_expr(expr, call);
+        return;
+    }
+
+    let call = context.push_expr(call, location.clone());
+    let none = std_variable(&["Std", "Prelude", "Maybe", "None"], &location, context);
+    let items =
+        vec![SequenceItem { expr: call, comments: Vec::new() }, SequenceItem { expr: none, comments: Vec::new() }];
+    let handled = context.push_expr(Expr::Sequence(items), location.clone());
+    let unit = context.push_pattern(Pattern::Literal(Literal::Unit), location.clone());
+    let kind = cst::LambdaKind::LoopReturnHandler;
+    let handled = push_lambda(vec![Parameter::new(unit)], handled, kind, &location, context);
+
+    // `| early_return x -> Some x`
+    let returned = Arc::new("returned".to_string());
+    let parameter = context.push_name(returned.clone(), location.clone());
+    let parameter = context.push_pattern(Pattern::Variable(parameter), location.clone());
+    let resume_name = context.push_name(Arc::new("resume".to_string()), location.clone());
+    let resume = context.push_pattern(Pattern::Variable(resume_name), location.clone());
+
+    let some = std_variable(&["Std", "Prelude", "Maybe", "Some"], &location, context);
+    let argument = push_variable(Path::ident(returned.clone(), location.clone()), &location, context);
+    let branch = Expr::Call(cst::Call { function: some, arguments: vec![Argument::explicit(argument)] });
+    let branch = context.push_expr(branch, location.clone());
+    let parameters = vec![Parameter::new(parameter), Parameter::new(resume)];
+    let branch = push_lambda(parameters, branch, cst::LambdaKind::Function, &location, context);
+
+    let early_return = std_path(&["Std", "EarlyReturn", "early_return"], &location, context);
+    let pattern = cst::HandlePattern { function: early_return, args: vec![parameter], resume_name };
+    let handler_name = context.push_name(Arc::new("$handler".to_string()), location.clone());
+    let handle = Expr::Handle(cst::Handle { handler_name, expression: handled, cases: vec![(pattern, branch)] });
+    let handle = context.push_expr(handle, location.clone());
+
+    // `| Some x -> return x`
+    let name = context.push_name(returned.clone(), location.clone());
+    let name = context.push_pattern(Pattern::Variable(name), location.clone());
+    let some = std_path(&["Std", "Prelude", "Maybe", "Some"], &location, context);
+    let some = context.push_pattern(Pattern::Constructor(some, vec![name]), location.clone());
+    let expression = push_variable(Path::ident(returned, location.clone()), &location, context);
+    let return_ = context.push_expr(Expr::Return(cst::Return { expression }), location.clone());
+
+    // `| None -> ()`
+    let none = std_path(&["Std", "Prelude", "Maybe", "None"], &location, context);
+    let none = context.push_pattern(Pattern::Constructor(none, Vec::new()), location.clone());
+    let unit = context.push_expr(Expr::Literal(Literal::Unit), location);
+
+    let cases = vec![(some, return_), (none, unit)];
+    context.set_expr(expr, Expr::Match(cst::Match { expression: handle, cases }));
+}
+
+fn std_path(components: &[&str], location: &Location, context: &mut DesugarContext) -> PathId {
+    let components = mapvec(components, |name| (Arc::new(name.to_string()), location.clone()));
+    context.push_path(Path { components }, location.clone())
+}
+
+fn std_variable(components: &[&str], location: &Location, context: &mut DesugarContext) -> ExprId {
+    let path = std_path(components, location, context);
+    context.push_expr(Expr::Variable(path), location.clone())
+}
+
+fn push_variable(path: Path, location: &Location, context: &mut DesugarContext) -> ExprId {
+    let path = context.push_path(path, location.clone());
+    context.push_expr(Expr::Variable(path), location.clone())
+}
+
+fn push_lambda(
+    parameters: Vec<Parameter>, body: ExprId, kind: cst::LambdaKind, location: &Location, context: &mut DesugarContext,
+) -> ExprId {
+    let lambda = cst::Lambda { kind, ..cst::Lambda::new(parameters, body) };
+    context.push_expr(Expr::Lambda(lambda), location.clone())
+}
+
+/// True if `expr` (the condition or body of a loop) contains a `return`.
+///
+/// Lambdas are not searched since a `return` in a lambda returns from that lambda. This includes
+/// the body and branches of a `handle`.
+fn contains_return(expr: ExprId, context: &DesugarContext) -> bool {
+    match &context[expr] {
+        Expr::Return(_) => true,
+        Expr::Lambda(_) | Expr::Handle(_) => false,
+        other => other.children().into_iter().any(|child| contains_return(child, context)),
+    }
+}
+
+/// `break` and `continue` desugar to calls to the `Std.Stream.Loop` operations of the same name.
+/// These are handled by each loop.
+fn desugar_loop_jump(expr: ExprId, context: &mut DesugarContext) {
+    let operation = match &context[expr] {
+        Expr::Break => "break",
+        Expr::Continue => "continue",
+        _ => unreachable!(),
+    };
+    let location = context.expr_location(expr).clone();
+    let call = loop_jump_call(operation, &location, context);
+    context.set_expr(expr, call);
+}
+
+/// `Std.Stream.(operation) ()`
+fn loop_jump_call(operation: &str, location: &Location, context: &mut DesugarContext) -> Expr {
+    let function = std_variable(&["Std", "Stream", operation], location, context);
+    let unit = context.push_expr(Expr::Literal(Literal::Unit), location.clone());
+    Expr::Call(cst::Call { function, arguments: vec![Argument::explicit(unit)] })
 }
 
 /// Converts a pattern into an equivalent expression
@@ -482,10 +649,7 @@ fn desugar_call_wildcards(expr: ExprId, context: &mut DesugarContext) {
     let new_call = Expr::Call(cst::Call { function: call.function, arguments: new_arguments });
     let new_call_id = context.push_expr(new_call, location.clone());
 
-    context.set_expr(
-        expr,
-        Expr::Lambda(Lambda { parameters, return_type: None, body: new_call_id, is_move: false, effects: None }),
-    );
+    context.set_expr(expr, Expr::Lambda(Lambda::new(parameters, new_call_id)));
 }
 
 enum ExprDesugar {
@@ -523,6 +687,15 @@ enum ExprDesugar {
     },
 
     Loop(ExprId),
+
+    /// `for p in e do body` desugars to `(for) e (fn p -> body)`
+    For(ExprId),
+
+    /// `while c do body` desugars to `(while) (fn () -> c) (fn () -> body)`
+    While(ExprId),
+
+    /// `break` desugars to `Std.Stream.(break) ()`, and `continue` to `Std.Stream.(continue) ()`
+    LoopJump(ExprId),
 
     /// `"a${x}b${y}c"` desugars to `"a" ++ cast x : String ++ "b" ++ cast y : String ++ "c"`
     StringInterpolation(ExprId),
@@ -611,6 +784,9 @@ impl ExprDesugar {
             ExprDesugar::Do(expr) => desugar_do(expr, context),
             ExprDesugar::TypeCast { call, target_type } => desugar_type_cast(call, target_type, context),
             ExprDesugar::Loop(expr) => desugar_loop(expr, context),
+            ExprDesugar::For(expr) => desugar_for(expr, context),
+            ExprDesugar::While(expr) => desugar_while(expr, context),
+            ExprDesugar::LoopJump(expr) => desugar_loop_jump(expr, context),
             ExprDesugar::StringInterpolation(expr) => desugar_string_interpolation(expr, context),
             ExprDesugar::IfWithIs(expr) => desugar_if_with_is(expr, context),
             ExprDesugar::WhileWithIs(expr) => desugar_while_with_is(expr, context),
@@ -647,13 +823,9 @@ fn desugar_type_cast(expr: ExprId, target_type: Type, context: &mut DesugarConte
 fn desugar_string_interpolation(expr: ExprId, context: &mut DesugarContext) {
     let Expr::InterpolatedString(interpolated) = context[expr].clone() else { unreachable!() };
     let location = context.expr_location(expr).clone();
-    let item = |name: &str| (Arc::new(name.to_string()), location.clone());
 
-    let string_type = {
-        let string_path = Path { components: vec![item("Std"), item("Prelude"), item("String")] };
-        let string_path = context.push_path(string_path, location.clone());
-        Type::new(TypeKind::Named(string_path), location.clone())
-    };
+    let string_path = std_path(&["Std", "Prelude", "String"], &location, context);
+    let string_type = Type::new(TypeKind::Named(string_path), location.clone());
 
     // 1: create all the strings, 2: filter any known-empty strings, 3: append them together
     let mut strings = Vec::new();
@@ -663,10 +835,7 @@ fn desugar_string_interpolation(expr: ExprId, context: &mut DesugarContext) {
     }
 
     for (expr, fragment) in interpolated.exprs.iter().zip(interpolated.fragments.iter().skip(1)) {
-        // Std.Prelude.Cast.cast
-        let cast_path = Path { components: vec![item("Std"), item("Prelude"), item("Cast"), item("cast")] };
-        let cast_path = context.push_path(cast_path, location.clone());
-        let cast_var = context.push_expr(Expr::Variable(cast_path), location.clone());
+        let cast_var = std_variable(&["Std", "Prelude", "Cast", "cast"], &location, context);
 
         // Std.Prelude.Cast.cast expr : String
         let cast_call = Expr::Call(cst::Call { function: cast_var, arguments: vec![Argument::explicit(*expr)] });
@@ -689,9 +858,7 @@ fn desugar_string_interpolation(expr: ExprId, context: &mut DesugarContext) {
 
 // Returns `lhs ++ rhs`
 fn push_append(lhs: ExprId, rhs: ExprId, location: &Location, context: &mut DesugarContext) -> ExprId {
-    let append_path = Path::ident(Arc::new("++".to_string()), location.clone());
-    let append_path = context.push_path(append_path, location.clone());
-    let append_var = context.push_expr(Expr::Variable(append_path), location.clone());
+    let append_var = push_variable(Path::ident(Arc::new("++".to_string()), location.clone()), location, context);
     let call = Expr::Call(cst::Call {
         function: append_var,
         arguments: vec![Argument::explicit(lhs), Argument::explicit(rhs)],
@@ -769,13 +936,7 @@ fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
     let name = context.push_name(Arc::new("_".to_string()), location.clone());
     let param = context.push_pattern(Pattern::Variable(name), location);
 
-    let lambda = Expr::Lambda(cst::Lambda {
-        parameters: vec![Parameter::new(param)],
-        return_type: None,
-        body: do_.body,
-        is_move: false,
-        effects: None,
-    });
+    let lambda = Expr::Lambda(cst::Lambda::new(vec![Parameter::new(param)], do_.body));
     context.set_expr(expr, lambda);
 }
 
@@ -793,13 +954,7 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
     let variable_name = Arc::new("_".to_string());
     let variable_name = context.push_name(variable_name, location.clone());
     let pattern = context.push_pattern(Pattern::Variable(variable_name), location.clone());
-    let lambda = Expr::Lambda(cst::Lambda {
-        parameters: vec![Parameter::new(pattern)],
-        return_type: None,
-        body: a,
-        is_move: false,
-        effects: None,
-    });
+    let lambda = Expr::Lambda(cst::Lambda::new(vec![Parameter::new(pattern)], a));
     let lambda = context.push_expr(lambda, location);
 
     let new_call = if let Expr::Call(inner_call) = &context[b] {
@@ -950,7 +1105,8 @@ fn desugar_while_with_is(expr: ExprId, context: &mut DesugarContext) {
     let location = context.expr_location(expr).clone();
     let parts = flatten_and_chain(while_.condition, context);
     // `break` is `Never`, so the loop body is still checked against Unit
-    let break_ = context.push_expr(Expr::Break, location.clone());
+    let break_ = loop_jump_call("break", &location, context);
+    let break_ = context.push_expr(break_, location.clone());
     let body = compile_chain(&parts, while_.body, break_, context);
     let condition = context.push_expr(Expr::Literal(Literal::Bool(true)), location);
     context.set_expr(expr, Expr::While(cst::While { condition, body }));

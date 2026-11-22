@@ -6,11 +6,11 @@ effect Emit a =
     emit: fn a -> Unit
 
 /// Common control-flow effects for looping
-/// - break_: ends the loop early
-/// - continue_: ends the current iteration of the loop early
+/// - break: ends the loop early
+/// - continue: ends the current iteration of the loop early
 effect Loop =
-    break_: fn Unit -> Never
-    continue_: fn Unit -> Never
+    (break): fn Unit -> Never
+    (continue): fn Unit -> Never
 
 /// Stream the contents of `t`, emitting each element via the `Emit a` effect
 trait Stream t a (e: effect) =
@@ -33,6 +33,16 @@ impl stream_array: Stream (Array n t) t pure with
         // Every element was moved out
         forget array
 
+impl stream_range {n: Num t} {Copy t}: Stream (Range t) t pure with
+    stream range =
+        (<) = n.cmp.(<)
+        (+) = n.add.(+)
+        one = n.one
+        var i = range.start
+        while i < range.end do
+            emit i
+            i += one
+
 /// Consumes the given stream, applying `f` to each element
 /// 
 /// E.g. `iter (iota 5) print` will print `01234`
@@ -48,18 +58,29 @@ iter (stream: s) {Stream s a e} (f: fn a [env] -> Unit can e2) {Drop env e2}: Un
 ///
 /// E.g. The following will print 012
 /// ```
-/// for_ (iota 5) fn i ->
-///     if i > 2 then break_ ()
+/// for i in iota 5 do
+///     if i > 2 then break
 ///     print i
 /// ```
-for_ (stream: s) {Stream s a e} (f: fn a [env] -> Unit can Loop, e) {Drop env e}: Unit can e =
+(for) (stream: s) {Stream s a e} (f: fn a [env] -> Unit can Loop, e) {Drop env e}: Unit can e =
     var broke = false
     handle Stream.stream stream
     | emit a ->
         handle f a
-        | break_ () -> broke := true
-        | continue_ () -> ()
-        if not broke then resume ()
+        | (break) () -> broke := true
+        | (continue) () -> ()
+
+        // Writing this without `not` gives marginally better performance in debug mode
+        if broke then () else resume ()
+
+(while) (condition: fn Unit [c] -> Bool can e) {Drop c e} (body: fn Unit [b] -> Unit can Loop, e) {Drop b e}: Unit can e =
+    if condition () then
+        continue_loop = handle
+                body ()
+                true
+            | (break) () -> false
+            | (continue) () -> true
+        if continue_loop then (while) condition body
 
 /// Applies `f` to each element from the stream, re-emitting each result.
 /// 

@@ -17,7 +17,7 @@ use crate::{
 impl<'a> FunctionBuilder<'a> {
     /// A builder for code of function values standing in for `definition`, see
     /// [existential_function_type]. Also returns the address of each of `definition`'s
-    /// parameters, or the parameter itself for evidence, and the result slot.
+    /// parameters and the result slot.
     pub(crate) fn new_uniform(
         shared: &'a Shared<'a>, name: Name, id: DefinitionId, definition: &Definition,
     ) -> (Self, Vec<Value>, Value) {
@@ -92,7 +92,7 @@ impl FunctionBuilder<'_> {
         }
     }
 
-    /// Call a function value, passing each argument but evidence by address, then the result pointer
+    /// Call a function value, passing each argument by address, then the result pointer
     /// and its own address
     pub(crate) fn call_value(
         &mut self, function: Arg, function_type: &Type, args: Vec<(Arg, Type)>, result_type: &Type,
@@ -100,10 +100,7 @@ impl FunctionBuilder<'_> {
     ) -> Value {
         let this = self.address_of(function, function_type);
         let code = self.emit(Instruction::Deref(this), existential_function_type(arity(function_type)));
-        let mut arguments = mapvec(args, |(arg, typ)| match typ {
-            Type::Evidence(_) => self.direct(arg, &typ),
-            _ => self.address_of(arg, &typ),
-        });
+        let mut arguments = mapvec(args, |(arg, typ)| self.address_of(arg, &typ));
         let slot = destination.unwrap_or_else(|| self.slot(result_type));
         arguments.push(slot);
         arguments.push(this);

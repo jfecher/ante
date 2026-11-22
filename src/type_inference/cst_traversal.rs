@@ -4,7 +4,6 @@ use crate::{
     diagnostics::{Diagnostic, NameKind, UnimplementedItem},
     incremental::{ExportedDefinitions, GetItem, GetItemRaw, GetType, RawItem, Resolve},
     iterator_extensions::mapvec,
-    lexer::token::Integer,
     name_resolution::{
         Origin, TraitMember,
         builtin::Builtin,
@@ -199,14 +198,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 UnimplementedItem::Comptime.issue(self.compiler, location);
                 Type::ERROR
             },
-            Expr::Loop(_) => unreachable!("Loops should be desugared before type inference"),
-            Expr::While(while_) => self.infer_while(while_),
-            Expr::For(for_) => self.infer_for(for_, id),
-            // Allow break/continue to return any type
-            Expr::Break | Expr::Continue | Expr::Fallthrough => Type::NEVER,
+            Expr::Loop(_) | Expr::While(_) | Expr::For(_) | Expr::Break | Expr::Continue => {
+                unreachable!("Loops should be desugared before type inference")
+            },
+            Expr::Fallthrough => Type::NEVER,
             Expr::Chain(chain) => self.infer_chain(chain, expected),
             Expr::Return(return_) => {
                 self.check_return(return_.expression, id);
+                if self.in_loop_part {
+                    self.perform_early_return(return_.expression, id);
+                }
                 Type::NEVER
             },
             Expr::Assignment(assignment) => self.infer_assignment(assignment),
@@ -233,10 +234,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns the inferred type.
     pub(super) fn check_expr(&mut self, id: ExprId, expected: &Type, kind: TypeErrorKind) -> Type {
         let actual = self.infer_expr(id, expected);
-        if !self.try_function_row_coercion(&actual, expected, id, kind.clone()) {
-            self.unify(&actual, expected, kind, id);
-        }
+        self.check_inferred(&actual, expected, id, kind);
         actual
+    }
+
+    /// Check the type `actual` inferred for the expression `id` against `expected`
+    fn check_inferred(&mut self, actual: &Type, expected: &Type, id: ExprId, kind: TypeErrorKind) {
+        if !self.try_function_row_coercion(actual, expected, id, kind.clone()) {
+            self.unify(actual, expected, kind, id);
+        }
+    }
+
+    /// Returns the type to check each branch against when the result of all the branches should be
+    /// `expected`. If `expected` is still unknown we give each branch a fresh hint of its own and
+    /// join the branches afterward. Otherwise, a diverging branch would bind `expected` to `Never`
+    /// for every other branch.
+    fn branch_hint(&self, expected: &Type) -> Type {
+        match self.follow_type(expected) {
+            Type::Variable(_) => self.next_type_variable(),
+            _ => expected.clone(),
+        }
     }
 
     fn infer_literal(&mut self, literal: &Literal, locator: impl Locateable + Copy) -> Type {
@@ -950,7 +967,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         // Remember the return type so that it can be checked by `return` statements
-        let old_return_type = self.function_return_type.replace(function_type.return_type.clone());
+        let old_return_type = self.function_return_type.clone();
+        if !lambda.returns_from_enclosing_function() {
+            self.function_return_type = Some(function_type.return_type.clone());
+        }
+        let old_in_loop_part = std::mem::replace(&mut self.in_loop_part, lambda.is_loop_part());
         let old_effect_row = std::mem::replace(&mut self.current_effect_row, function_type.effects.clone());
         let old_deferred_effects = std::mem::take(&mut self.deferred_effects);
 
@@ -994,9 +1015,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Cow::Borrowed(&function_type.return_type)
         };
 
-        self.check_expr(lambda.body, &return_type, TypeErrorKind::FunctionBody);
+        let kind = match lambda.kind {
+            cst::LambdaKind::ForBody | cst::LambdaKind::WhileBody => TypeErrorKind::LoopBody,
+            cst::LambdaKind::WhileCondition => TypeErrorKind::Condition,
+            cst::LambdaKind::Function | cst::LambdaKind::LoopReturnHandler => TypeErrorKind::FunctionBody,
+        };
+        self.check_expr(lambda.body, &return_type, kind);
 
         self.function_return_type = old_return_type;
+        self.in_loop_part = old_in_loop_part;
         self.current_effect_row = old_effect_row;
         let deferred_effects = std::mem::replace(&mut self.deferred_effects, old_deferred_effects);
 
@@ -1126,7 +1153,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Ensure `expr` in `mut expr` is actually mutable
     pub(super) fn check_mutable_borrow_of_place(&mut self, object: ExprId) {
         let Some(root) = self.owned_place_root(object) else { return };
-        if self.item.mutable_definitions.contains(&root) {
+        if self.current_extended_context().is_mutable_name(root) {
             return;
         }
         if let Some(path) = self.try_build_move_path(object) {
@@ -1140,11 +1167,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.check_expr(if_.condition, &Type::BOOL, TypeErrorKind::Condition);
 
         // With else, both branches must match. Without else, result is Unit and `then` may be any type.
-        let branch_expected =
-            if if_.else_.is_some() { Cow::Borrowed(expected) } else { Cow::Owned(self.next_type_variable()) };
+        let then_expected = if if_.else_.is_some() { self.branch_hint(expected) } else { self.next_type_variable() };
 
         self.push_implicits_scope();
-        let then_type = self.infer_expr(if_.then, &branch_expected);
+        let then_type = self.infer_expr(if_.then, &then_expected);
         if if_.else_.is_none() {
             self.request_temporary_impls(if_.then, false);
         }
@@ -1152,7 +1178,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         if let Some(else_) = if_.else_ {
             self.push_implicits_scope();
-            let else_type = self.infer_expr(else_, &branch_expected);
+            let else_expected = self.branch_hint(expected);
+            let else_type = self.infer_expr(else_, &else_expected);
             self.pop_implicits_scope();
 
             self.join_branches(then_type, else_type, else_)
@@ -1165,10 +1192,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// `body` has the type of the chain's `then`. See [cst::Chain]
     fn infer_chain(&mut self, chain: &cst::Chain, expected: &Type) -> Type {
-        let body_type = self.infer_expr(chain.body, expected);
+        let body_expected = self.branch_hint(expected);
+        let body_type = self.infer_expr(chain.body, &body_expected);
 
         self.push_implicits_scope();
-        let else_type = self.infer_expr(chain.else_, expected);
+        let else_expected = self.branch_hint(expected);
+        let else_type = self.infer_expr(chain.else_, &else_expected);
         self.pop_implicits_scope();
 
         self.join_branches(body_type, else_type, chain.else_)
@@ -1183,7 +1212,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             then_type
         } else {
             let joined = self.branch_join_type(then_type);
-            self.unify(&else_type, &joined, TypeErrorKind::Else, else_);
+            self.check_inferred(&else_type, &joined, else_, TypeErrorKind::Else);
             joined
         }
     }
@@ -1203,11 +1232,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (pattern, branch) in match_.cases.iter() {
             self.check_refutable_pattern(*pattern, &expr_type);
             self.push_implicits_scope();
-            if self.diverges(&result_type) {
-                let branch_type = self.infer_expr(*branch, expected);
+            let undecided = self.diverges(&result_type);
+            let branch_expected = self.branch_hint(if undecided { expected } else { &result_type });
+            let branch_type = self.infer_expr(*branch, &branch_expected);
+            if undecided {
                 result_type = self.branch_join_type(branch_type);
-            } else {
-                self.check_expr(*branch, &result_type, TypeErrorKind::MatchBranch);
+            } else if !self.diverges(&branch_type) {
+                self.check_inferred(&branch_type, &result_type, *branch, TypeErrorKind::MatchBranch);
             }
             self.pop_implicits_scope();
         }
@@ -1450,15 +1481,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Any unhandled effects escape this handler. Matching the handled effect against the body's
         // effects here also binds the handled effect's arguments, e.g. the `t` in `Throw t`.
-        let mut new_bindings = TypeBindings::default();
-        let leftover = self.subtract_effect(&body_row, handled_effect, &mut new_bindings);
-        self.bindings.extend(new_bindings);
+        //
+        // If the body performs the effect at several different types, we let the branches decide
+        // which one is handled
+        let subtract_first = !self.performs_effect_at_several_types(&body_row, handled_effect);
+        let subtract = |this: &mut Self| {
+            let mut new_bindings = TypeBindings::default();
+            let leftover = this.subtract_effect(&body_row, handled_effect, &mut new_bindings);
+            this.bindings.extend(new_bindings);
+            leftover
+        };
+        let early = subtract_first.then(|| subtract(self));
 
         for (branch, handler_type) in branches {
             let branch_lambda = self.unwrap_lambda(branch);
             self.expr_types.insert(branch, handler_type.clone());
             self.infer_lambda(branch_lambda, &handler_type, branch, None);
         }
+        let leftover = early.unwrap_or_else(|| subtract(self));
 
         // Reunifying with each row here lets us give a single error message of each unhandled capability
         let combined = self.fresh_effect_row();
@@ -1470,6 +1510,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.propagate_effects(&combined, handle.expression);
 
         result_type
+    }
+
+    /// True if `row` contains more than one effect with the same head as `handled`
+    fn performs_effect_at_several_types(&self, row: &Type, handled: &Type) -> bool {
+        let none = TypeBindings::default();
+        let head = |effect: &Type| effect.effect_head(&self.bindings, &none);
+        let handled = self.collect_effects(handled, &none);
+        let Some(handled) = handled.first().and_then(head) else { return false };
+        let row = self.collect_effects(row, &none);
+        row.iter().filter(|effect| head(effect).as_ref() == Some(&handled)).count() > 1
     }
 
     /// Remove `handled`'s effect(s) out of `row`
@@ -1596,11 +1646,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Walk a pattern declared with `var` and add every variable name it
-    /// introduces to `mutable_definitions`.
+    /// introduces to the mutable names.
     fn record_mutable_pattern(&mut self, pattern: PatternId) {
         match &self.current_context()[pattern] {
             Pattern::Variable(name) => {
-                self.item.mutable_definitions.insert(*name);
+                self.current_extended_context_mut().mark_mutable_name(*name);
             },
             Pattern::TypeAnnotation(inner, _) => {
                 let inner = *inner;
@@ -1614,14 +1664,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Pattern::ConstructorRest(_, args, name) => {
                 args.iter().for_each(|pattern| self.record_mutable_pattern(*pattern));
                 if let Some(name) = name {
-                    self.item.mutable_definitions.insert(*name);
+                    self.current_extended_context_mut().mark_mutable_name(*name);
                 }
             },
             Pattern::Or(alts) => {
                 alts.iter().for_each(|pattern| self.record_mutable_pattern(*pattern));
             },
             Pattern::Alias(name, inner) => {
-                self.item.mutable_definitions.insert(*name);
+                self.current_extended_context_mut().mark_mutable_name(*name);
                 self.record_mutable_pattern(*inner);
             },
         }
@@ -1629,7 +1679,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// True if `lhs` is storage owned by a `var`
     fn lhs_is_var_place(&self, lhs: ExprId) -> bool {
-        self.owned_place_root(lhs).is_some_and(|root| self.item.mutable_definitions.contains(&root))
+        self.owned_place_root(lhs).is_some_and(|root| self.current_extended_context().is_mutable_name(root))
     }
 
     /// If `expr` is a local or a field chain from one that never crosses a reference, return that local
@@ -1648,7 +1698,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let path_id = *path;
                 match self.path_origin(path_id) {
                     Some(Origin::Local(name)) => {
-                        if self.item.mutable_definitions.contains(&name) {
+                        if self.current_extended_context().is_mutable_name(name) {
                             return Ok(());
                         }
                         if let Some(typ) = self.name_types.get(&name)
@@ -1743,35 +1793,30 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn infer_while(&mut self, while_: &cst::While) -> Type {
-        self.check_expr(while_.condition, &Type::BOOL, TypeErrorKind::Condition);
+    /// A `return` in the condition or body of a loop should still return from the enclosing
+    /// function. Since these are closures, we turn the `return` at `id` (which was already checked
+    /// as a normal `return`) into the call `Std.EarlyReturn.early_return returned`. The loop is
+    /// wrapped in a handler for this effect which returns from the function, see
+    /// `desugar_loop_call`.
+    fn perform_early_return(&mut self, returned: ExprId, id: ExprId) {
+        let Some(return_type) = self.function_return_type.clone() else { return };
+        let location = id.locate(self);
+        let effects = self.fresh_effect_row();
+        let expected = Type::Function(Shared::new(FunctionType {
+            once: self.next_once_variable(),
+            parameters: vec![ParameterType::explicit(return_type)],
+            environment: self.next_type_variable(),
+            return_type: Type::NEVER,
+            effects: effects.clone(),
+        }));
+        let origin = self.early_return_origin();
+        let callee = self.variable_of_origin("early_return", origin, expected.clone(), location);
+        let actual = self.infer_expr_at(callee, &expected, ExprPosition::Callee);
+        self.unify(&actual, &expected, TypeErrorKind::Callee, callee);
 
-        self.push_escape_scope();
-        self.check_expr(while_.body, &Type::UNIT, TypeErrorKind::LoopBody);
-        self.pop_escape_scope();
-
-        Type::UNIT
-    }
-
-    fn infer_for(&mut self, for_: &cst::For, id: ExprId) -> Type {
-        let int_ty = self.next_type_variable_id();
-        // Hack: use 0 for the integer value here since it fits into all integer types.
-        // We just need this to ensure the user actually uses integer ranges. Any actual integer
-        // they choose will already have its range checked by the Literal code path.
-        self.push_inferred_int(Integer::positive(0), int_ty, id.locate(self));
-        let int_ty = Type::Variable(int_ty);
-
-        // Range expressions run exactly once, so normal move semantics apply here.
-        self.check_expr(for_.start, &int_ty, TypeErrorKind::LoopRange);
-        self.check_expr(for_.end, &int_ty, TypeErrorKind::LoopRange);
-
-        self.name_types.insert(for_.variable, int_ty);
-
-        self.push_escape_scope();
-        self.check_expr(for_.body, &Type::UNIT, TypeErrorKind::LoopBody);
-        self.pop_escape_scope();
-
-        Type::UNIT
+        let call = cst::Call { function: callee, arguments: vec![cst::Argument::explicit(returned)] };
+        self.current_extended_context_mut().insert_expr(id, Expr::Call(call));
+        self.propagate_effects(&effects, id);
     }
 
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {

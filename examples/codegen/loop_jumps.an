@@ -1,0 +1,91 @@
+effect Log =
+    log: fn I32 -> Unit
+
+// A `return` in nested loops returns from the function, while the `break` only exits the `while`
+first_multiple (factor: I32): I32 =
+    for start in 1 .. 100 do
+        var n = start
+        while true do
+            if n > start + 2 then break
+            if n % factor == 0 then return n
+            n += 1
+    0
+
+// A `return` in a `handle` only exits the `handle`, even when it is the loop's only `return`
+sum_handled (skipped: I32): I32 =
+    var sum = 0
+    for i in 0 .. 5 do
+        sum += handle
+            if i == skipped then return 100
+            log i
+            i
+        | log _ -> resume ()
+    sum
+
+// Same as above, but a `return` next to the `handle` should still return from the function
+sum_handled_until (skipped: I32) (last: I32): I32 =
+    var sum = 0
+    for i in 0 .. 5 do
+        if i == last then return sum
+        sum += handle
+            if i == skipped then return 100
+            log i
+            i
+        | log _ -> resume ()
+    0 - 1
+
+// `break` and `continue` always apply to the innermost loop
+nested (): I32 =
+    var trace = 0
+    var i = 0
+    while i < 3 do
+        i += 1
+        var j = 0
+        while true do
+            j += 1
+            if j == 2 then continue
+            if j > 3 then break
+            trace := trace * 10 + j
+        for k in 0 .. 5 do
+            if k == 1 then continue
+            if k == 3 then break
+            trace := trace * 10 + k
+        if i == 2 then break
+    trace
+
+// `break` and `continue` in the body or a branch of a `handle` still apply to the enclosing loop
+jumps_in_handle (): I32 =
+    var logged = 0
+    var i = 0
+    while i < 5 do
+        i += 1
+        handle
+            log i
+            if i == 3 then break
+        | log x ->
+            if x == 1 then continue
+            logged := logged * 10 + x
+            resume ()
+    logged
+
+// `break` is an operation of the `Loop` effect, so it may be handled by something other than a loop
+custom_handler (): I32 =
+    var before = 0
+    result = handle
+        before := 1
+        break
+        0
+    | (break) () -> 1
+    | (continue) () -> 2
+    before * 10 + result
+
+main () =
+    abort_on_fail do
+    assert (first_multiple 7 == 7)
+    assert (sum_handled 2 == 108)
+    assert (sum_handled_until 2 4 == 104)
+    assert (nested () == 13021302)
+    assert (jumps_in_handle () == 23)
+    assert (custom_handler () == 11)
+
+// args: --delete-binary --no-color

@@ -876,7 +876,9 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Instruction::Capability => {
                 unreachable!("Instruction::Capability remaining in LLVM codegen")
             },
-            mir::Instruction::LookupEvidence { .. } | mir::Instruction::MakeEvidence { .. } => {
+            mir::Instruction::LookupEvidence { .. }
+            | mir::Instruction::RestEvidence { .. }
+            | mir::Instruction::MakeEvidence(_) => {
                 unreachable!("evidence instruction remaining in LLVM codegen")
             },
             mir::Instruction::CallClosure { .. } => {
@@ -902,7 +904,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 let result_type = self.convert_type(function.instruction_result_type(id)).into_array_type();
                 self.make_array(result_type, elements)
             },
-            mir::Instruction::StackAlloc(value) => {
+            mir::Instruction::StackAlloc { value, .. } => {
                 let value = self.lookup_value(value);
                 let alloca = self.entry_alloca(value.get_type());
                 self.builder.build_store(alloca, value).unwrap();
