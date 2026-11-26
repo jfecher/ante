@@ -84,6 +84,7 @@ pub struct DbStorage {
     resolves: HashMapStorage<Resolve>,
     top_level_items_desugared: HashMapStorage<GetItem>,
     top_level_items: HashMapStorage<GetItemRaw>,
+    implicit_items: HashMapStorage<IsImplicitItem>,
     get_types: HashMapStorage<GetType>,
     type_check_sccs: HashMapStorage<TypeCheckSCC>,
     type_checks: HashMapStorage<TypeCheck>,
@@ -387,6 +388,14 @@ define_intermediate!(1200, GetItemRaw -> RawItem, DbStorage, |context, db| {
 
     // Note that panics are not cached (so avoid `catch_unwind` within incremental computations!)
     unreachable!("No TopLevelItem for id {target_id:?}")
+});
+
+/// True if the given item is an `impl` or `implicit`.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IsImplicitItem(pub TopLevelId);
+define_intermediate!(1250, IsImplicitItem -> bool, DbStorage, |context, db| {
+    let RawItem(item, _) = GetItemRaw(context.0).get(db);
+    item.kind.is_implicit()
 });
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

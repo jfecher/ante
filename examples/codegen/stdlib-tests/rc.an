@@ -1,4 +1,4 @@
-import Std.Rc.as_ref, ref_count, inc_ref_count, dec_ref_count, clone_rc, drop_rc
+import Std.Rc.impl, as_ref, ref_count, inc_ref_count, dec_ref_count
 import Std.Fail.assert, abort_on_fail
 import Std.Rc
 

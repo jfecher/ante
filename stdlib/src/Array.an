@@ -1,6 +1,5 @@
 import Std.Mem.Type, transmute
-import Std.Slice
-import Std.Slice.Slice
+import Std.Slice.module, type
 
 array_len (_array: ref Array n t): Usz =
     size_t = size_of (MkType : Type t)

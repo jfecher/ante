@@ -1,6 +1,5 @@
-import Std.Collections.Vec.Vec
+import Std.Collections.Vec.module, type
 import Std.Mem.transmute, offset
-import Std.Collections.Vec
 
 get (v: ref 'v Vec t) (i: Usz): ref 'v! t =
     transmute (offset v.data i)

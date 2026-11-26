@@ -87,6 +87,11 @@ pub enum Diagnostic {
         module: Arc<PathBuf>,
         location: Location,
     },
+    NoTypeNamedAfterModule {
+        name: Name,
+        module: Arc<PathBuf>,
+        location: Location,
+    },
     ExportedItemNotFound {
         name: Name,
         location: Location,
@@ -606,6 +611,9 @@ impl Diagnostic {
             Diagnostic::ItemNotExported { name, module, location: _ } => {
                 format!("`{name}` is not exported from module `{}`", module.display())
             },
+            Diagnostic::NoTypeNamedAfterModule { name, module, location: _ } => {
+                format!("Module {} does not export a type named {}", color_type(&module.to_string_lossy()), color_name(name))
+            },
             Diagnostic::ExportedItemNotFound { name, location: _ } => {
                 format!("`{name}` is not defined")
             },
@@ -1011,6 +1019,7 @@ impl Diagnostic {
             | Diagnostic::UnknownImportFile { location, .. }
             | Diagnostic::UnknownImportItem { location, .. }
             | Diagnostic::ItemNotExported { location, .. }
+            | Diagnostic::NoTypeNamedAfterModule { location, .. }
             | Diagnostic::ExportedItemNotFound { location, .. }
             | Diagnostic::VariantExportRequiresType { location, .. }
             | Diagnostic::NameNotInScope { location, .. }

@@ -1,4 +1,4 @@
-import Std.Collections.Vec.Vec
+import Std.Collections.Vec.type
 import Std.Stream.Emit
 
 // An elided parameter place is named after its parameter
@@ -27,7 +27,7 @@ main () = ()
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// import Std.Collections.Vec.Vec
+// import Std.Collections.Vec.type
 // import Std.Stream.Emit
 // 
 // (same: fn (ref 'x t) -> ref 'x t is pure) (x: ref 'x t): ref t = (x: ref 'x t)

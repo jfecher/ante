@@ -1,4 +1,4 @@
-import Std.Slice.Slice, MutSlice, get_unchecked
+import Std.Slice.type, MutSlice, get_unchecked
 import Std.Fail.assert, abort_on_fail, fail
 import Std.Collections.Vec
 

@@ -1,6 +1,5 @@
-import Std.Collections.Vec.Vec, get, clear, push
-import Std.Fail.Fail
-import Std.Collections.Vec
+import Std.Collections.Vec.module, type
+import Std.Fail.type
 
 use (_x: ref t): Unit = ()
 
@@ -148,100 +147,100 @@ reassigned_then_mutated_in_one_branch (v: mut Vec I32) (c: Bool) =
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/invalidation.an:11:9
-//  9 |     elem = get a 1
-// 10 |     clear a	// note: elem may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:10:9
+//  8 |     elem = get a 1
+//  9 |     clear a	// note: elem may be invalidated by this mutation
 //    |     -------
-// 11 |     use elem	// error: elem may have been invalidated by an earlier mutation
+// 10 |     use elem	// error: elem may have been invalidated by an earlier mutation
 //    |         ^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:15:9
-// 13 |     s = if b is Some s then s else panic ""
-// 14 |     b := None	// note: s may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:14:9
+// 12 |     s = if b is Some s then s else panic ""
+// 13 |     b := None	// note: s may be invalidated by this mutation
 //    |     ---------
-// 15 |     use s	// error: s may have been invalidated by an earlier mutation
+// 14 |     use s	// error: s may have been invalidated by an earlier mutation
 //    |         ^
 // 
-// examples/typechecking/borrows/invalidation.an:32:9
-// 31 |     clear v	// note: b may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:31:9
+// 30 |     clear v	// note: b may be invalidated by this mutation
 //    |     -------
-// 32 |     use b	// error: b may have been invalidated by an earlier mutation
+// 31 |     use b	// error: b may have been invalidated by an earlier mutation
 //    |         ^
 // 
-// examples/typechecking/borrows/invalidation.an:37:5
-// 35 |     s = if b is Some s then s else panic ""
-// 36 |     b := None	// note: s may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:36:5
+// 34 |     s = if b is Some s then s else panic ""
+// 35 |     b := None	// note: s may be invalidated by this mutation
 //    |     ---------
-// 37 |     s := "dangling"	// error: s may have been invalidated by an earlier mutation
+// 36 |     s := "dangling"	// error: s may have been invalidated by an earlier mutation
 //    |     ^
 // 
-// examples/typechecking/borrows/invalidation.an:42:10
-// 40 |     p = if b is Some p then p else panic ""
-// 41 |     b := None	// note: p may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:41:10
+// 39 |     p = if b is Some p then p else panic ""
+// 40 |     b := None	// note: p may be invalidated by this mutation
 //    |     ---------
-// 42 |     use p.first	// error: p may have been invalidated by an earlier mutation
+// 41 |     use p.first	// error: p may have been invalidated by an earlier mutation
 //    |          ^^^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:47:9
-// 45 |     s = if b is Some s then s else panic ""
-// 46 |     if c then b := None	// note: s may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:46:9
+// 44 |     s = if b is Some s then s else panic ""
+// 45 |     if c then b := None	// note: s may be invalidated by this mutation
 //    |               ---------
-// 47 |     use s	// error: s may have been invalidated by an earlier mutation
+// 46 |     use s	// error: s may have been invalidated by an earlier mutation
 //    |         ^
 // 
-// examples/typechecking/borrows/invalidation.an:59:9
-// 57 |     first = get v 0
-// 58 |     push v 4	// note: first may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:58:9
+// 56 |     first = get v 0
+// 57 |     push v 4	// note: first may be invalidated by this mutation
 //    |     --------
-// 59 |     use first	// error: first may have been invalidated by an earlier mutation
+// 58 |     use first	// error: first may have been invalidated by an earlier mutation
 //    |         ^^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:67:9
-// 65 |     first = get v 0
-// 66 |     clear_v ()	// note: first may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:66:9
+// 64 |     first = get v 0
+// 65 |     clear_v ()	// note: first may be invalidated by this mutation
 //    |     ----------
-// 67 |     use first	// error: first may have been invalidated by an earlier mutation
+// 66 |     use first	// error: first may have been invalidated by an earlier mutation
 //    |         ^^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:93:9
-// 91 |     a = get v 0
-// 92 |     apply do clear v	// note: a may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:92:9
+// 90 |     a = get v 0
+// 91 |     apply do clear v	// note: a may be invalidated by this mutation
 //    |     ----------------
-// 93 |     use a	// error: a may have been invalidated by an earlier mutation
+// 92 |     use a	// error: a may have been invalidated by an earlier mutation
 //    |         ^
 // 
-// examples/typechecking/borrows/invalidation.an:96:5
-// 95 | missing_mutate (v: mut 'v Vec I32): Unit can Panic =
-// 96 |     push v 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
+// examples/typechecking/borrows/invalidation.an:95:5
+// 94 | missing_mutate (v: mut 'v Vec I32): Unit can Panic =
+// 95 |     push v 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
 //    |     ^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:103:5
-// 102 | elided_missing_mutate (v: mut Vec I32): Unit can Panic =
-// 103 |     push v 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
+// examples/typechecking/borrows/invalidation.an:102:5
+// 101 | elided_missing_mutate (v: mut Vec I32): Unit can Panic =
+// 102 |     push v 1	// error: This can perform Mutate 'v, Panic but only Panic is allowed here
 //     |     ^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:114:9
-// 112 |     first = get v 0
-// 113 |     clear_inferred (mut v)	// note: first may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:113:9
+// 111 |     first = get v 0
+// 112 |     clear_inferred (mut v)	// note: first may be invalidated by this mutation
 //     |     ---------------------
-// 114 |     use first	// error: first may have been invalidated by an earlier mutation
+// 113 |     use first	// error: first may have been invalidated by an earlier mutation
 //     |         ^^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:128:13
-// 125 |     pair = get v 0, 5
-// 126 |     clear v	// note: pair.first may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:127:13
+// 124 |     pair = get v 0, 5
+// 125 |     clear v	// note: pair.first may be invalidated by this mutation
 //     |     -------
-// 127 |     use pair.second
-// 128 |     use pair.first	// error: pair.first may have been invalidated by an earlier mutation
+// 126 |     use pair.second
+// 127 |     use pair.first	// error: pair.first may have been invalidated by an earlier mutation
 //     |             ^^^^^^
 // 
-// examples/typechecking/borrows/invalidation.an:146:9
-// 142 |         first := get v 0
-// 143 |         clear v	// note: first may be invalidated by this mutation
+// examples/typechecking/borrows/invalidation.an:145:9
+// 141 |         first := get v 0
+// 142 |         clear v	// note: first may be invalidated by this mutation
 //     |         -------
-// 144 |     else
-// 145 |         first := get v 1
-// 146 |     use first	// error: first may have been invalidated by an earlier mutation
+// 143 |     else
+// 144 |         first := get v 1
+// 145 |     use first	// error: first may have been invalidated by an earlier mutation
 //     |         ^^^^^
 // 
 // Found 14 errors and 0 warnings

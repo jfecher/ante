@@ -1,7 +1,6 @@
 import Std.C.malloc, free
 import Std.Mem.Type
-import Std.Sync.Atomic
-import Std.Sync.Atomic.Atomic
+import Std.Sync.Atomic.module, type
 
 export Arc, of, as_ref, clone_arc, drop_arc
 

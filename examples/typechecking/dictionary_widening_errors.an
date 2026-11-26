@@ -1,4 +1,4 @@
-import Std.Throw.Throw, throw
+import Std.Throw.type, throw
 
 trait Run t (e: effect) =
     run: fn t -> I32 can e

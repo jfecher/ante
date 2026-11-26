@@ -1,5 +1,5 @@
-import Std.Rc.Rc
-import Std.Collections.Vec.Vec
+import Std.Rc.type
+import Std.Collections.Vec.type
 
 type Box t = x: t
 type Pair a b = first: a, second: b

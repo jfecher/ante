@@ -1,5 +1,5 @@
 import Std.Collections.Vec.get
-import Std.Fail.Fail
+import Std.Fail.type
 import Std.Collections.Vec
 
 // A polymorphic reference may be read-only so it can't be mutated

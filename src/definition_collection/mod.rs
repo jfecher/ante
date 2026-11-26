@@ -8,8 +8,8 @@ use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{
         self, AllDefinitions, AllTypes, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph,
-        GetImports, Parse, Submodules, TypeDefinitions, TypeMembers, ValidateExports, VisibleDefinitions,
-        VisibleDefinitionsResult, VisibleTypes,
+        GetImports, IsImplicitItem, Parse, Submodules, TypeDefinitions, TypeMembers, ValidateExports,
+        VisibleDefinitions, VisibleDefinitionsResult, VisibleTypes,
     },
     name_resolution::namespace::SourceFileId,
     parser::{
@@ -44,11 +44,39 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
             continue;
         };
         let exported = ExportedDefinitions(import_file_id).get(db);
+        let exported_types = ExportedTypes(import_file_id).get(db);
+
+        // `import Foo.Bar.module` imports the module `Foo.Bar` itself, as `import Foo.Bar` does
+        if import.module_item().is_some()
+            && let Some(module_name) = import.module_name()
+        {
+            visible.imported_modules.insert(Arc::new(module_name.to_owned()), import_file_id);
+        }
+
+        // `import Foo.Bar.type` imports the type `Bar`, but not the module `Foo.Bar`
+        if let Some((type_name, location)) = import.imported_type() {
+            let name = Arc::new(type_name.to_owned());
+
+            if !exported_types.contains_key(&name) {
+                let module = import.module_path.clone();
+                let location = location.clone();
+                db.accumulate(Diagnostic::NoTypeNamedAfterModule { name, module, location });
+            }
+        }
 
         for (exported_name, exported_id) in &exported.definitions {
             // Check if this matches the name of any imported item
-            if !import.items.iter().any(|(item, _)| item == exported_name) {
+            let by_name = import.names().find(|(name, _)| *name == exported_name);
+            let by_keyword = keyword_item_for(import, exported_name, *exported_id, Namespace::Definitions, db);
+            if by_name.is_none() && by_keyword.is_none() {
                 continue;
+            }
+            // Naming an item that `type` or `impl` already imports is a duplicate import
+            if let (Some((name, name_location)), Some(keyword_location)) = (by_name, by_keyword) {
+                let name = name.clone();
+                let first_location = keyword_location.clone();
+                let second_location = name_location.clone();
+                db.accumulate(Diagnostic::ImportedNameAlreadyInScope { name, first_location, second_location });
             }
             if let Some(existing) = visible.definitions.get(exported_name) {
                 // This reports the location the item was defined in, not the location it was imported at.
@@ -65,7 +93,7 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         // Import variants as if they were defined in their parent module
         for members in exported.type_members.values() {
             for (exported_name, exported_id) in members {
-                if !import.items.iter().any(|(item, _)| item == exported_name) {
+                if !import.imports_name(exported_name) {
                     continue;
                 }
                 if !visible.definitions.contains_key(exported_name) {
@@ -75,8 +103,7 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         }
 
         // Report errors for any explicitly requested items not found in the module
-        let exported_types = ExportedTypes(import_file_id).get(db);
-        for (name, item_location) in &import.items {
+        for (name, item_location) in import.names() {
             let found = exported.definitions.contains_key(name)
                 || exported_types.contains_key(name)
                 || exported.type_members.values().any(|m| m.contains_key(name));
@@ -123,6 +150,22 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
     Arc::new(visible)
 }
 
+/// If there's a `type` or `impl` import item  in the import list which applies to the given
+/// exported item `id`, return the location of that import item.
+fn keyword_item_for<'a>(
+    import: &'a Import, name: &Name, id: TopLevelName, namespace: Namespace, db: &DbHandle,
+) -> Option<&'a Location> {
+    let by_type = import.imported_type().filter(|(type_name, _)| *type_name == name.as_str());
+    by_type.map(|(_, location)| location).or_else(|| {
+        // Only definitions can be implicit
+        import.impl_item().filter(|_| matches!(namespace, Namespace::Definitions) && is_implicit(id, db))
+    })
+}
+
+fn is_implicit(name: TopLevelName, db: &DbHandle) -> bool {
+    IsImplicitItem(name.top_level_item).get(db)
+}
+
 fn push_no_such_file_error(import: &Import, location: Location, db: &DbHandle) {
     let module_name = import.module_path.clone();
     let crate_name = import.crate_name.clone();
@@ -142,8 +185,8 @@ fn get_file_id(target_crate_name: &String, module_path: &PathBuf, db: &DbHandle)
     None
 }
 
-/// When module_path is empty (crate root), try resolving each imported item as a submodule.
-/// E.g. `import Std.IO` resolves "IO" as the IO.an submodule in the Std crate.
+/// When an import's module path is not a file, try resolving each imported item as a submodule
+/// of that path instead. E.g. `import Std.IO` resolves IO as the IO.an submodule in the Std crate.
 fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsResult, db: &DbHandle) {
     let crates = GetCrateGraph.get(db);
     let Some(crate_) = crates.values().find(|c| c.name == import.crate_name) else {
@@ -151,7 +194,22 @@ fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsRe
         return;
     };
 
-    for (item_name, item_location) in &import.items {
+    // `type` and `impl` both need a file module to import from
+    if let Some(location) = import.type_item().or(import.impl_item()) {
+        push_no_such_file_error(import, location.clone(), db);
+    }
+
+    // `module` may still name a directory
+    if let Some(location) = import.module_item() {
+        match (crate_.source_files.get(&*import.module_path), import.module_name()) {
+            (Some(&file_id), Some(name)) => {
+                visible.imported_modules.insert(Arc::new(name.to_owned()), file_id);
+            },
+            _ => push_no_such_file_error(import, location.clone(), db),
+        }
+    }
+
+    for (item_name, item_location) in import.names() {
         let child = import.module_path.join(item_name.as_str());
         let as_file = child.with_extension("an");
         let submodule = crate_.source_files.get(&as_file).or_else(|| crate_.source_files.get(&child));
@@ -188,7 +246,9 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> Arc<TypeDefi
         let exports = ExportedTypes(import_file_id).get(db);
 
         for (exported_name, exported_id) in exports.iter() {
-            if !import.items.iter().any(|(item, _)| item == exported_name) {
+            if !import.imports_name(exported_name)
+                && keyword_item_for(import, exported_name, *exported_id, Namespace::Types, db).is_none()
+            {
                 continue;
             }
             if let Some(existing) = definitions.get(exported_name) {
@@ -487,11 +547,14 @@ fn find_in_imports(
     db: &DbHandle, parse: &ParseResult, name: &Name, namespace: Namespace, visited: &mut Vec<SourceFileId>,
 ) -> Option<TopLevelName> {
     for import in &parse.cst.imports {
-        if !import.items.iter().any(|(item, _)| item == name) {
+        let by_name = import.imports_name(name);
+        if !by_name && import.type_item().is_none() && import.impl_item().is_none() {
             continue;
         }
         let Some(import_file) = get_file_id(&import.crate_name, &import.module_path, db) else { continue };
-        if let Some(found) = find_exported(db, import_file, name, namespace, visited) {
+        if let Some(found) = find_exported(db, import_file, name, namespace, visited)
+            && (by_name || keyword_item_for(import, name, found, namespace, db).is_some())
+        {
             return Some(found);
         }
     }
@@ -508,8 +571,14 @@ pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
     if let Some(exports) = &parse.cst.exports {
         let defs = AllDefinitions(context.0).get(db);
         let types = AllTypes(context.0).get(db);
-        let import_names: HashSet<&Name> =
-            parse.cst.imports.iter().flat_map(|i| i.items.iter().map(|(n, _)| n)).collect();
+        let import_names: HashSet<&Name> = parse.cst.imports.iter().flat_map(|i| i.names().map(|(n, _)| n)).collect();
+
+        let is_imported = |name: &Name| {
+            import_names.contains(name)
+                || [Namespace::Definitions, Namespace::Types]
+                    .into_iter()
+                    .any(|namespace| find_in_imports(db, &parse, name, namespace, &mut vec![context.0]).is_some())
+        };
 
         for entry in exports {
             match &entry.qualifier {
@@ -532,7 +601,7 @@ pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
                 None => {
                     let exists = defs.definitions.contains_key(&entry.name)
                         || types.contains_key(&entry.name)
-                        || import_names.contains(&entry.name);
+                        || is_imported(&entry.name);
                     if exists {
                         continue;
                     }

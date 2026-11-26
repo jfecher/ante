@@ -1,0 +1,68 @@
+// `C` exports no type named `C`
+import Std.C.type
+// There is no module to import a type or impls from
+import Std.Nope.type, impl
+// Naming an item `type` or `impl` already imports is a duplicate import
+import Std.Collections.HashMap.impl, drop_hashmap
+import Std.Collections.Vec.type, Vec
+// As is importing it again on another line
+import Std.Sync.Arc.clone_arc
+import Std.Sync.Arc.type, impl
+// `type` alone does not import the module
+import Std.Collections.HashMap.type
+// There is no such module
+import Std.Nope.module
+
+main () =
+    _: HashMap U8 I32 = HashMap.empty ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/nameresolution/import_type_impl_errors.an:2:14
+// 1 | // `C` exports no type named `C`
+// 2 | import Std.C.type	// error: Module C does not export a type named C
+//   |              ^^^^
+// 3 | // There is no module to import a type or impls from
+// 
+// examples/nameresolution/import_type_impl_errors.an:4:17
+// 3 | // There is no module to import a type or impls from
+// 4 | import Std.Nope.type, impl	// error: Could not find module `Nope` in crate `Std`
+//   |                 ^^^^
+// 5 | // Naming an item `type` or `impl` already imports is a duplicate import
+// 
+// examples/nameresolution/import_type_impl_errors.an:6:38
+// 5 | // Naming an item `type` or `impl` already imports is a duplicate import
+//   | // warning: This imports `drop_hashmap`, which has already been defined
+// 6 | import Std.Collections.HashMap.impl, drop_hashmap
+//   |                                      ^^^^^^^^^^^^
+// 7 | import Std.Collections.Vec.type, Vec
+// 
+// examples/nameresolution/import_type_impl_errors.an:7:34
+// 6 | import Std.Collections.HashMap.impl, drop_hashmap
+//   | // warning: This imports `Vec`, which has already been defined
+// 7 | import Std.Collections.Vec.type, Vec
+//   |                                  ^^^
+// 8 | // As is importing it again on another line
+// 
+// examples/nameresolution/import_type_impl_errors.an:10:8
+//  9 | import Std.Sync.Arc.clone_arc
+//    | // warning: This imports `clone_arc`, which has already been defined
+// 10 | import Std.Sync.Arc.type, impl
+//    |        ^^^^^^^^^^^^^^^^^^^^^^^
+// 11 | // `type` alone does not import the module
+// 
+// examples/nameresolution/import_type_impl_errors.an:14:17
+// 13 | // There is no such module
+// 14 | import Std.Nope.module	// error: Could not find module `Nope` in crate `Std`
+//    |                 ^^^^^^
+// 
+// examples/nameresolution/import_type_impl_errors.an:17:33
+// 16 | main () =
+//    |     // error: empty is not a variant of this type
+//    |     // note: Functions are stored in modules, not types
+// 17 |     _: HashMap U8 I32 = HashMap.empty ()
+//    |                                 ^^^^^
+// 
+// Found 4 errors and 3 warnings
+

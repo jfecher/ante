@@ -1,6 +1,6 @@
 import Std.C.Clock, clock_gettime
 import Std.Mem.transmute
-import Std.Time.Duration.Duration
+import Std.Time.Duration.type
 
 /// A monotonic time point in nanoseconds since an arbitrary epoch.
 /// Only meaningful relative to another `Instant`.

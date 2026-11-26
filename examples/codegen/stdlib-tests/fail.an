@@ -1,4 +1,4 @@
-import Std.Fail.Fail, fail, try, on_fail, assert, ignore_fail, retry_until_success, abort_on_fail
+import Std.Fail.type, fail, try, on_fail, assert, ignore_fail, retry_until_success, abort_on_fail
 import Std.C.malloc, free
 import Std.Mem.deref_ptr, ptr_store
 

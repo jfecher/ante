@@ -1,6 +1,6 @@
 import Std.Sync.Thread.spawn
 
-// Spawn a thread running a capturing closure, then join for its result.
+// Spawn a thread with a capturing closure, then join
 main () =
     print_to_stdout do
     base = 100

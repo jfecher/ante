@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{Attribute, Constructor, Declaration, ExportEntry, Lambda, MemberAccess, Name, Parameter, Pattern};
+use cst::{
+    Attribute, Constructor, Declaration, ExportEntry, ImportItem, Lambda, MemberAccess, Name, Parameter, Pattern,
+};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
@@ -535,35 +537,23 @@ impl<'tokens> Parser<'tokens> {
             }
 
             let start = self.current_token_span();
-            if let Some(mut path) = self.try_parse_or_recover_to_newline(Self::parse_value_path) {
-                // `import Crate.Module`
-                // with just a single path component, nothing actually gets imported
-                if path.components.len() < 2 {
-                    // The path parser shouldn't parse empty paths
-                    assert_eq!(path.components.len(), 1);
-                    let location = path.components[0].1.clone();
+            if let Some((mut path, first_item)) = self.try_parse_or_recover_to_newline(Self::parse_import_path) {
+                // `import Foo`: there is a single item and no crate to import it from
+                if path.components.is_empty() {
+                    let location = first_item.1;
                     self.diagnostics.push(Diagnostic::ExpectedPathForImport { location });
                     self.recover_to_next_newline_or_unindent();
                     continue;
                 }
 
                 let crate_name = String::clone(&path.components.remove(0).0);
+                let mut items = vec![first_item];
 
-                let mut items = Vec::with_capacity(1);
-                if let Some((name, location)) = path.components.pop() {
-                    items.push((name, location));
-                }
-
-                // Parse any extra items e.g. `, b, c, d`. The leading separator is consumed here
-                // because the first item came from the path; the helper expects to start at an item.
                 if self.accept(Token::Comma) {
                     items.extend(self.delimited_until_recover(
                         Token::Comma,
                         &[Token::Newline, Token::EndOfInput, Token::Unindent],
-                        |this| {
-                            this.parse_ident_or_type_name()
-                                .map_err(|_| this.expected::<()>("an identifier or type name").unwrap_err())
-                        },
+                        Self::parse_import_item,
                     ));
                 }
 
@@ -657,6 +647,39 @@ impl<'tokens> Parser<'tokens> {
         }
 
         Ok(Path { components })
+    }
+
+    /// import_path: (typename '.')* import_item
+    ///
+    /// Returns the crate & module path along with the first item imported from it.
+    fn parse_import_path(&mut self) -> Result<(Path, (ImportItem, Location))> {
+        let mut components = Vec::new();
+
+        while matches!(self.current_token(), Token::TypeName(_)) && *self.peek_next_token() == Token::MemberAccess {
+            let typename = self.parse_type_name()?;
+            components.push((typename, self.previous_token_location()));
+            self.advance();
+        }
+
+        Ok((Path { components }, self.parse_import_item()?))
+    }
+
+    /// import_item: ident | typename | 'type' | 'module' | 'impl'
+    fn parse_import_item(&mut self) -> Result<(ImportItem, Location)> {
+        let item = match self.current_token() {
+            Token::Type => ImportItem::Type,
+            Token::Module => ImportItem::Module,
+            Token::Impl => ImportItem::Impl,
+            _ => {
+                return match self.parse_ident_or_type_name() {
+                    Ok((name, location)) => Ok((ImportItem::Name(name), location)),
+                    Err(_) => self.expected("an identifier, type name, `type`, `module`, or `impl`"),
+                };
+            },
+        };
+        let location = self.current_token_location();
+        self.advance();
+        Ok((item, location))
     }
 
     /// value_path: (typename '.')* (ident | typename)

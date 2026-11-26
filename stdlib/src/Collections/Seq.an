@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Mem.Type, null
 
-export Seq, empty, of, with_capacity, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq, eq_seq, cmp_seq
+export Seq, empty, of, with_capacity, push, pop, remove_last, get, get_copied, clone_seq, drop_seq, print_seq, stream_seq, eq_seq, cmp_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -195,11 +195,6 @@ get (seq: read Seq t) (index: U32): Maybe (read t) =
         Some (ptr_to_ref elem)
     else None
 
-iter (seq: ref Seq t) (f: fn (ref 'seq t) [env] -> Unit can e) {Drop env e}: Unit can e =
-    for i in 0 .. seq.len do
-        elem = offset seq.data.elements (Usz i)
-        f (ptr_to_ref elem)
-
 // Paper cut #2: Copy t
 impl print_seq {p: Display t e} {Copy t}: Display (Seq t) e with
     print (seq: ref Seq t): Unit =
@@ -270,7 +265,7 @@ drop_data (var data: Ptr (Data t)) {Drop t e}: Unit can e =
             if parent_ref.direct_rc != 0 or parent_ref.fork_rc != 0 then
                 data := null ()
 
-impl stream_seq {Drop a e}: Stream (Seq a) (ref a) e with
+impl stream_seq: Stream (ref Seq a) (ref a) e with
     stream seq =
         for i in 0 .. seq.len do
             elem = offset seq.data.elements (Usz i)

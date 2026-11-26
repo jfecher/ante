@@ -1,6 +1,5 @@
-import Std.Collections.HashMap.HashMap, drop_hashmap
+import Std.Collections.HashMap.module, type, drop_hashmap
 import Std.Hash.hash_u8
-import Std.Collections.HashMap
 
 // The map's `Hash` impl is omitted from the return type so it is inferred from the body
 build (): HashMap U8 I32 can Panic =

@@ -1,6 +1,6 @@
 // The body and branches of a `handle` run as part of the function they are in, so a drop
 // within one may only perform the effects that function can
-import Std.Fail.Fail, fail
+import Std.Fail.type, fail
 
 type Noisy = id: I32
 

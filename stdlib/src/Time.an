@@ -1,6 +1,6 @@
 import Std.C.Clock, nanosleep
 import Std.Mem.transmute, null
-import Std.Time.Duration.Duration
+import Std.Time.Duration.type
 
 /// Block the current thread for the specified duration.
 sleep (d: Duration): Unit can Fs =

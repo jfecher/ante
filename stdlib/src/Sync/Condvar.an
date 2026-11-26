@@ -1,6 +1,6 @@
 import Std.C.malloc, free, VoidPtr
 import Std.Mem.null
-import Std.Sync.Mutex.Mutex
+import Std.Sync.Mutex.type
 
 export Condvar, new, wait, signal, broadcast, drop_condvar
 

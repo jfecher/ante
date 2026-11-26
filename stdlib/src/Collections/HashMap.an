@@ -1,5 +1,5 @@
 import Std.C.calloc, free
-import Std.Hash.Hash
+import Std.Hash.type
 import Std.Mem.Type, null, ref_to_ptr, forget
 
 export HashMap, Entry, Hash, empty, of, clear, resize, should_resize,

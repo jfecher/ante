@@ -1,6 +1,5 @@
-import Std.Collections.HashMap.HashMap, insert, merge, drop_hashmap
-import Std.Hash.Hash, hash_u8
-import Std.Collections.HashMap
+import Std.Collections.HashMap.module, type, drop_hashmap
+import Std.Hash.type, hash_u8
 
 // A second way to hash U8 keys
 impl hash_u8_alt: Hash U8 with
@@ -23,10 +22,10 @@ main () =
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/hashmap_impl_tag.an:21:14
-// 20 |     // Maps hashing their keys differently can't be mixed
+// examples/typechecking/hashmap_impl_tag.an:20:14
+// 19 |     // Maps hashing their keys differently can't be mixed
 //    |     // error: Argument 2 has type HashMap U8 I32 hash_u8_alt but HashMap U8 I32 hash_u8 was expected
-// 21 |     merge m1 m2
+// 20 |     merge m1 m2
 //    |              ^^
 // 
 // Found 1 error and 0 warnings

@@ -1,7 +1,6 @@
 import Std.C.malloc, realloc, memcpy, free, calloc
 import Std.Mem.Type, null, forget
-import Std.Slice
-import Std.Slice.Slice
+import Std.Slice.module, type
 
 export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,

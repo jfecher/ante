@@ -1,5 +1,4 @@
-import Std.Collections.Vec.Vec
-import Std.Collections.Vec
+import Std.Collections.Vec.module, type
 
 reads (_v: mut 'v (Vec (ref 'e I32))) (_: ref 'k I32) = ()
 
@@ -23,11 +22,11 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/vec_read_and_write.an:19:27
-// 18 |     if true then
+// examples/typechecking/borrows/vec_read_and_write.an:18:27
+// 17 |     if true then
 //    |         // error: This reference to a temporary value outlives its scope
 //    |         // note: this value is only valid until the end of this scope
-// 19 |         writes (mut nums) 5
+// 18 |         writes (mut nums) 5
 //    |                           ^
 // 
 // Found 1 error and 0 warnings

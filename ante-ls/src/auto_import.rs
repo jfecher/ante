@@ -169,7 +169,7 @@ pub fn build_import_edit(
         if import.module_path.as_os_str().is_empty() {
             continue;
         }
-        if import.items.iter().any(|(item, _)| item.as_str() == name) {
+        if import.imports_name(name) {
             return None;
         }
         let (insert_byte, insert_text) = if let Some((_, last_loc)) = import.items.last() {

@@ -169,7 +169,7 @@ fn symbol_at_import_or_export(
     let parse = Parse(file_id).get(compiler);
 
     for import in &parse.cst.imports {
-        for (name, loc) in &import.items {
+        for (name, loc) in import.names() {
             if !contains(loc, byte_offset) {
                 continue;
             }
@@ -402,7 +402,7 @@ pub fn collect_rename_locations(compiler: &Db, target: &RenameTarget, old_name: 
             if import_target_file(&crates, &import.crate_name, &import.module_path) != Some(defining_file) {
                 continue;
             }
-            for (item_name, loc) in &import.items {
+            for (item_name, loc) in import.names() {
                 if item_name.as_str() != old_name {
                     continue;
                 }

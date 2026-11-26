@@ -63,6 +63,15 @@ pub enum TopLevelItemKind {
 }
 
 impl TopLevelItemKind {
+    /// True if this item is an `impl` or an `implicit`
+    pub fn is_implicit(&self) -> bool {
+        match self {
+            TopLevelItemKind::TraitImpl(_) => true,
+            TopLevelItemKind::Definition(definition) => definition.implicit,
+            _ => false,
+        }
+    }
+
     pub fn name(&self) -> ItemName {
         match self {
             TopLevelItemKind::Definition(definition) => ItemName::Pattern(definition.pattern),
@@ -527,9 +536,76 @@ pub struct Import {
     /// TODO: Investigate whether this breaks serialization stability across Windows <-> Unix
     pub module_path: Arc<PathBuf>,
 
-    /// For a given import `import Foo.Bar.Baz.a, b, c`, `items` will contain `a, b, c`
-    pub items: Vec<(Name, Location)>,
+    /// For a given import `import Foo.Bar.Baz.a, b, c`, `items` will contain `a, b, c`.
+    pub items: Vec<(ImportItem, Location)>,
     pub location: Location,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub enum ImportItem {
+    /// An item imported by name
+    Name(Name),
+    // The rest are the keywords of the same name:
+    Type,
+    Module,
+    Impl,
+}
+
+impl std::fmt::Display for ImportItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ImportItem::Name(name) => write!(f, "{name}"),
+            ImportItem::Type => write!(f, "type"),
+            ImportItem::Module => write!(f, "module"),
+            ImportItem::Impl => write!(f, "impl"),
+        }
+    }
+}
+
+impl Import {
+    /// Each item of this import which was imported by name, excluding `type`, `module`, and `impl`.
+    pub fn names(&self) -> impl Iterator<Item = (&Name, &Location)> {
+        self.items.iter().filter_map(|(item, location)| match item {
+            ImportItem::Name(name) => Some((name, location)),
+            ImportItem::Type | ImportItem::Module | ImportItem::Impl => None,
+        })
+    }
+
+    /// True if `name` is one of the items imported by name
+    pub fn imports_name(&self, name: &str) -> bool {
+        self.names().any(|(item, _)| item.as_str() == name)
+    }
+
+    /// The location of the `type` item in this import, if there is one
+    pub fn type_item(&self) -> Option<&Location> {
+        self.keyword_item(&ImportItem::Type)
+    }
+
+    /// The location of the `module` item in this import, if there is one
+    pub fn module_item(&self) -> Option<&Location> {
+        self.keyword_item(&ImportItem::Module)
+    }
+
+    /// The location of the `impl` item in this import, if there is one
+    pub fn impl_item(&self) -> Option<&Location> {
+        self.keyword_item(&ImportItem::Impl)
+    }
+
+    fn keyword_item(&self, keyword: &ImportItem) -> Option<&Location> {
+        self.items.iter().find(|(item, _)| item == keyword).map(|(_, location)| location)
+    }
+
+    /// The name of the type imported by this import's `type` item along with the location of
+    /// that item, if there is one.
+    pub fn imported_type(&self) -> Option<(&str, &Location)> {
+        Some((self.module_name()?, self.type_item()?))
+    }
+
+    /// The name of the module this import imports from, e.g. `Vec` in
+    /// `import Std.Collections.Vec.module`.
+    pub fn module_name(&self) -> Option<&str> {
+        self.module_path.file_name()?.to_str()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

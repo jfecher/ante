@@ -1,5 +1,4 @@
-import Std.Collections.Seq
-import Std.Collections.Seq.Seq, iter, clone_seq, eq_seq, drop_seq
+import Std.Collections.Seq.module, type, impl
 import Std.Stream.iota
 
 type Tag = id: U32
@@ -46,19 +45,11 @@ main () =
     // get_copied:
     assert <| get_copied built 1u32 is Some 1
 
-    // Seq.iter:
-    iter (ref built) (fn x -> println x.*)   // 0, 1, 2, 3, 4
-
-    // Regression: push fast-path used to silently overwrite the slot at seq.len
-    // (Tag 4) and shrink data.len so the orphaned slot (Tag 5) was never visited
-    // by drop_data. The fix drops the element at seq.len before reusing the slot
+    // Regression: push used to silently overwrite the `Tag 4` slot at seq.len
+    // and shrink data.len so the `Tag 5` slot was never dropped.
     println "push-overwrite regression:"
     var s = Seq.empty ()
-    s := push s (Tag 1)
-    s := push s (Tag 2)
-    s := push s (Tag 3)
-    s := push s (Tag 4)
-    s := push s (Tag 5)
+    s := push s (Tag 1) |> push (Tag 2) |> push (Tag 3) |> push (Tag 4) |> push (Tag 5)
     var snap = clone s
     s := remove_last s
     s := remove_last s
@@ -68,11 +59,6 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout:
-// 0
-// 1
-// 2
-// 3
-// 4
 // push-overwrite regression:
 // drop 4
 // drop 1

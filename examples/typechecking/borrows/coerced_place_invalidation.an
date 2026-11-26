@@ -1,6 +1,5 @@
-import Std.Collections.Vec.Vec, get
-import Std.Fail.Fail
-import Std.Collections.Vec
+import Std.Collections.Vec.module, type, get
+import Std.Fail.type
 
 use (_x: ref t): Unit = ()
 
@@ -42,11 +41,11 @@ sibling_field (x: mut S): Unit can Mutate 'x, Fail, Panic =
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/coerced_place_invalidation.an:19:9
-// 17 |     inner = first_mut x
-// 18 |     inner := Vec.empty ()	// note: elem may be invalidated by this mutation
+// examples/typechecking/borrows/coerced_place_invalidation.an:18:9
+// 16 |     inner = first_mut x
+// 17 |     inner := Vec.empty ()	// note: elem may be invalidated by this mutation
 //    |     ---------------------
-// 19 |     use elem	// error: elem may have been invalidated by an earlier mutation
+// 18 |     use elem	// error: elem may have been invalidated by an earlier mutation
 //    |         ^^^^
 // 
 // Found 1 error and 0 warnings

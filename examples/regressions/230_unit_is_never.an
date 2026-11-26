@@ -1,4 +1,4 @@
-import Std.Throw.Throw, throw
+import Std.Throw.type, throw
 
 unit_neverizer {Throw Never} =
     throw ()

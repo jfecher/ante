@@ -1,5 +1,4 @@
-import Std.Collections.Vec
-import Std.Collections.Vec.Vec
+import Std.Collections.Vec.module, type
 
 export MaxHeap, MinHeap, empty_maxheap, empty_minheap, maxheap_of, minheap_of,
     maxheap_with_capacity, minheap_with_capacity, is_empty, len, push, pop, peek, clear, extend,

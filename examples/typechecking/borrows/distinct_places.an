@@ -1,8 +1,7 @@
-import Std.Collections.Vec
 
 // A place a function mutates may not alias any of its other places
-import Std.Collections.Vec.Vec, get, clear
-import Std.Fail.Fail
+import Std.Collections.Vec.module, type
+import Std.Fail.type
 
 use (_x: ref t): Unit = ()
 
@@ -63,40 +62,40 @@ ok4 () =
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/distinct_places.an:18:11
-// 17 |     var v = Vec.of [1, 2, 3]
+// examples/typechecking/borrows/distinct_places.an:17:11
+// 16 |     var v = Vec.of [1, 2, 3]
 //    |     // error: 'a cannot alias 'b in this use of mutate_b, but 'v was used for both
-// 18 |     twice mutate_b (mut v)
+// 17 |     twice mutate_b (mut v)
 //    |           ^^^^^^^^
 // 
-// examples/typechecking/borrows/distinct_places.an:27:5
-// 26 |     var v = Vec.of [1, 2, 3]
+// examples/typechecking/borrows/distinct_places.an:26:5
+// 25 |     var v = Vec.of [1, 2, 3]
 //    |     // error: 'xs cannot alias a place mutated by e in this use of run, but 'v was used for both
-// 27 |     run (fn () -> clear v) (ref v)
+// 26 |     run (fn () -> clear v) (ref v)
 //    |     ^^^
 // 
-// examples/typechecking/borrows/distinct_places.an:37:5
-// 36 |     clear_v = fn () -> clear v
+// examples/typechecking/borrows/distinct_places.an:36:5
+// 35 |     clear_v = fn () -> clear v
 //    |     // error: 'xs cannot alias a place mutated by e in this use of run, but 'v was used for both
-// 37 |     run clear_v (ref v)
+// 36 |     run clear_v (ref v)
 //    |     ^^^
 // 
-// examples/typechecking/borrows/distinct_places.an:48:5
-// 47 | bad4 (v: mut Vec I32) =
+// examples/typechecking/borrows/distinct_places.an:47:5
+// 46 | bad4 (v: mut Vec I32) =
 //    |     // error: 'a cannot alias 'b in this use of two_args, but 'v was used for both
-// 48 |     two_args v v
+// 47 |     two_args v v
 //    |     ^^^^^^^^
 // 
-// examples/typechecking/borrows/distinct_places.an:51:5
-// 50 | bad5 (p: mut (Vec I32, Vec I32)) =
+// examples/typechecking/borrows/distinct_places.an:50:5
+// 49 | bad5 (p: mut (Vec I32, Vec I32)) =
 //    |     // error: 'a cannot alias 'b in this use of two_args, but 'p.first was used for both
-// 51 |     two_args p.first p.first
+// 50 |     two_args p.first p.first
 //    |     ^^^^^^^^
 // 
-// examples/typechecking/borrows/distinct_places.an:54:5
-// 53 | bad6 v =
+// examples/typechecking/borrows/distinct_places.an:53:5
+// 52 | bad6 v =
 //    |     // error: 'a cannot alias an inferred place in this use of two_args2, but both may refer to the same place
-// 54 |     two_args2 v v
+// 53 |     two_args2 v v
 //    |     ^^^^^^^^^
 // 
 // Found 6 errors and 0 warnings
