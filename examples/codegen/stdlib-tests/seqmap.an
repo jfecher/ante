@@ -1,0 +1,240 @@
+import Std.Collections.SeqMap.module, type, impl
+import Std.Fail.assert, abort_on_fail
+
+type Tag = id: U32
+
+impl drop_tag: Drop Tag Print with
+    drop (t: Tag) =
+        print "drop "
+        println t.id
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    abort_on_fail do
+
+    var map = SeqMap.empty ()
+    assert <| is_empty map
+    map := insert map 1u8 3u16
+    map := insert map 2 6
+    map := insert map 3 9
+    assert <| map == SeqMap.of [(1, 3), (2, 6), (3, 9)]
+    assert <| SeqMap.len map == 3
+    assert <| get map 2 is Some 6
+    assert <| get map 5 is None
+    assert <| map.[ref 3].* == 9
+    assert <| contains map 3
+
+    // A snapshot keeps seeing the entries it was taken with
+    snapshot = clone map
+    map := insert map 2 60
+    map := remove map 1
+    map := remove map 99
+    assert <| map == SeqMap.of [(3, 9), (2, 60)]
+    assert <| snapshot == SeqMap.of [(1, 3), (2, 6), (3, 9)]
+
+    // Writing to the snapshot leaves the original alone
+    older = insert snapshot 4 12
+    assert <| older == SeqMap.of [(1, 3), (2, 6), (3, 9), (4, 12)]
+    assert <| map == SeqMap.of [(3, 9), (2, 60)]
+
+    // Re-insert a key
+    map := insert map 1 33
+    assert <| map == SeqMap.of [(3, 9), (1, 33), (2, 60)]
+    assert <| map == SeqMap.of [(1, 33), (2, 60), (3, 9)]
+    assert <| map != older
+
+    iter (ref map) fn (key, value) ->
+        print key
+        print " = "
+        println value
+    keys map |> iter println
+    values map |> iter println
+
+    test_growth ()
+    test_rollback ()
+    test_fork ()
+    test_collapse ()
+    test_overwrite ()
+
+test_growth () =
+    var map = SeqMap.empty ()
+    for i in 0 .. 1000u32 do
+        map := insert map i (i * 2)
+
+    half = clone map
+    for i in 0 .. 1000u32 do
+        if i % 2 == 0 then
+            map := remove map i
+        else
+            map := insert map i (i * 3)
+
+    assert <| SeqMap.len map == 500
+    assert <| SeqMap.len half == 1000
+
+    for i in 0 .. 1000u32 do
+        assert <| get half i is Some v and v == i * 2
+        if i % 2 == 0
+        then assert <| get map i is None
+        else assert <| get map i is Some v and v == i * 3
+
+    println "growth ok"
+
+// The newest handle appends in place. Dropping it drops those appends
+// so the next snapshot of the original appends in place again.
+test_rollback () =
+    println "rollback:"
+    var base = SeqMap.empty ()
+    base := insert base 1u8 (Tag 1)
+    base := insert base 2 (Tag 2)
+
+    var branch = clone base
+    branch := insert branch 3 (Tag 3)
+    drop branch                           // drop 3
+
+    var second = clone base
+    second := insert second 4 (Tag 4)
+    assert <| SeqMap.len second == 3
+    assert <| SeqMap.len base == 2
+    drop second                           // drop 4
+    println "end of rollback"
+
+// Writing to a handle that is behind the newest one forks the map.
+// Like Seq this only bitwise copies instead of fully clones. This is
+// also why we can only hand out immutable references to elements.
+test_fork () =
+    println "fork:"
+    var base = SeqMap.empty ()
+    base := insert base 1u8 (Tag 11)
+    base := insert base 2 (Tag 12)
+
+    var other = clone base
+    base := insert base 3 (Tag 13)
+    other := insert other 4 (Tag 14)
+    assert <| SeqMap.len base == 3
+    assert <| SeqMap.len other == 3
+    assert <| not contains other 3
+    assert <| not contains base 4
+    drop base                             // drop 13
+    println "base dropped"
+    assert <| contains other 1
+    drop other                            // drop 14, drop 11, drop 12
+
+// A fork takes over the entries it borrowed once nothing else refers to their owner
+test_collapse () =
+    println "collapse:"
+    var base = SeqMap.empty ()
+    base := insert base 1u8 (Tag 21)
+    base := insert base 2 (Tag 22)
+
+    var other = clone base
+    base := insert base 3 (Tag 23)
+    other := insert other 4 (Tag 24)
+    drop base                             // drop 23
+
+    // Pinning the log before each insert makes it append instead of overwriting in place
+    for i in 0 .. 20u8 do
+        drop (clone other)
+        other := insert other 1 (Tag (30 + U32 i))
+    println "end of collapse"
+
+// Entries written after the last clone are not visible to any other map,
+// so writing to their keys again replaces them instead of adding to the log.
+test_overwrite () =
+    println "overwrite:"
+    var map = SeqMap.empty ()
+    map := insert map 1u8 (Tag 51)
+    snapshot = clone map
+
+    map := insert map 1 (Tag 52)
+    map := insert map 1 (Tag 53)          // drop 52
+    map := insert map 1 (Tag 54)          // drop 53
+    assert <| get map 1 is Some tag and tag.id == 54
+    assert <| get snapshot 1 is Some tag and tag.id == 51
+
+    map := remove map 1                   // drop 54
+    assert <| is_empty map
+    assert <| contains snapshot 1
+    map := insert map 1 (Tag 55)
+    map := remove map 1                   // drop 55
+    assert <| not (contains map 1)
+
+    map := insert map 2 (Tag 56)
+    map := remove map 2
+    map := insert map 2 (Tag 57)
+    map := insert map 2 (Tag 58)          // drop 57
+    assert <| not (contains snapshot 2)
+
+    var counts = SeqMap.empty ()
+    counts := insert counts 0u32 0u32
+    start = clone counts
+    for i in 0 .. 1000u32 do
+        counts := insert counts (i % 3) i
+        if i % 5 == 0 then
+            counts := remove counts (i % 3)
+    assert <| get start 0 is Some 0
+    assert <| get counts 0 is Some 999
+    assert <| get counts 1 is Some 997
+    assert <| get counts 2 is Some 998
+    println "end of overwrite"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 3 = 9
+// 2 = 60
+// 1 = 33
+// 3
+// 2
+// 1
+// 9
+// 60
+// 33
+// growth ok
+// rollback:
+// drop 3
+// drop 4
+// end of rollback
+// drop 1
+// drop 2
+// fork:
+// drop 13
+// base dropped
+// drop 14
+// drop 11
+// drop 12
+// collapse:
+// drop 23
+// drop 21
+// drop 30
+// drop 31
+// drop 32
+// drop 33
+// drop 34
+// drop 35
+// drop 36
+// drop 37
+// drop 38
+// drop 39
+// drop 40
+// drop 41
+// drop 42
+// drop 43
+// end of collapse
+// drop 22
+// drop 24
+// drop 44
+// drop 45
+// drop 46
+// drop 47
+// drop 48
+// drop 49
+// overwrite:
+// drop 52
+// drop 53
+// drop 54
+// drop 55
+// drop 57
+// end of overwrite
+// drop 51
+// drop 56
+// drop 58

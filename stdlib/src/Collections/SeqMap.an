@@ -1,0 +1,509 @@
+import Std.C.malloc, calloc, realloc, free
+import Std.Hash.type, fibonacci_multiplier
+import Std.Mem.Type, null
+import Std.Bitwise.type, band, bor, shr, bitwise_u32, bitwise_u64
+import Std.Num.wrapping_mul, wrapping_u64
+import Std.Stream.enumerate, all
+
+export SeqMap, empty, of, insert, remove, get, contains, len, is_empty, keys, values,
+    clone_seqmap, drop_seqmap, stream_seqmap, eq_seqmap, print_seqmap, extract_seqmap
+
+/// A persistent hash map based on Seq.
+/// Performance is meant to be comparable to a mutable HashMap.
+///
+/// Common operations:
+/// - insert, remove, get: O(1) amortized but can be O(N) with worst-case sharing patterns.
+/// - clone: O(1)
+///
+/// Internally, a SeqMap is a Seq-like append-only log of entries. Inserts and removes
+/// are each recorded by adding an event to the end of the log.
+///
+/// Each SeqMap remembers how much of the log it can see, which lets many SeqMaps share the
+/// same log. Each SeqMap never reads past its own length, so a newer SeqMap can keep adding
+/// to the shared log without disturbing any older ones. An older SeqMap simply skips any
+/// versions of a key which were added after it.
+///
+/// A write only needs to copy when the log is out of room, or when the SeqMap being written
+/// to would overwrite later entries already used by other SeqMaps. In the second case
+/// its entries are compacted into a new log of its own.
+///
+/// This can be exploited to force an O(N) copy on every write by cloning at every step and
+/// writing to both the original and the clone:
+/// ```
+/// var map = empty ()
+/// while true do
+///     other = clone map      // map and other now share the same log
+///     map := insert map 0 0  // add to the end of the shared log
+///     insert other 0 1       // other is now behind the end of the log, forcing a copy
+/// ```
+/// This scenario should be rare. A more common usage would be for each clone to be a snapshot
+/// of the map at a point in time, in which case writes to the original remain O(1) amortized.
+/// If you need a persistent map type, SeqMap should still be a good default, but always
+/// benchmark if performance is important.
+///
+/// Note that SeqMap is not thread-safe
+type SeqMap k v (h = _) =
+    hasher: Hash k h
+    log_len: U32
+    count: U32
+    data: Ptr (Data k v)
+
+type Data k v =
+    direct_rc: U32
+    fork_rc: U32
+    len: U32
+    cap: U32
+    pinned_len: U32
+    fork_point: U32
+    index_cap: U32
+    occupied_slots: U32
+    parent: Ptr (Data k v)
+    entries: Ptr (Entry k v)
+    index: Ptr Slot
+
+type Entry k v =
+    key: k
+    value: v
+
+    // The entry index of this key's previous version, or `no_previous` if there is none.
+    // The high bit is the `tombstone_bit` set when this entry is removed.
+    link: U32
+
+    // The log position of the entry which replaced this one, or `no_entry` if it has not
+    // been replaced.
+    superseded_at: U32
+
+/// A position in the index table.
+/// - 0 is an `empty_slot` (0 so we can do a calloc without extra work afterward setting slots to empty)
+/// - 0xFFFF_FFFF is a `vacated_slot`, one which used to have an entry that has since been removed.
+/// - Any other slot is the index of the entry plus one.
+type Slot = entry: U32
+
+impl copy_slot: Copy Slot with (.*) = deref
+impl eq_slot: Eq Slot pure with (==) x y = x.entry == y.entry
+
+tombstone_bit: U32 = 0x8000_0000
+no_previous: U32 = 0x7FFF_FFFF
+no_entry: U32 = 0xFFFF_FFFF
+
+empty_slot = Slot 0
+vacated_slot = Slot 0xFFFF_FFFF
+
+initial_cap = 8u32
+index_slots_per_entry = 2u32
+
+is_tombstone (entry: ref Entry k v): Bool =
+    entry.link >= tombstone_bit
+
+previous_version (entry: ref Entry k v): U32 =
+    band entry.link no_previous
+
+is_live (entry: ref Entry k v) (log_len: U32): Bool =
+    entry.superseded_at >= log_len and not is_tombstone entry
+
+to_slot (entry_index: U32): Slot =
+    Slot (entry_index + 1)
+
+from_slot (slot: Slot): U32 =
+    slot.entry - 1
+
+slot (index: Ptr Slot) (i: U32): Slot = deref_ptr (offset index (Usz i))
+set_slot (index: Ptr Slot) (i: U32) (value: Slot): Unit = ptr_store (offset index (Usz i)) value
+
+new_index (index_cap: U32): Ptr Slot = calloc (Usz index_cap) (size_of (MkType: Type Slot))
+
+probe_start (hasher: Hash k h) (key: ref k) (index_cap: U32): U32 =
+    mixed = wrapping_mul (hasher.hash key) fibonacci_multiplier
+    U32 (shr (shr mixed 32 * U64 index_cap) 32)
+
+probe (d: ref Data k v) (hasher: Hash k h) (key: ref k) (stop: fn Slot [env] -> Bool can e) {Drop env e}: U32 can e =
+    mask = d.index_cap - 1
+    loop (pos = probe_start hasher key d.index_cap) ->
+        if stop (slot d.index pos) then pos
+        else recur (band (pos + 1) mask)
+
+entry_at (entries: Ptr (Entry k v)) (i: U32): ref Entry k v =
+    ptr_to_ref (offset entries (Usz i))
+
+store_entry (entries: Ptr (Entry k v)) (i: U32) (entry: Entry k v): Unit =
+    ptr_store (offset entries (Usz i)) entry
+
+key_holder (entries: Ptr (Entry k v)) (i: U32): U32 =
+    entry = entry_at entries i
+    if is_tombstone entry then previous_version entry else i
+
+holder_at (entries: Ptr (Entry k v)) (i: U32): ref Entry k v =
+    entry_at entries (key_holder entries i)
+
+mark_moved_out (entry: mut Entry k v): Unit can Mutate 'entry =
+    entry.link := bor entry.link tombstone_bit
+
+drop_entry (entries: Ptr (Entry k v)) (i: U32) {Drop k e} {Drop v e}: Unit can e =
+    entry = entry_at entries i
+    if not is_tombstone entry then
+        key = deref entry.key
+        value = deref entry.value
+        drop key
+        drop value
+
+drop_private (d: ref Data k v) {Drop k e} {Drop v e}: Unit can e =
+    iter (d.fork_point .. d.len) (drop_entry d.entries _)
+
+free_data (data: Ptr (Data k v)): Unit =
+    d = ptr_to_ref data
+    free d.entries
+    free d.index
+    free data
+
+is_unique (d: ref Data k v): Bool = d.direct_rc == 1 and d.fork_rc == 0
+
+is_private (d: ref Data k v) (i: U32): Bool = i >= d.pinned_len
+
+index_is_crowded (d: ref Data k v): Bool =
+    (d.occupied_slots + 1) * index_slots_per_entry > d.index_cap
+
+new_data (cap: U32): Ptr (Data k v) =
+    index_cap = cap * index_slots_per_entry
+    data = malloc (size_of (MkType: Type (Data k v)))
+    contents = Data with
+        direct_rc = 1
+        fork_rc = 0
+        len = 0
+        cap
+        pinned_len = 0
+        fork_point = 0
+        index_cap
+        occupied_slots = 0
+        parent = null ()
+        entries = malloc (Usz cap * size_of (MkType: Type (Entry k v)))
+        index = new_index index_cap
+    ptr_store data contents
+    data
+
+/// The number of entries in the map
+len (map: ref SeqMap k v): Usz = Usz map.count
+
+/// True if there are no entries in this map
+is_empty (map: ref SeqMap k v): Bool = map.count == 0
+
+/// Return a fresh, empty SeqMap
+empty () {hasher: Hash k h}: SeqMap k v h =
+    SeqMap hasher 0 0 (null ())
+
+/// Create a SeqMap with the element of the given stream.
+/// Any repeated keys in the stream will overwrite their previous values.
+of (stream: s) {Stream s (k, v) e} {Hash k h} {Eq k e} {Drop k d} {Drop v d}: SeqMap k v h can e, d =
+    foldl stream (empty ()) fn acc (key, value) ->
+        insert acc key value
+
+find_slot (d: ref Data k v) (hasher: Hash k h) (key: ref k) {Eq k e}: U32 can e =
+    probe d hasher key fn s ->
+        s == empty_slot or (s != vacated_slot and (holder_at d.entries (from_slot s)).key == key)
+
+reindex (d: mut Data k v) (hasher: Hash k h): Unit can Mutate 'd =
+    free d.index
+    d.index_cap := d.cap * index_slots_per_entry
+    d.index := new_index d.index_cap
+    d.occupied_slots := 0
+    for i in 0 .. d.len do
+        if (entry_at d.entries i).superseded_at == no_entry then
+            holder = holder_at d.entries i
+            pos = probe d hasher holder.key (_ == empty_slot)
+            set_slot d.index pos (to_slot i)
+            d.occupied_slots += 1
+
+rollback (d: mut Data k v) (hasher: Hash k h) (len: U32) {Drop k e} {Drop v e}: Unit can e, Mutate 'd =
+    var i = d.len
+    while i > len do
+        i -= 1
+        own_slot = to_slot i
+        holder = holder_at d.entries i
+        pos = probe d hasher holder.key (_ == own_slot)
+        previous = previous_version (entry_at d.entries i)
+        if previous == no_previous then
+            set_slot d.index pos vacated_slot
+        else
+            set_slot d.index pos (to_slot previous)
+            restored = entry_at d.entries previous
+            restored.superseded_at := no_entry
+        drop_entry d.entries i
+    d.len := len
+
+compact_in_place (d: mut Data k v) {Drop k e} {Drop v e}: Unit can e, Mutate 'd =
+    var kept = 0
+    var borrowed = 0
+    for i in 0 .. d.len do
+        entry = entry_at d.entries i
+        if is_live entry d.len then
+            if i != kept then
+                store_entry d.entries kept (deref entry)
+            if i < d.fork_point then
+                borrowed += 1
+            else
+                moved = entry_at d.entries kept
+                moved.link := no_previous
+            kept += 1
+        else if i >= d.fork_point then
+            drop_entry d.entries i
+    d.len := kept
+    d.pinned_len := kept
+    d.fork_point := borrowed
+
+grow (d: mut Data k v): Unit can Mutate 'd =
+    d.cap *= 2
+    d.entries := realloc d.entries (Usz d.cap * size_of (MkType: Type (Entry k v)))
+
+collapse_parents (child: mut Data k v) {Drop k e} {Drop v e}: Unit can e, Mutate 'child =
+    while child.parent != null () do
+        parent = ptr_to_ref child.parent
+        if parent.direct_rc != 0 or parent.fork_rc != 1 then break
+
+        var borrowed = 0
+        for i in 0 .. child.fork_point do
+            entry = entry_at child.entries i
+            source = entry_at parent.entries entry.link
+            if entry.link < parent.fork_point then
+                entry.link := source.link
+                borrowed += 1
+            else
+                mark_moved_out source
+                entry.link := no_previous
+
+        drop_private parent
+        grandparent = parent.parent
+        free_data child.parent
+        child.parent := grandparent
+        child.fork_point := borrowed
+
+drop_data (var data: Ptr (Data k v)) {Drop k d} {Drop v d}: Unit can d =
+    while data != null () do
+        current = ptr_to_ref data
+        drop_private current
+        parent = current.parent
+        free_data data
+        data := parent
+
+        if data != null () then
+            parent_ref = ptr_to_ref data
+            parent_ref.fork_rc -= 1
+            if parent_ref.direct_rc != 0 or parent_ref.fork_rc != 0 then break
+
+fork (var map: SeqMap k v h): SeqMap k v h =
+    old = ptr_to_ref map.data
+    var cap = initial_cap
+    while cap < map.count * 2 do
+        cap *= 2
+
+    data = new_data cap
+    new = ptr_to_ref data
+    var kept = 0
+    for i in 0 .. map.log_len do
+        entry = entry_at old.entries i
+        if is_live entry map.log_len then
+            store_entry new.entries kept (Entry (deref entry.key) (deref entry.value) i no_entry)
+            kept += 1
+
+    new.len := kept
+    new.pinned_len := kept
+    new.fork_point := kept
+    new.parent := map.data
+    reindex new map.hasher
+
+    old.fork_rc += 1
+    old.direct_rc -= 1
+    old.pinned_len := max old.pinned_len map.log_len
+
+    map.data := data
+    map.log_len := kept
+    map
+
+make_room (var map: SeqMap k v h) {Drop k d} {Drop v d}: SeqMap k v h can d =
+    d = ptr_to_ref map.data
+    collapse_parents d
+    if d.fork_rc == 0 and map.count * 2 <= d.len then
+        compact_in_place d
+        map.log_len := d.len
+    else
+        grow d
+    reindex d map.hasher
+    map
+
+compact (var map: SeqMap k v h) {Drop k d} {Drop v d}: SeqMap k v h can d =
+    if map.data == null () then
+        return map
+
+    d = ptr_to_ref map.data
+    if map.log_len == d.len then
+        return map
+    if not (is_unique d) then
+        return fork map
+
+    rollback d map.hasher map.log_len
+    d.pinned_len := map.log_len
+    map
+
+prepare (map: SeqMap k v h) {Drop k d} {Drop v d}: SeqMap k v h can d =
+    var map = compact map
+    if map.data == null () then
+        map.data := new_data initial_cap
+        return map
+
+    d = ptr_to_ref map.data
+    if d.len < d.cap then
+        if index_is_crowded d then
+            reindex d map.hasher
+        map
+    else if d.direct_rc != 1 then fork map
+    else make_room map
+
+advance (var map: SeqMap k v h) (pos: U32): SeqMap k v h =
+    d = ptr_to_ref map.data
+    set_slot d.index pos (to_slot map.log_len)
+    d.len += 1
+    map.log_len += 1
+    map
+
+/// Insert a new key, value pair in the map. This will drop the previous entry of the
+/// same key only if no other shared map is still holding onto it.
+///
+/// Runs in roughly O(1) amortized time, though can be O(N) over the shared chain with
+/// worst-case sharing patterns.
+insert (map: SeqMap k v h) (key: k) (value: v) {Eq k e} {Drop k d} {Drop v d}: SeqMap k v h can e, d =
+    var map = prepare map
+    d = ptr_to_ref map.data
+    pos = find_slot d map.hasher (ref key)
+    s = slot d.index pos
+    var previous = no_previous
+    if s == empty_slot then
+        d.occupied_slots += 1
+        map.count += 1
+    else
+        previous := from_slot s
+        newest = entry_at d.entries previous
+        if is_tombstone newest then
+            map.count += 1
+        if is_private d previous then
+            link = previous_version newest
+            drop_entry d.entries previous
+            store_entry d.entries previous (Entry key value link no_entry)
+            return map
+        newest.superseded_at := map.log_len
+
+    store_entry d.entries map.log_len (Entry key value previous no_entry)
+    advance map pos
+
+/// Removes the entry with the given key from the map, if it exists. This will drop the
+/// removed entry only if no other shared map is still holding onto it.
+///
+/// Runs in roughly O(1) amortized time, though can be O(N) over the shared chain with
+/// worst-case sharing patterns.
+remove (map: SeqMap k v h) (key: ref k) {Eq k e} {Drop k d} {Drop v d}: SeqMap k v h can e, d =
+    if not contains map key then
+        return map
+
+    var map = prepare map
+    d = ptr_to_ref map.data
+    pos = find_slot d map.hasher key
+    removed = from_slot (slot d.index pos)
+    newest = entry_at d.entries removed
+    map.count -= 1
+
+    previous = previous_version newest
+    if is_private d removed and previous != no_previous and not (is_tombstone (entry_at d.entries previous)) then
+        drop_entry d.entries removed
+        newest.link := bor previous tombstone_bit
+        return map
+
+    newest.superseded_at := map.log_len
+    tombstone = entry_at d.entries map.log_len
+    tombstone.link := bor removed tombstone_bit
+    tombstone.superseded_at := no_entry
+    advance map pos
+
+/// Retrieves the entry with the given key from the map, if it exists.
+///
+/// Runs in roughly O(1) time, though can be O(N) over the shared chain with
+/// worst-case sharing patterns.
+get (map: read SeqMap k v h) (key: ref k) {Eq k e}: Maybe (read 'map! v) can e =
+    if map.data == null () then
+        return None
+
+    d = ptr_to_ref map.data
+    s = slot d.index (find_slot d map.hasher key)
+    if s == empty_slot then
+        return None
+
+    var i = from_slot s
+    while i != no_previous and i >= map.log_len do
+        i := previous_version (entry_at d.entries i)
+
+    if i == no_previous then
+        return None
+
+    entry = entry_at d.entries i
+    if is_tombstone entry then None else Some entry.value
+
+impl extract_seqmap {Eq k e}: Extract (ref 'm SeqMap k v) (ref k) (ref (read 'm!) v) (Panic & e) with
+    (.[]) map key =
+        match get map key
+        | Some value -> value
+        | None -> panic "SeqMap key not found"
+
+/// True if the map contains the given key
+contains (map: ref SeqMap k v h) (key: ref k) {Eq k e}: Bool can e =
+    get map key is Some _
+
+entry_of (m: ref 'm SeqMap k v) (i: U32): ref 'm! (Entry k v) =
+    entry_at (ptr_to_ref m.data).entries i
+
+live_entries (m: ref 'm SeqMap k v) =
+    map (0 .. m.log_len) (move fn i -> entry_of m i)
+        |> filter (move fn entry -> is_live entry.* m.log_len)
+
+/// Stream references to the keys of this map
+keys (m: ref 'm SeqMap k v) =
+    live_entries m |> map (fn entry -> entry.key)
+
+/// Stream references to the values of this map
+values (m: ref 'm SeqMap k v) =
+    live_entries m |> map (fn entry -> entry.value)
+
+impl stream_seqmap: Stream (ref 'm SeqMap k v) (ref 'm! k, ref 'm! v) pure with
+    stream map =
+        for entry in live_entries map do
+            key: ref 'm! k = entry.key
+            value: ref 'm! v = entry.value
+            emit (key, value)
+
+impl print_seqmap {Display k e} {Display v e}: Display (SeqMap k v) e with
+    print map =
+        write "["
+        for i, entry in enumerate (live_entries map) do
+            if i != 0 then print ", "
+            print entry.key
+            print " -> "
+            print entry.value
+        write "]"
+
+impl eq_seqmap {Eq k e} {Eq v e}: Eq (SeqMap k v) e with
+    (==) map1 map2 =
+        map1.count == map2.count and all (live_entries map1) fn entry ->
+            get map2 entry.key is Some other and entry.value == other
+
+impl clone_seqmap: Clone (SeqMap k v) with
+    clone map =
+        if map.data != null () then
+            d = ptr_to_ref map.data
+            d.direct_rc += 1
+            d.pinned_len := max d.pinned_len map.log_len
+        SeqMap map.hasher map.log_len map.count map.data
+
+impl drop_seqmap {Drop k e} {Drop v e}: Drop (SeqMap k v h) e with
+    drop map =
+        if map.data != null () then
+            d = ptr_to_ref map.data
+            d.direct_rc -= 1
+            if d.direct_rc == 0 and d.fork_rc == 0 then
+                drop_data map.data
+            else if map.log_len > d.pinned_len then
+                rollback d map.hasher d.pinned_len
